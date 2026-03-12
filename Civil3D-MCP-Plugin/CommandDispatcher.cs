@@ -1,0 +1,64 @@
+using System.Text.Json.Nodes;
+
+namespace Civil3DMcpPlugin;
+
+public static class CommandDispatcher
+{
+  public static Task<object?> DispatchAsync(string method, JsonObject? parameters, CancellationToken cancellationToken)
+  {
+    return method switch
+    {
+      "getCivil3DHealth" => DrawingCommands.GetCivil3DHealthAsync(),
+      "getDrawingInfo" => DrawingCommands.GetDrawingInfoAsync(),
+      "getDrawingSettings" => DrawingCommands.GetDrawingSettingsAsync(),
+      "newDrawing" => DrawingCommands.NewDrawingAsync(parameters),
+      "saveDrawing" => DrawingCommands.SaveDrawingAsync(parameters),
+      "undoDrawing" => DrawingCommands.UndoDrawingAsync(parameters),
+      "redoDrawing" => DrawingCommands.RedoDrawingAsync(parameters),
+      "createPolyline" => AcadCommands.CreatePolylineAsync(parameters),
+      "createText" => AcadCommands.CreateTextAsync(parameters),
+      "create3dPolyline" => AcadCommands.Create3dPolylineAsync(parameters),
+      "createMText" => AcadCommands.CreateMTextAsync(parameters),
+      "listCivilObjectTypes" => DrawingCommands.ListCivilObjectTypesAsync(),
+      "getSelectedCivilObjectsInfo" => DrawingCommands.GetSelectedCivilObjectsInfoAsync(parameters),
+      "getJobStatus" => Task.FromResult<object?>(JobCommands.GetJobStatus(parameters)),
+      "cancelJob" => Task.FromResult<object?>(JobCommands.CancelJob(parameters)),
+      "listCogoPoints" => PointCommands.ListCogoPointsAsync(parameters),
+      "getCogoPoint" => PointCommands.GetCogoPointAsync(parameters),
+      "createCogoPoints" => PointCommands.CreateCogoPointsAsync(parameters),
+      "listPointGroups" => PointCommands.ListPointGroupsAsync(),
+      "importCogoPoints" => PointCommands.ImportCogoPointsAsync(parameters),
+      "deleteCogoPoints" => PointCommands.DeleteCogoPointsAsync(parameters),
+      "listAlignments" => AlignmentCommands.ListAlignmentsAsync(),
+      "getAlignment" => AlignmentCommands.GetAlignmentAsync(parameters),
+      "alignmentStationToPoint" => AlignmentCommands.StationToPointAsync(parameters),
+      "alignmentPointToStation" => AlignmentCommands.PointToStationAsync(parameters),
+      "createAlignment" => AlignmentCommands.CreateAlignmentAsync(parameters),
+      "deleteAlignment" => AlignmentCommands.DeleteAlignmentAsync(parameters),
+      "listProfiles" => ProfileCommands.ListProfilesAsync(parameters),
+      "getProfile" => ProfileCommands.GetProfileAsync(parameters),
+      "getProfileElevation" => ProfileCommands.GetProfileElevationAsync(parameters),
+      "sampleProfileElevations" => ProfileCommands.SampleProfileElevationsAsync(parameters),
+      "createProfileFromSurface" => ProfileCommands.CreateProfileFromSurfaceAsync(parameters),
+      "createLayoutProfile" => ProfileCommands.CreateLayoutProfileAsync(parameters),
+      "deleteProfile" => ProfileCommands.DeleteProfileAsync(parameters),
+      "listSurfaces" => SurfaceCommands.ListSurfacesAsync(),
+      "getSurface" => SurfaceCommands.GetSurfaceAsync(parameters),
+      "getSurfaceElevation" => SurfaceCommands.GetSurfaceElevationAsync(parameters),
+      "getSurfaceElevationsAlong" => SurfaceCommands.GetSurfaceElevationsAlongAsync(parameters),
+      "getSurfaceStatistics" => SurfaceCommands.GetSurfaceStatisticsAsync(parameters),
+      "createSurface" => SurfaceCommands.CreateSurfaceAsync(parameters),
+      "deleteSurface" => SurfaceCommands.DeleteSurfaceAsync(parameters),
+      "listSampleLineGroups" => SectionCommands.ListSampleLineGroupsAsync(parameters),
+      "getSectionData" => SectionCommands.GetSectionDataAsync(parameters),
+      "createSampleLines" => SectionCommands.CreateSampleLinesAsync(parameters),
+      "listCorridors" => CorridorCommands.ListCorridorsAsync(),
+      "getCorridor" => CorridorCommands.GetCorridorAsync(parameters),
+      "rebuildCorridor" => CorridorCommands.RebuildCorridorAsync(parameters),
+      "getCorridorSurfaces" => CorridorCommands.GetCorridorSurfacesAsync(parameters),
+      "getCorridorFeatureLines" => CorridorCommands.GetCorridorFeatureLinesAsync(parameters),
+      "computeCorridorVolumes" => CorridorCommands.ComputeCorridorVolumesAsync(parameters),
+      _ => throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Plugin method '{method}' is not implemented yet."),
+    };
+  }
+}

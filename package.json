@@ -1,0 +1,40 @@
+{
+  "name": "civil3d-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for interacting with Autodesk Civil 3D.",
+  "main": "index.js",
+  "type": "module",
+  "bin": {
+    "civil3d-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "clean": "rimraf build",
+    "prebuild": "npm run clean",
+    "build": "tsc"
+  },
+  "files": [
+    "build"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sacred-G/Civil3D-mcp.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/Sacred-G/Civil3D-mcp/issues"
+  },
+  "homepage": "https://github.com/Sacred-G/Civil3D-mcp#readme",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.7.0",
+    "ws": "^8.18.1",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "@types/ws": "^8.18.0",
+    "rimraf": "^5.0.10",
+    "typescript": "^5.8.2"
+  }
+}

@@ -1,0 +1,34 @@
+﻿======================================================
+🚀 AI CAD AGENT - DEMONSTRATION PROMPTS
+======================================================
+
+--- 🌟 1. ONE-CLICK FULL WORKFLOW (THE KILLER PROMPT) ---
+
+Draw an alignment passing through PI points: (495333.025, 4616087.109), (495578.964, 4616372.774), (496138.238, 4616069.900), and (496481.629, 4616078.351) and build the complete infrastructure model with profile at 0,400, auto-profile, corridor, and cross sections.
+
+
+
+--- 🧹 2. RESET / CLEAR MODEL ---
+
+now delete what you draw
+
+
+
+--- 👣 3. STEP-BY-STEP WORKFLOW ---
+
+[Step 1 - Alignment]
+Draw an alignment passing through the following PI points: (495333.025, 4616087.109), (495578.964, 4616372.774), (496138.238, 4616069.900), and (496481.629, 4616078.351).
+
+[Step 2 - Surface Profile & Grid]
+generate a profile view for it at coordinates 0, 400.
+
+[Step 3 - Best-Fit Design Profile]
+Create an auto-profile for the alignment.
+
+[Step 4 - 3D Corridor Assembly]
+Build the 3D corridor.
+
+[Step 5 - Cross Sections with Bands]
+Generate cross sections for the model.
+
+======================================================
