@@ -38,7 +38,9 @@ namespace Cad_AI_Agent.CADTransactions
                 ObjectId styleId = civilDoc.Styles.AlignmentStyles[0];
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.AlignmentLabelSetStyles[0];
 
-                string uniqueName = baseName + "_" + DateTime.Now.ToString("HHmmss");
+                string uniqueName = string.IsNullOrWhiteSpace(baseName) || baseName == "AI_Alignment"
+                    ? "AI_Alignment_" + DateTime.Now.ToString("HHmmss")
+                    : baseName;
 
                 // პარამეტრები Alignment-ისთვის
                 PolylineOptions plOpts = new PolylineOptions();

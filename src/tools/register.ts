@@ -1,11 +1,14 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { registerCivil3DAssemblyTool } from "./civil3d_assembly.js";
 import { registerCivil3DAlignmentTool } from "./civil3d_alignment.js";
+import { registerCivil3DAlignmentReportTool } from "./civil3d_alignment_report.js";
 import { registerCivil3DCoordinateSystemTool } from "./civil3d_coordinate_system.js";
 import { registerCivil3DCorridorTool } from "./civil3d_corridor.js";
+import { registerCivil3DCorridorSummaryTool } from "./civil3d_corridor_summary.js";
 import { registerCivil3DDataShortcutTool } from "./civil3d_data_shortcut.js";
 import { registerCivil3DFeatureLineTool } from "./civil3d_feature_line.js";
 import { registerCivil3DHealthTool } from "./civil3d_health.js";
+import { registerCivil3DHydrologyTool } from "./civil3d_hydrology.js";
 import { registerCivil3DDrawingTool } from "./civil3d_drawing.js";
 import { registerCivil3DJobTool } from "./civil3d_job.js";
 import { registerCivil3DLabelTool } from "./civil3d_label.js";
@@ -14,12 +17,16 @@ import { registerCivil3DPipeNetworkEditTool } from "./civil3d_pipe_network_edit.
 import { registerCivil3DPipeNetworkTool } from "./civil3d_pipe_network.js";
 import { registerCivil3DPointTool } from "./civil3d_point.js";
 import { registerCivil3DProfileTool } from "./civil3d_profile.js";
+import { registerCivil3DProfileReportTool } from "./civil3d_profile_report.js";
 import { registerCivil3DSectionTool } from "./civil3d_section.js";
 import { registerCivil3DStyleTool } from "./civil3d_style.js";
+import { registerCivil3DSurfaceComparisonWorkflowTool } from "./civil3d_surface_comparison_workflow.js";
 import { registerCivil3DSurfaceEditTool } from "./civil3d_surface_edit.js";
 import { registerCivil3DSurfaceTool } from "./civil3d_surface.js";
+import { registerCivil3DSurfaceDrainageWorkflowTool } from "./civil3d_surface_drainage_workflow.js";
 import { registerGetDrawingInfoTool } from "./get_drawing_info.js";
 import { registerListCivilObjectTypesTool } from "./list_civil_object_types.js";
+import { registerListToolCapabilitiesTool } from "./list_tool_capabilities.js";
 import { registerGetSelectedCivilObjectsInfoTool } from "./get_selected_civil_objects_info.js";
 import { registerCreateCogoPointTool } from "./create_cogo_point.js";
 import { registerCreateLineSegmentTool } from "./create_line_segment.js"; // New import
@@ -31,11 +38,14 @@ import { registerAcadCreateMTextTool } from "./acad_create_mtext.js";
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
   registerCivil3DAlignmentTool(server);
+  registerCivil3DAlignmentReportTool(server);
   registerCivil3DCoordinateSystemTool(server);
   registerCivil3DCorridorTool(server);
+  registerCivil3DCorridorSummaryTool(server);
   registerCivil3DDataShortcutTool(server);
   registerCivil3DFeatureLineTool(server);
   registerCivil3DHealthTool(server);
+  registerCivil3DHydrologyTool(server);
   registerCivil3DDrawingTool(server);
   registerCivil3DJobTool(server);
   registerCivil3DLabelTool(server);
@@ -44,12 +54,16 @@ export async function registerTools(server: McpServer) {
   registerCivil3DPipeNetworkTool(server);
   registerCivil3DPointTool(server);
   registerCivil3DProfileTool(server);
+  registerCivil3DProfileReportTool(server);
   registerCivil3DSectionTool(server);
   registerCivil3DStyleTool(server);
+  registerCivil3DSurfaceComparisonWorkflowTool(server);
   registerCivil3DSurfaceEditTool(server);
   registerCivil3DSurfaceTool(server);
+  registerCivil3DSurfaceDrainageWorkflowTool(server);
   registerGetDrawingInfoTool(server);
   registerListCivilObjectTypesTool(server);
+  registerListToolCapabilitiesTool(server);
   registerGetSelectedCivilObjectsInfoTool(server);
   registerCreateCogoPointTool(server);
   registerCreateLineSegmentTool(server); // New registration

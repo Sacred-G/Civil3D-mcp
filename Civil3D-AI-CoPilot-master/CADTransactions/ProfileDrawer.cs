@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class ProfileDrawer
     {
-        public static void Draw(Document doc, double offsetX, double offsetY)
+        public static void Draw(Document doc, double offsetX, double offsetY, string alignmentName = null, string surfaceName = null, string profileName = null)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -19,31 +19,18 @@ namespace Cad_AI_Agent.CADTransactions
             {
                 doc.Editor.WriteMessage("\n[AI]: Drawing Profile View relative to Alignment start...");
 
-                ObjectIdCollection alignIds = civilDoc.GetAlignmentIds();
-                if (alignIds.Count == 0)
-                {
-                    doc.Editor.WriteMessage("\n[AI Error]: No Alignment found in the drawing!");
-                    return;
-                }
-                ObjectId alignId = alignIds[0];
-
-                // 💡 ვიღებთ Alignment-ის ობიექტს, რომ მისი კოორდინატები წავიკითხოთ
+                ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
                 Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
-
-                ObjectIdCollection surfIds = civilDoc.GetSurfaceIds();
-                if (surfIds.Count == 0)
-                {
-                    doc.Editor.WriteMessage("\n[AI Error]: No TIN Surface found in the drawing!");
-                    return;
-                }
-                ObjectId surfId = surfIds[0];
+                ObjectId surfId = CivilLookup.GetSurfaceId(civilDoc, trans, surfaceName);
 
                 ObjectId layerId = db.LayerZero;
                 ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 0 ? civilDoc.Styles.ProfileStyles[0] : ObjectId.Null;
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0 ? civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0] : ObjectId.Null;
 
-                string profileName = "AI_SurfaceProfile_" + DateTime.Now.ToString("HHmmss");
-                Profile.CreateFromSurface(profileName, alignId, surfId, layerId, styleId, labelSetId);
+                string resolvedProfileName = string.IsNullOrWhiteSpace(profileName)
+                    ? "AI_SurfaceProfile_" + DateTime.Now.ToString("HHmmss")
+                    : profileName;
+                Profile.CreateFromSurface(resolvedProfileName, alignId, surfId, layerId, styleId, labelSetId);
 
                 // 💡 აქ ვთვლით რელატიურ კოორდინატებს!
                 double startX = 0, startY = 0;

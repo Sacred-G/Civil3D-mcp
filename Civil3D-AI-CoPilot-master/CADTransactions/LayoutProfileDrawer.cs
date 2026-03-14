@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class LayoutProfileDrawer
     {
-        public static void Draw(Document doc, double[] pviData, string baseName = "AI_DesignProfile")
+        public static void Draw(Document doc, double[] pviData, string alignmentName = null, string profileName = null, double? viewOffsetY = null)
         {
             if (pviData == null || pviData.Length < 4) return;
 
@@ -19,19 +19,17 @@ namespace Cad_AI_Agent.CADTransactions
 
             using (Transaction trans = db.TransactionManager.StartTransaction())
             {
-                ObjectIdCollection alignIds = civilDoc.GetAlignmentIds();
-                if (alignIds.Count == 0) return;
-                ObjectId alignId = alignIds[0];
-
-                // 💡 Alignment-ის ამოღება დაგვჭირდება, რომ მისი კოორდინატები გავიგოთ
+                ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
                 Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
 
                 ObjectId layerId = db.LayerZero;
                 ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 0 ? civilDoc.Styles.ProfileStyles[0] : ObjectId.Null;
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0 ? civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0] : ObjectId.Null;
 
-                string profileName = baseName + "_" + DateTime.Now.ToString("HHmmss");
-                ObjectId profileId = Profile.CreateByLayout(profileName, alignId, layerId, styleId, labelSetId);
+                string resolvedProfileName = string.IsNullOrWhiteSpace(profileName)
+                    ? "AI_DesignProfile_" + DateTime.Now.ToString("HHmmss")
+                    : profileName;
+                ObjectId profileId = Profile.CreateByLayout(resolvedProfileName, alignId, layerId, styleId, labelSetId);
                 Profile layoutProfile = trans.GetObject(profileId, OpenMode.ForWrite) as Profile;
 
                 // ტანგესების დასმის სტაბილური მეთოდი
@@ -54,7 +52,7 @@ namespace Cad_AI_Agent.CADTransactions
                 align.PointLocation(align.StartingStation, 0, ref startX, ref startY);
 
                 // ვსვამთ პროფილს გზის დასაწყისიდან 250 მეტრით მაღლა (Y ღერძზე)
-                Point3d insertPt = new Point3d(startX, startY + 250, 0);
+                Point3d insertPt = new Point3d(startX, startY + (viewOffsetY ?? 250.0), 0);
 
                 ObjectId pvStyleId = civilDoc.Styles.ProfileViewStyles.Count > 0 ? civilDoc.Styles.ProfileViewStyles[0] : ObjectId.Null;
                 ObjectId pvBandSetId = civilDoc.Styles.ProfileViewBandSetStyles.Count > 0 ? civilDoc.Styles.ProfileViewBandSetStyles[0] : ObjectId.Null;

@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class CrossSectionDrawer
     {
-        public static void Draw(Document doc, double interval = 10.0)
+        public static void Draw(Document doc, double interval = 10.0, string alignmentName = null, double leftWidth = 20.0, double rightWidth = 20.0, int columns = 10, double spacingX = 80.0, double spacingY = 50.0)
         {
             var db = doc.Database;
             var civilDoc = CivilApplication.ActiveDocument;
@@ -18,8 +18,7 @@ namespace Cad_AI_Agent.CADTransactions
             using var trans = db.TransactionManager.StartTransaction();
             doc.Editor.WriteMessage("\n[AI]: Starting Cross-Section generation...");
 
-            if (civilDoc.GetAlignmentIds().Count == 0) return;
-            var alignId = civilDoc.GetAlignmentIds()[0];
+            var alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
 
             if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align) return;
 
@@ -80,8 +79,8 @@ namespace Cad_AI_Agent.CADTransactions
                 {
                     string slName = "SL-" + Math.Round(sta, 2);
                     double x1 = 0, y1 = 0, x2 = 0, y2 = 0;
-                    align.PointLocation(sta, -20.0, ref x1, ref y1);
-                    align.PointLocation(sta, 20.0, ref x2, ref y2);
+                    align.PointLocation(sta, -leftWidth, ref x1, ref y1);
+                    align.PointLocation(sta, rightWidth, ref x2, ref y2);
 
                     var pts = new Point2dCollection
                     {
@@ -123,9 +122,9 @@ namespace Cad_AI_Agent.CADTransactions
             double baseX = startX;
             double baseY = startY - 300;
 
-            int columns = 10;        // რამდენი კვეთი გვინდა ერთ რიგში
-            double spacingX = 80.0;  // დაშორება ჰორიზონტალურად (კვეთებს შორის)
-            double spacingY = 50.0;  // დაშორება ვერტიკალურად (რიგებს შორის)
+            columns = columns <= 0 ? 10 : columns;
+            spacingX = spacingX <= 0 ? 80.0 : spacingX;
+            spacingY = spacingY <= 0 ? 50.0 : spacingY;
             int count = 0;           // მთვლელი
 
             foreach (ObjectId slId in slg.GetSampleLineIds())

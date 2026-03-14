@@ -8,7 +8,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class CorridorDrawer
     {
-        public static void Draw(Document doc, string baseName = "AI_Corridor")
+        public static void Draw(Document doc, string corridorName = null, string alignmentName = null, string profileName = null, string assemblyName = null, string surfaceName = null, double frequency = 10.0)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -16,27 +16,18 @@ namespace Cad_AI_Agent.CADTransactions
 
             using (Transaction trans = db.TransactionManager.StartTransaction())
             {
-                if (civilDoc.GetAlignmentIds().Count == 0) return;
-                ObjectId alignId = civilDoc.GetAlignmentIds()[0];
+                ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
                 Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
 
-                ObjectId layoutProfId = ObjectId.Null;
-                foreach (ObjectId profId in align.GetProfileIds())
-                {
-                    Profile p = trans.GetObject(profId, OpenMode.ForRead) as Profile;
-                    if (p.ProfileType == ProfileType.FG)
-                    {
-                        layoutProfId = profId;
-                        break;
-                    }
-                }
-                if (layoutProfId == ObjectId.Null) return;
+                ObjectId layoutProfId = string.IsNullOrWhiteSpace(profileName)
+                    ? CivilLookup.GetProfileId(align, trans, null, ProfileType.FG)
+                    : CivilLookup.GetProfileId(align, trans, profileName);
 
-                var assemblyIds = civilDoc.AssemblyCollection;
-                if (assemblyIds.Count == 0) return;
-                ObjectId assemblyId = assemblyIds[0];
+                ObjectId assemblyId = CivilLookup.GetAssemblyId(civilDoc, trans, assemblyName);
 
-                string corrName = baseName + "_" + DateTime.Now.ToString("HHmmss");
+                string corrName = string.IsNullOrWhiteSpace(corridorName)
+                    ? "AI_Corridor_" + DateTime.Now.ToString("HHmmss")
+                    : corridorName;
                 ObjectId corrId = civilDoc.CorridorCollection.Add(corrName, "AI_Baseline", alignId, layoutProfId, "AI_Region", assemblyId);
 
                 Corridor corridor = trans.GetObject(corrId, OpenMode.ForWrite) as Corridor;
@@ -47,16 +38,15 @@ namespace Cad_AI_Agent.CADTransactions
                     BaselineRegion region = corridor.Baselines[0].BaselineRegions[0];
 
                     // 1. სიხშირე 10მ
-                    for (double s = region.StartStation; s <= region.EndStation; s += 10.0)
+                    double resolvedFrequency = frequency > 0 ? frequency : 10.0;
+                    for (double s = region.StartStation; s <= region.EndStation; s += resolvedFrequency)
                     {
                         try { region.AddStation(s, "AI_10m"); } catch { }
                     }
 
-                    // 2. ზედაპირის სამიზნეები (Target Override ტრიუკი)
-                    ObjectIdCollection surfIds = civilDoc.GetSurfaceIds();
-                    if (surfIds.Count > 0)
+                    if (civilDoc.GetSurfaceIds().Count > 0 || !string.IsNullOrWhiteSpace(surfaceName))
                     {
-                        ObjectId surfId = surfIds[0];
+                        ObjectId surfId = CivilLookup.GetSurfaceId(civilDoc, trans, surfaceName);
                         SubassemblyTargetInfoCollection targets = region.GetTargets();
                         bool targetUpdated = false;
 

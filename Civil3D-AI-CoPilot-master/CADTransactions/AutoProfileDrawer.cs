@@ -10,7 +10,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class AutoProfileDrawer
     {
-        public static void Draw(Document doc)
+        public static void Draw(Document doc, double interval = 150.0, string alignmentName = null, string sourceProfileName = null, string profileName = null)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -20,21 +20,13 @@ namespace Cad_AI_Agent.CADTransactions
             {
                 doc.Editor.WriteMessage("\n[AI]: Running Best-Fit AutoProfile on existing EG...");
 
-                ObjectIdCollection alignIds = civilDoc.GetAlignmentIds();
-                if (alignIds.Count == 0) return;
-                Alignment align = trans.GetObject(alignIds[0], OpenMode.ForRead) as Alignment;
+                ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
+                Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
 
-                // 1. ვპოულობთ ProfileDrawer-ის მიერ წეღან შექმნილ EG პროფილს
-                Profile egProfile = null;
-                foreach (ObjectId profId in align.GetProfileIds())
-                {
-                    Profile p = trans.GetObject(profId, OpenMode.ForRead) as Profile;
-                    if (p.ProfileType == ProfileType.EG)
-                    {
-                        egProfile = p;
-                        break;
-                    }
-                }
+                ObjectId sourceProfileId = string.IsNullOrWhiteSpace(sourceProfileName)
+                    ? CivilLookup.GetProfileId(align, trans, null, ProfileType.EG)
+                    : CivilLookup.GetProfileId(align, trans, sourceProfileName);
+                Profile egProfile = trans.GetObject(sourceProfileId, OpenMode.ForRead) as Profile;
 
                 if (egProfile == null)
                 {
@@ -47,21 +39,18 @@ namespace Cad_AI_Agent.CADTransactions
                 ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 1 ? civilDoc.Styles.ProfileStyles[1] : civilDoc.Styles.ProfileStyles[0]; // ვცდილობთ მეორე სტილი ავიღოთ საპროექტოსთვის
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0 ? civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0] : ObjectId.Null;
 
-                string profileName = "AI_Layout_" + DateTime.Now.ToString("HHmmss");
-                ObjectId layoutProfId = Profile.CreateByLayout(profileName, align.ObjectId, layerId, styleId, labelSetId);
+                string resolvedProfileName = string.IsNullOrWhiteSpace(profileName)
+                    ? "AI_Layout_" + DateTime.Now.ToString("HHmmss")
+                    : profileName;
+                ObjectId layoutProfId = Profile.CreateByLayout(resolvedProfileName, align.ObjectId, layerId, styleId, labelSetId);
                 Profile layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
 
                 double startSta = egProfile.StartingStation;
                 double endSta = egProfile.EndingStation;
                 double totalLength = endSta - startSta;
 
-                // 3. შენი იდეალური დინამიური დაყოფის ალგორითმი
-                int segments = 4;
-                if (totalLength <= 500) segments = 4;
-                else if (totalLength <= 1000) segments = 8;
-                else if (totalLength <= 2000) segments = 12;
-                else segments = 12 + (int)Math.Ceiling((totalLength - 2000) / 500.0);
-
+                double sampleInterval = interval > 0 ? interval : 150.0;
+                int segments = Math.Max(2, (int)Math.Ceiling(totalLength / sampleInterval));
                 double step = totalLength / segments;
 
                 List<Point2d> pviPoints = new List<Point2d>();

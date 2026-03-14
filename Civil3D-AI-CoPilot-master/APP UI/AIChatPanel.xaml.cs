@@ -111,9 +111,10 @@ namespace Cad_AI_Agent.UI
                 Button loadBtn = new Button
                 {
                     Content = session.Title,
-                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#333333")) : Brushes.Transparent,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D4D4D4")),
-                    BorderThickness = new Thickness(0),
+                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")) : Brushes.Transparent,
+                    BorderBrush = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A3A55")) : Brushes.Transparent,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                    BorderThickness = session == _currentSession ? new Thickness(1) : new Thickness(0),
                     Padding = new Thickness(10, 8, 10, 8),
                     HorizontalContentAlignment = HorizontalAlignment.Left,
                     Cursor = Cursors.Hand,
@@ -133,11 +134,12 @@ namespace Cad_AI_Agent.UI
                     TextBox renameBox = new TextBox
                     {
                         Text = session.Title,
-                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E1E1E")),
-                        Foreground = Brushes.White,
-                        Padding = new Thickness(5),
+                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
+                        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                        CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                        Padding = new Thickness(10, 8, 10, 8),
                         BorderThickness = new Thickness(1),
-                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"))
+                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
                     };
 
                     // ვინახავთ სახელს Enter-ზე დაჭერისას
@@ -167,12 +169,12 @@ namespace Cad_AI_Agent.UI
                 // წაშლის ღილაკი
                 Button delBtn = new Button
                 {
-                    Content = "🗑️",
+                    Content = "✕",
                     Background = Brushes.Transparent,
-                    Foreground = Brushes.Gray,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
                     BorderThickness = new Thickness(0),
                     Cursor = Cursors.Hand,
-                    Padding = new Thickness(5),
+                    Padding = new Thickness(8, 8, 8, 8),
                     ToolTip = "Delete Chat"
                 };
                 delBtn.Click += (s, e) =>
@@ -209,40 +211,60 @@ namespace Cad_AI_Agent.UI
                 }
             }
 
-            Border bubble = new Border
+            StackPanel messageContainer = new StackPanel
             {
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(12),
-                Margin = isUser ? new Thickness(40, 0, 0, 10) : new Thickness(0, 0, 40, 10),
                 HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"))
-                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#333333"))
+                Margin = isUser ? new Thickness(48, 0, 0, 12) : new Thickness(0, 0, 48, 12),
+                MaxWidth = 460
             };
 
-            // TextBlock-ის მაგივრად ვიყენებთ TextBox-ს, რათა ტექსტის მონიშვნა შეგეძლოს
+            TextBlock messageMeta = new TextBlock
+            {
+                Text = isUser ? "You" : "AI Agent",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(isUser ? "#7DD3FC" : "#94A3B8")),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 0, 4, 6),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left
+            };
+
+            Border bubble = new Border
+            {
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(14, 12, 14, 12),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0284C7"))
+                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")),
+                BorderBrush = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
+                                     : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                BorderThickness = new Thickness(1)
+            };
+
             TextBox txtBox = new TextBox
             {
                 Text = text,
-                Foreground = new SolidColorBrush(Colors.White),
-                Background = Brushes.Transparent, // ფონი გამჭვირვალეა, რომ Border-ის ფერი გამოჩნდეს
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC")),
+                Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                IsReadOnly = true, // აკრძალულია ჩასწორება, შესაძლებელია მხოლოდ მონიშვნა
+                IsReadOnly = true,
                 TextWrapping = TextWrapping.Wrap,
-                FontSize = 13,
-                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"))
+                FontSize = 13.5,
+                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7C93B7")),
+                FontFamily = new FontFamily("Segoe UI"),
+                MinWidth = 80
             };
 
             bubble.Child = txtBox;
-            ChatHistoryPanel.Children.Add(bubble);
+            messageContainer.Children.Add(messageMeta);
+            messageContainer.Children.Add(bubble);
+            ChatHistoryPanel.Children.Add(messageContainer);
             ChatScrollViewer.ScrollToEnd();
 
-            // ვაბრუნებთ TextBlock-ს ანიმაციისთვის (დროებითი ხრიკი, რადგან დანარჩენი კოდი TextBlock-ს ელოდება)
             TextBlock hiddenTextBlockForThinking = new TextBlock();
             txtBox.Tag = hiddenTextBlockForThinking;
             txtBox.TextChanged += (s, e) => { hiddenTextBlockForThinking.Text = txtBox.Text; };
             hiddenTextBlockForThinking.TargetUpdated += (s, e) => { txtBox.Text = hiddenTextBlockForThinking.Text; };
 
-            // ეს ფუნქცია მხოლოდ ანიმაციისთვის გვიბრუნებს ობიექტს
             TextBlock proxyText = new TextBlock();
             proxyText.DataContext = txtBox;
             proxyText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Text") { Mode = System.Windows.Data.BindingMode.TwoWay });
