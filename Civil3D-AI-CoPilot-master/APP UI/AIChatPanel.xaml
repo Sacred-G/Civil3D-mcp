@@ -366,17 +366,19 @@
 
                         <Border Background="#101A2E" BorderBrush="#1F2A40" BorderThickness="1" CornerRadius="16" Padding="18">
                             <StackPanel>
-                                <TextBlock Text="AI Provider" Style="{StaticResource SectionLabelStyle}"/>
+                                <TextBlock Text="AI Provider / Model" Style="{StaticResource SectionLabelStyle}"/>
                                 <ComboBox x:Name="ProviderCombo"
                                           Background="#0F1A2E"
                                           Foreground="{StaticResource TextPrimaryBrush}"
                                           BorderBrush="#2A3A55"
                                           Padding="8"
                                           Margin="0,0,0,18"
+                                          SelectionChanged="ProviderCombo_SelectionChanged"
                                           ItemContainerStyle="{StaticResource DarkComboItemStyle}">
-                                    <ComboBoxItem Content="Google Gemini (2.5 Flash)" Tag="gemini-2.5-flash" IsSelected="True"/>
-                                    <ComboBoxItem Content="Google Gemini (3.1 Pro)" Tag="gemini-3.1-pro"/>
-                                    <ComboBoxItem Content="OpenAI (ChatGPT) - Coming Soon" IsEnabled="False"/>
+                                    <ComboBoxItem Content="Google Gemini (2.5 Flash)" Tag="gemini:gemini-2.5-flash" IsSelected="True"/>
+                                    <ComboBoxItem Content="Google Gemini (3.1 Pro)" Tag="gemini:gemini-3.1-pro"/>
+                                    <ComboBoxItem Content="OpenAI (GPT-4o Mini)" Tag="openai:gpt-4o-mini"/>
+                                    <ComboBoxItem Content="OpenAI (GPT-4o)" Tag="openai:gpt-4o"/>
                                 </ComboBox>
 
                                 <TextBlock Text="API Key" Style="{StaticResource SectionLabelStyle}"/>

@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -45,6 +46,10 @@ namespace Cad_AI_Agent.UI
         private DispatcherTimer _thinkingTimer;
         private int _dotCount = 0;
         private TextBlock _currentThinkingText;
+        private const string RegistryPath = @"SOFTWARE\CadAiAgent";
+        private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
+        private string _activeProviderTag = DefaultProviderTag;
+        private bool _isLoadingProviderSettings = false;
 
         // სესიების მართვა
         private List<ChatSession> _allSessions = new List<ChatSession>();
@@ -61,12 +66,112 @@ namespace Cad_AI_Agent.UI
 
             StartNewSession(); // პირველი ჩართვისას იწყებს ახალ ჩატს
    
-            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\CadAiAgent"))
+            LoadProviderSettings();
+        }
+
+        private void LoadProviderSettings()
+        {
+            _isLoadingProviderSettings = true;
+            try
             {
-                if (key != null)
+                using RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                string selectedProviderTag = key?.GetValue("SelectedProviderTag")?.ToString() ?? DefaultProviderTag;
+                SelectProviderTag(selectedProviderTag);
+                _activeProviderTag = GetSelectedProviderTag();
+                ApiKeyBox.Text = ReadApiKeyForProvider(_activeProviderTag);
+            }
+            finally
+            {
+                _isLoadingProviderSettings = false;
+            }
+        }
+
+        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingProviderSettings || ApiKeyBox == null || ProviderCombo == null) return;
+            SaveProviderSettings(_activeProviderTag, ApiKeyBox.Text.Trim());
+            _activeProviderTag = GetSelectedProviderTag();
+            ApiKeyBox.Text = ReadApiKeyForProvider(_activeProviderTag);
+            if (ConnectionStatusText != null)
+            {
+                ConnectionStatusText.Text = string.Empty;
+            }
+        }
+
+        private string GetSelectedProviderTag()
+        {
+            if (ProviderCombo?.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
+            {
+                return selectedItem.Tag.ToString();
+            }
+
+            return DefaultProviderTag;
+        }
+
+        private void SelectProviderTag(string providerTag)
+        {
+            if (ProviderCombo == null) return;
+
+            foreach (var item in ProviderCombo.Items.OfType<ComboBoxItem>())
+            {
+                if (string.Equals(item.Tag?.ToString(), providerTag, StringComparison.OrdinalIgnoreCase))
                 {
-                    ApiKeyBox.Text = key.GetValue("ApiKey")?.ToString() ?? "";
+                    ProviderCombo.SelectedItem = item;
+                    return;
                 }
+            }
+
+            if (ProviderCombo.Items.Count > 0)
+            {
+                ProviderCombo.SelectedIndex = 0;
+            }
+        }
+
+        private string GetProviderName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag)) return "gemini";
+            string[] parts = providerTag.Split(new[] { ':' }, 2);
+            return parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]) ? parts[0] : "gemini";
+        }
+
+        private string GetModelName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag)) return "gemini-2.5-flash";
+            string[] parts = providerTag.Split(new[] { ':' }, 2);
+            return parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : providerTag;
+        }
+
+        private string GetApiKeyRegistryValueName(string providerTag)
+        {
+            return GetProviderName(providerTag).Equals("openai", StringComparison.OrdinalIgnoreCase) ? "OpenAiApiKey" : "GeminiApiKey";
+        }
+
+        private string ReadApiKeyForProvider(string providerTag)
+        {
+            using RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+            string apiKey = key?.GetValue(GetApiKeyRegistryValueName(providerTag))?.ToString() ?? "";
+            if (!string.IsNullOrWhiteSpace(apiKey))
+            {
+                return apiKey;
+            }
+
+            if (GetProviderName(providerTag).Equals("gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                return key?.GetValue("ApiKey")?.ToString() ?? "";
+            }
+
+            return "";
+        }
+
+        private void SaveProviderSettings(string providerTag, string apiKey)
+        {
+            using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            key.SetValue("SelectedProviderTag", providerTag);
+            key.SetValue(GetApiKeyRegistryValueName(providerTag), apiKey ?? "");
+
+            if (GetProviderName(providerTag).Equals("gemini", StringComparison.OrdinalIgnoreCase))
+            {
+                key.SetValue("ApiKey", apiKey ?? "");
             }
         }
 
@@ -291,6 +396,9 @@ namespace Cad_AI_Agent.UI
         private async void TestConnectionBtn_Click(object sender, RoutedEventArgs e)
         {
             string key = ApiKeyBox.Text.Trim();
+            string providerTag = GetSelectedProviderTag();
+            string providerName = GetProviderName(providerTag);
+            string modelName = GetModelName(providerTag);
             if (string.IsNullOrEmpty(key))
             {
                 ConnectionStatusText.Text = "❌ Please enter a key";
@@ -303,26 +411,40 @@ namespace Cad_AI_Agent.UI
 
             try
             {
-                string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}";
                 using var client = new HttpClient();
-                var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(testUrl, content);
+                HttpResponseMessage response;
+
+                if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                {
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+                    var requestBody = new
+                    {
+                        model = modelName,
+                        input = "Hello"
+                    };
+                    var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                    response = await client.PostAsync("https://api.openai.com/v1/responses", content);
+                }
+                else
+                {
+                    string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
+                    var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
+                    response = await client.PostAsync(testUrl, content);
+                }
+
                 if (response.IsSuccessStatusCode)
                 {
                     ConnectionStatusText.Text = "✅ Connected!";
-                    using (RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\CadAiAgent"))
-                    {
-                        regKey.SetValue("ApiKey", key);
-                    }
+                    SaveProviderSettings(providerTag, key);
+                    _activeProviderTag = providerTag;
                     ConnectionStatusText.Foreground = Brushes.LightGreen;
                 }
                 else
                 {
-                    // === აქ ვიჭერთ Google-ის რეალურ პასუხს და ვაგდებთ ეკრანზე ===
                     string errorDetails = await response.Content.ReadAsStringAsync();
                     ConnectionStatusText.Text = "❌ Connection Failed";
                     ConnectionStatusText.Foreground = Brushes.Red;
-                    MessageBox.Show($"Google API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"{providerName} API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch
@@ -361,6 +483,9 @@ namespace Cad_AI_Agent.UI
         {
             string message = UserInputBox.Text.Trim();
             string apiKey = ApiKeyBox.Text.Trim();
+            string providerTag = GetSelectedProviderTag();
+            string providerName = GetProviderName(providerTag);
+            string modelName = GetModelName(providerTag);
 
             if (string.IsNullOrEmpty(message)) return;
             if (string.IsNullOrEmpty(apiKey))
@@ -369,17 +494,12 @@ namespace Cad_AI_Agent.UI
                 return;
             }
 
-            // 1. აქ ვკითხულობთ, რომელი მოდელი აირჩია მომხმარებელმა Settings ტაბში
-            string selectedModel = "gemini-2.5-flash"; // Default მნიშვნელობა
-            if (ProviderCombo.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
-            {
-                selectedModel = selectedItem.Tag.ToString();
-            }
-
             AddMessageToChat(message, true);
             UserInputBox.Clear();
             UserInputBox.IsEnabled = false;
             SendButton.IsEnabled = false;
+            SaveProviderSettings(providerTag, apiKey);
+            _activeProviderTag = providerTag;
 
             _currentThinkingText = AddMessageToChat("Thinking", false, false);
             _dotCount = 0;
@@ -387,8 +507,9 @@ namespace Cad_AI_Agent.UI
 
             try
             {
-                // 2. აქ ვაწვდით არჩეულ მოდელს GetGeminiResponse ფუნქციას
-                string jsonPayload = await GetGeminiResponse(message, apiKey, selectedModel);
+                string jsonPayload = providerName.Equals("openai", StringComparison.OrdinalIgnoreCase)
+                    ? await GetOpenAiResponse(message, apiKey, modelName)
+                    : await GetGeminiResponse(message, apiKey, modelName);
                 _thinkingTimer.Stop();
 
                 if (!string.IsNullOrEmpty(jsonPayload))
@@ -417,13 +538,113 @@ namespace Cad_AI_Agent.UI
             }
         }
 
+        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName)
+        {
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+
+            string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
+
+            var requestBody = new JObject
+            {
+                ["model"] = modelName,
+                ["input"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["role"] = "system",
+                        ["content"] = systemInstruction
+                    },
+                    new JObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = prompt
+                    }
+                },
+                ["temperature"] = 0.0,
+                ["text"] = new JObject
+                {
+                    ["format"] = new JObject
+                    {
+                        ["type"] = "json_schema",
+                        ["name"] = "civil3d_ai_response",
+                        ["strict"] = true,
+                        ["schema"] = new JObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JObject
+                            {
+                                ["Message"] = new JObject
+                                {
+                                    ["type"] = "string"
+                                },
+                                ["Commands"] = new JObject
+                                {
+                                    ["type"] = "array",
+                                    ["items"] = new JObject
+                                    {
+                                        ["type"] = "object",
+                                        ["properties"] = new JObject
+                                        {
+                                            ["Action"] = new JObject
+                                            {
+                                                ["type"] = "string"
+                                            },
+                                            ["Params"] = new JObject
+                                            {
+                                                ["type"] = "array",
+                                                ["items"] = new JObject
+                                                {
+                                                    ["type"] = "number"
+                                                }
+                                            },
+                                            ["Args"] = new JObject
+                                            {
+                                                ["type"] = "object",
+                                                ["additionalProperties"] = new JObject
+                                                {
+                                                    ["anyOf"] = new JArray
+                                                    {
+                                                        new JObject { ["type"] = "string" },
+                                                        new JObject { ["type"] = "number" },
+                                                        new JObject { ["type"] = "integer" },
+                                                        new JObject { ["type"] = "boolean" },
+                                                        new JObject { ["type"] = "null" }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        ["required"] = new JArray("Action", "Params"),
+                                        ["additionalProperties"] = false
+                                    }
+                                }
+                            },
+                            ["required"] = new JArray("Message", "Commands"),
+                            ["additionalProperties"] = false
+                        }
+                    }
+                }
+            };
+
+            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("https://api.openai.com/v1/responses", content);
+            string responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"API Error ({modelName}): {responseString}");
+            }
+
+            JObject jsonResponse = JObject.Parse(responseString);
+            string aiText = ExtractOpenAiText(jsonResponse);
+            return aiText.Replace("```json", "").Replace("```", "").Trim();
+        }
+
         private async Task<string> GetGeminiResponse(string prompt, string key, string modelName)
         {
-            // 3. URL დინამიურად იწყობა არჩეული მოდელის მიხედვით
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
             using var client = new HttpClient();
 
-            // მოგვაქვს პრომპტი ცალკე კლასიდან!
             string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
 
             var requestBody = new
@@ -443,9 +664,50 @@ namespace Cad_AI_Agent.UI
                 string aiText = jsonResponse["candidates"][0]["content"]["parts"][0]["text"].ToString();
                 return aiText.Replace("```json", "").Replace("```", "").Trim();
             }
-            // თუ ერორია, ვისვრით Google-ის რეალურ ტექსტს
             string errorRaw = await response.Content.ReadAsStringAsync();
             throw new Exception($"API Error ({modelName}): {errorRaw}");
+        }
+
+        private string ExtractOpenAiText(JObject jsonResponse)
+        {
+            string directText = jsonResponse["output_text"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(directText))
+            {
+                return directText;
+            }
+
+            JArray outputItems = jsonResponse["output"] as JArray;
+            if (outputItems != null)
+            {
+                foreach (JObject outputItem in outputItems.OfType<JObject>())
+                {
+                    JArray contentItems = outputItem["content"] as JArray;
+                    if (contentItems == null) continue;
+
+                    foreach (JObject contentItem in contentItems.OfType<JObject>())
+                    {
+                        JToken parsedValue = contentItem["parsed"] ?? contentItem["json"] ?? contentItem["value"];
+                        if (parsedValue is JObject || parsedValue is JArray)
+                        {
+                            return parsedValue.ToString(Formatting.None);
+                        }
+
+                        string textValue = contentItem["text"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(textValue))
+                        {
+                            return textValue;
+                        }
+
+                        string textObjectValue = contentItem["text"]?["value"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(textObjectValue))
+                        {
+                            return textObjectValue;
+                        }
+                    }
+                }
+            }
+
+            throw new Exception("OpenAI response did not contain any text output.");
         }
 
         private async Task ExecuteCadCommandsLive(List<CadCommand> commands)
