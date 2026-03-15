@@ -16,6 +16,7 @@ using Autodesk.AutoCAD.ApplicationServices;
 using CoreApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using Cad_AI_Agent.Models;
 using Cad_AI_Agent.CADTransactions;
+using Cad_AI_Agent.Services;
 using Microsoft.Win32;
 
 namespace Cad_AI_Agent.UI
@@ -48,6 +49,8 @@ namespace Cad_AI_Agent.UI
         private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
         private string _activeProviderTag = DefaultProviderTag;
         private bool _isLoadingProviderSettings = false;
+        private McpClient _mcpClient;
+        private bool _mcpAvailable = false;
 
         private List<ChatSession> _allSessions = new List<ChatSession>();
         private ChatSession _currentSession;
@@ -64,6 +67,24 @@ namespace Cad_AI_Agent.UI
             StartNewSession();
 
             LoadProviderSettings();
+            InitializeMcpClient();
+        }
+
+        private async void InitializeMcpClient()
+        {
+            _mcpClient = new McpClient("http://localhost:3000");
+            try
+            {
+                _mcpAvailable = await _mcpClient.CheckAvailabilityAsync();
+                if (_mcpAvailable)
+                {
+                    AddMessageToChat("🔗 MCP server connected - AI can now query drawing context", false, false);
+                }
+            }
+            catch
+            {
+                _mcpAvailable = false;
+            }
         }
 
         private void LoadProviderSettings()
@@ -408,9 +429,25 @@ namespace Cad_AI_Agent.UI
 
             try
             {
+                // Query MCP server for drawing context if available
+                string drawingContext = null;
+                if (_mcpAvailable)
+                {
+                    try
+                    {
+                        var context = await _mcpClient.GetDrawingContextAsync();
+                        drawingContext = context.ToSummary();
+                    }
+                    catch
+                    {
+                        // MCP query failed, continue without context
+                        drawingContext = null;
+                    }
+                }
+
                 string jsonPayload = providerName.Equals("openai", StringComparison.OrdinalIgnoreCase)
-                    ? await GetOpenAiResponse(message, apiKey, modelName)
-                    : await GetGeminiResponse(message, apiKey, modelName);
+                    ? await GetOpenAiResponse(message, apiKey, modelName, drawingContext)
+                    : await GetGeminiResponse(message, apiKey, modelName, drawingContext);
                 _thinkingTimer.Stop();
 
                 if (!string.IsNullOrEmpty(jsonPayload))
@@ -439,12 +476,14 @@ namespace Cad_AI_Agent.UI
             }
         }
 
-        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName)
+        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string drawingContext = null)
         {
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
 
-            string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
 
             var requestBody = new JObject
             {
@@ -541,12 +580,14 @@ namespace Cad_AI_Agent.UI
             return aiText.Replace("```json", "").Replace("```", "").Trim();
         }
 
-        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName)
+        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName, string drawingContext = null)
         {
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
             using var client = new HttpClient();
 
-            string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
 
             var requestBody = new
             {
