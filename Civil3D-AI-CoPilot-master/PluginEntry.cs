@@ -1,3 +1,4 @@
+using System;
 using Autodesk.AutoCAD.Runtime;
 using App = Autodesk.AutoCAD.ApplicationServices.Application;
 
@@ -11,7 +12,14 @@ namespace Cad_AI_Agent
     {
         public void Initialize()
         {
-            WriteMessage("[AI Agent] Plugin initialized. Run AIChat to open the palette.");
+            try
+            {
+                WriteMessage("[AI Agent] Plugin initialized. Run AIChat to open the palette.");
+            }
+            catch (Exception ex)
+            {
+                WriteMessage($"[AI Agent] Initialization error: {ex.Message}");
+            }
         }
 
         public void Terminate()

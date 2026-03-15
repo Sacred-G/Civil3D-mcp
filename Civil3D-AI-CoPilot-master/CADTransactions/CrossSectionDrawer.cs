@@ -59,7 +59,10 @@ namespace Cad_AI_Agent.CADTransactions
                         source.StyleId = surfStyleId;
                     }
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    doc.Editor.WriteMessage($"\n[AI Warning]: Could not set section source style: {ex.Message}");
+                }
             }
 
             double startSta = align.StartingStation;
@@ -80,7 +83,10 @@ namespace Cad_AI_Agent.CADTransactions
                     };
                     SampleLine.Create(slName, slgId, pts);
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    doc.Editor.WriteMessage($"\n[AI Warning]: Could not create sample line at station {sta:F2}: {ex.Message}");
+                }
             }
 
             var bandSetId = ObjectId.Null;
@@ -136,7 +142,10 @@ namespace Cad_AI_Agent.CADTransactions
 
                     count++;
                 }
-                catch { }
+                catch (Exception ex)
+                {
+                    doc.Editor.WriteMessage($"\n[AI Warning]: Could not create section view #{count}: {ex.Message}");
+                }
             }
 
             trans.Commit();

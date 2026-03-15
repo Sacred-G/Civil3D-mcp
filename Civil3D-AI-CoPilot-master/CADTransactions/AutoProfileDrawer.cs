@@ -59,7 +59,8 @@ namespace Cad_AI_Agent.CADTransactions
                 for (int i = 1; i < segments; i++)
                 {
                     double sta = startSta + (i * step);
-                    try { pviPoints.Add(new Point2d(sta, egProfile.ElevationAt(sta))); } catch { }
+                    try { pviPoints.Add(new Point2d(sta, egProfile.ElevationAt(sta))); }
+                    catch (Exception ex) { doc.Editor.WriteMessage($"\n[AI Warning]: Could not sample elevation at station {sta:F2}: {ex.Message}"); }
                 }
 
                 pviPoints.Add(new Point2d(endSta, egProfile.ElevationAt(endSta)));
@@ -85,7 +86,10 @@ namespace Cad_AI_Agent.CADTransactions
 
                             layoutProfile.Entities.AddFreeSymmetricParabolaByLength(t1.EntityId, t2.EntityId, curveType, curveLen, false);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            doc.Editor.WriteMessage($"\n[AI Warning]: Could not add vertical curve between tangents {i} and {i+1}: {ex.Message}");
+                        }
                     }
                 }
 

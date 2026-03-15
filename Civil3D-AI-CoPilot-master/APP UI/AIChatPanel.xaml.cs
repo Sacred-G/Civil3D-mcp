@@ -47,6 +47,7 @@ namespace Cad_AI_Agent.UI
         private TextBlock _currentThinkingText;
         private const string RegistryPath = @"SOFTWARE\CadAiAgent";
         private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
+        private const string DefaultMcpUrl = "http://localhost:3000";
         private string _activeProviderTag = DefaultProviderTag;
         private bool _isLoadingProviderSettings = false;
         private McpClient _mcpClient;
@@ -72,18 +73,27 @@ namespace Cad_AI_Agent.UI
 
         private async void InitializeMcpClient()
         {
-            _mcpClient = new McpClient("http://localhost:3000");
+            string mcpUrl = DefaultMcpUrl;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                mcpUrl = key?.GetValue("McpServerUrl") as string ?? DefaultMcpUrl;
+            }
+            catch { /* Registry read failure is non-critical */ }
+
+            _mcpClient = new McpClient(mcpUrl);
             try
             {
                 _mcpAvailable = await _mcpClient.CheckAvailabilityAsync();
                 if (_mcpAvailable)
                 {
-                    AddMessageToChat("🔗 MCP server connected - AI can now query drawing context", false, false);
+                    AddMessageToChat("MCP server connected - AI can now query drawing context", false, false);
                 }
             }
-            catch
+            catch (Exception ex)
             {
                 _mcpAvailable = false;
+                System.Diagnostics.Debug.WriteLine($"[AI Agent] MCP initialization failed: {ex.Message}");
             }
         }
 
@@ -686,7 +696,7 @@ namespace Cad_AI_Agent.UI
                     {
                         try
                         {
-                            // ახლა პირდაპირ როუტერს გადავცემთ ბრძანებას პროგრესის რეპორტერით!
+                            // Pass the command to the router with live progress reporting
                             CommandRouter.Execute(doc, command, reporter);
                             completedCount++;
                         }

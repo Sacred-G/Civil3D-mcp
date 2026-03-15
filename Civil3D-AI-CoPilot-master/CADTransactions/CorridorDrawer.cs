@@ -40,7 +40,8 @@ namespace Cad_AI_Agent.CADTransactions
                     double resolvedFrequency = frequency > 0 ? frequency : 10.0;
                     for (double s = region.StartStation; s <= region.EndStation; s += resolvedFrequency)
                     {
-                        try { region.AddStation(s, "AI_10m"); } catch { }
+                        try { region.AddStation(s, "AI_10m"); }
+                        catch (Exception ex) { doc.Editor.WriteMessage($"\n[AI Warning]: Could not add station at {s:F2}: {ex.Message}"); }
 
                     }
 

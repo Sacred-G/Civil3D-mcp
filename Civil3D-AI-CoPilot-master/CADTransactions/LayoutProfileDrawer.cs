@@ -61,7 +61,10 @@ namespace Cad_AI_Agent.CADTransactions
                     {
                         ProfileView.Create(civilDoc, pvName, pvBandSetId, alignId, insertPt);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        doc.Editor.WriteMessage($"\n[AI Warning]: Could not create profile view: {ex.Message}");
+                    }
                 }
 
                 trans.Commit();
