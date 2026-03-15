@@ -18,14 +18,12 @@ namespace Cad_AI_Agent.CADTransactions
 
             try
             {
-                // 💡 აქ გასწორდა: GetCorridorIds()-ის ნაცვლად ვიყენებთ CorridorCollection-ს
                 foreach (ObjectId corrId in civilDoc.CorridorCollection)
                 {
                     var obj = trans.GetObject(corrId, OpenMode.ForWrite);
                     obj.Erase();
                 }
 
-                // 2. ვშლით ღერძებს (ეს ავტომატურად წაშლის პროფილებს, ხედებს, Sample Lines-ებს და კვეთებს)
                 foreach (ObjectId alignId in civilDoc.GetAlignmentIds())
                 {
                     var obj = trans.GetObject(alignId, OpenMode.ForWrite);

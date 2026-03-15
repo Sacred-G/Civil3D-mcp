@@ -32,19 +32,15 @@ namespace Cad_AI_Agent.CADTransactions
                     : profileName;
                 Profile.CreateFromSurface(resolvedProfileName, alignId, surfId, layerId, styleId, labelSetId);
 
-                // 💡 აქ ვთვლით რელატიურ კოორდინატებს!
                 double startX = 0, startY = 0;
                 try
                 {
-                    // ვიღებთ Alignment-ის საწყისი სადგურის (X, Y) კოორდინატებს
                     align.PointLocation(align.StartingStation, 0, ref startX, ref startY);
                 }
                 catch
                 {
-                    // თუ რამე შეცდომა მოხდა, დავტოვებთ 0,0 -ზე
                 }
 
-                // საწყის კოორდინატებს ვუმატებთ ოფსეტებს (მაგ. X+0, Y+400)
                 Point3d insertPt = new Point3d(startX + offsetX, startY + offsetY, 0);
 
                 ObjectId viewBandSetId = civilDoc.Styles.ProfileViewBandSetStyles.Count > 0 ? civilDoc.Styles.ProfileViewBandSetStyles[0] : ObjectId.Null;

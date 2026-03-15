@@ -6,10 +6,9 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public class LineDrawer
     {
-        // ეს მეთოდი მიიღებს დოკუმენტს და კოორდინატებს
         public static void Draw(Document doc, double startX, double startY, double endX, double endY)
         {
-            // დოკუმენტის დაბლოკვა აუცილებელია გარედან ბრძანების გაშვებისას
+            // Document locking is required when executing a command from outside
             using (DocumentLock docLock = doc.LockDocument())
             {
                 using (Transaction tr = doc.TransactionManager.StartTransaction())

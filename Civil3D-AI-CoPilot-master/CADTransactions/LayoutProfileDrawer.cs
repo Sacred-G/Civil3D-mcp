@@ -32,7 +32,6 @@ namespace Cad_AI_Agent.CADTransactions
                 ObjectId profileId = Profile.CreateByLayout(resolvedProfileName, alignId, layerId, styleId, labelSetId);
                 Profile layoutProfile = trans.GetObject(profileId, OpenMode.ForWrite) as Profile;
 
-                // ტანგესების დასმის სტაბილური მეთოდი
                 Point2d? prevPt = null;
                 for (int i = 0; i < pviData.Length; i += 2)
                 {
@@ -47,11 +46,9 @@ namespace Cad_AI_Agent.CADTransactions
                     }
                 }
 
-                // 💡 Profile View (ცხრილის) დახატვა რეალურ კოორდინატებზე!
                 double startX = 0, startY = 0;
                 align.PointLocation(align.StartingStation, 0, ref startX, ref startY);
 
-                // ვსვამთ პროფილს გზის დასაწყისიდან 250 მეტრით მაღლა (Y ღერძზე)
                 Point3d insertPt = new Point3d(startX, startY + (viewOffsetY ?? 250.0), 0);
 
                 ObjectId pvStyleId = civilDoc.Styles.ProfileViewStyles.Count > 0 ? civilDoc.Styles.ProfileViewStyles[0] : ObjectId.Null;

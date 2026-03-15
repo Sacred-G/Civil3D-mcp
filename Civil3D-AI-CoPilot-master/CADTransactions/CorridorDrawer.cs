@@ -31,17 +31,17 @@ namespace Cad_AI_Agent.CADTransactions
                 ObjectId corrId = civilDoc.CorridorCollection.Add(corrName, "AI_Baseline", alignId, layoutProfId, "AI_Region", assemblyId);
 
                 Corridor corridor = trans.GetObject(corrId, OpenMode.ForWrite) as Corridor;
-                corridor.Rebuild(); // პირველი ინიციალიზაცია
+                corridor.Rebuild(); 
 
                 if (corridor.Baselines.Count > 0 && corridor.Baselines[0].BaselineRegions.Count > 0)
                 {
                     BaselineRegion region = corridor.Baselines[0].BaselineRegions[0];
 
-                    // 1. სიხშირე 10მ
                     double resolvedFrequency = frequency > 0 ? frequency : 10.0;
                     for (double s = region.StartStation; s <= region.EndStation; s += resolvedFrequency)
                     {
                         try { region.AddStation(s, "AI_10m"); } catch { }
+
                     }
 
                     if (civilDoc.GetSurfaceIds().Count > 0 || !string.IsNullOrWhiteSpace(surfaceName))
@@ -54,11 +54,11 @@ namespace Cad_AI_Agent.CADTransactions
                         {
                             if (target.TargetType == SubassemblyLogicalNameType.Surface)
                             {
-                                // ვქმნით ახალ კოლექციას და ვაწერთ ზედ!
                                 ObjectIdCollection newTargetIds = new ObjectIdCollection();
                                 newTargetIds.Add(surfId);
                                 target.TargetIds = newTargetIds;
                                 targetUpdated = true;
+
                             }
                         }
 
@@ -69,7 +69,7 @@ namespace Cad_AI_Agent.CADTransactions
                     }
                 }
 
-                corridor.Rebuild(); // მეორე Rebuild სამიზნეებისთვის
+                corridor.Rebuild(); 
                 trans.Commit();
             }
         }
