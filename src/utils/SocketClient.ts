@@ -1,5 +1,7 @@
 import * as net from "net";
+import { createLogger } from "./logger.js";
 
+const log = createLogger("SocketClient");
 const COMMAND_TIMEOUT_MS = parseInt(process.env.CIVIL3D_COMMAND_TIMEOUT ?? "120000", 10);
 
 export class ApplicationClientConnection {
@@ -20,6 +22,7 @@ export class ApplicationClientConnection {
   private setupSocketListeners(): void {
     this.socket.on("connect", () => {
       this.isConnected = true;
+      log.info("Connected", { host: this.host, port: this.port });
     });
 
     this.socket.on("data", (data) => {
@@ -29,10 +32,11 @@ export class ApplicationClientConnection {
 
     this.socket.on("close", () => {
       this.isConnected = false;
+      log.debug("Connection closed");
     });
 
     this.socket.on("error", (error) => {
-      console.error("ApplicationClientConnection error:", error);
+      log.error("Connection error", { error: String(error) });
       this.isConnected = false;
     });
   }
@@ -56,7 +60,7 @@ export class ApplicationClientConnection {
       this.socket.connect(this.port, this.host);
       return true;
     } catch (error) {
-      console.error("Failed to connect:", error);
+      log.error("Failed to connect", { host: this.host, port: this.port, error: String(error) });
       return false;
     }
   }
@@ -81,7 +85,7 @@ export class ApplicationClientConnection {
         this.responseCallbacks.delete(requestId);
       }
     } catch (error) {
-      console.error("Error parsing response:", error);
+      log.error("Error parsing response", { error: String(error) });
     }
   }
 
@@ -121,11 +125,13 @@ export class ApplicationClientConnection {
         });
 
         const commandString = JSON.stringify(commandObj);
+        log.debug("Sending command", { method: command, requestId });
         this.socket.write(commandString);
 
         setTimeout(() => {
           if (this.responseCallbacks.has(requestId)) {
             this.responseCallbacks.delete(requestId);
+            log.warn("Command timed out", { method: command, requestId, timeoutMs: COMMAND_TIMEOUT_MS });
             reject(new Error(`Command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command}`));
           }
         }, COMMAND_TIMEOUT_MS);

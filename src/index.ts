@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerTools } from "./tools/register.js";
+import { createLogger } from "./utils/logger.js";
+
+const log = createLogger("MCP");
 
 const server = new McpServer({
   name: "civil3d-mcp",
@@ -12,10 +15,10 @@ async function main() {
 
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("Civil 3D MCP Server started");
+  log.info("Civil 3D MCP Server started");
 }
 
 main().catch((error) => {
-  console.error("Error starting Civil 3D MCP Server:", error);
+  log.error("Error starting Civil 3D MCP Server", { error: String(error) });
   process.exit(1);
 });

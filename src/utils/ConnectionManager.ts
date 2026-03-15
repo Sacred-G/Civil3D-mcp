@@ -1,4 +1,7 @@
 import { ApplicationClientConnection } from "./SocketClient.js";
+import { createLogger } from "./logger.js";
+
+const log = createLogger("ConnectionManager");
 
 const CIVIL3D_HOST = process.env.CIVIL3D_HOST ?? "localhost";
 const CIVIL3D_PORT = parseInt(process.env.CIVIL3D_PORT ?? "8080", 10);
@@ -25,6 +28,7 @@ export async function withApplicationConnection<T>(
         const onError = (error: any) => {
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
+          log.error("Connection failed", { host: CIVIL3D_HOST, port: CIVIL3D_PORT });
           reject(new Error(`Failed to connect to Civil 3D plugin at ${CIVIL3D_HOST}:${CIVIL3D_PORT}`));
         };
 
@@ -36,6 +40,7 @@ export async function withApplicationConnection<T>(
         setTimeout(() => {
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
+          log.warn("Connection timed out", { host: CIVIL3D_HOST, port: CIVIL3D_PORT, timeoutMs: CONNECT_TIMEOUT_MS });
           reject(new Error(`Connection to Civil 3D plugin timed out after ${CONNECT_TIMEOUT_MS}ms`));
         }, CONNECT_TIMEOUT_MS);
       });
