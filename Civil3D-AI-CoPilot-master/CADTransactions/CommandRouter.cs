@@ -32,7 +32,7 @@ namespace Cad_AI_Agent.CADTransactions
                     }
                     break;
                 case "DrawAlignment":
-                    if (command.Params.Length >= 4) // მინიმუმ 2 წერტილი სჭირდება (X1, Y1, X2, Y2)
+                    if (command.Params.Length >= 4)
                         AlignmentDrawer.Draw(doc, command.Params, GetStringArg(command, "alignmentName") ?? "AI_Alignment");
                     break;
                 case "DrawSurface":
@@ -54,7 +54,7 @@ namespace Cad_AI_Agent.CADTransactions
                             GetStringArg(command, "profileName"));
                     break;
                 case "DrawLayoutProfile":
-                    if (command.Params.Length >= 4) // მინიმუმ 2 PVI გვჭირდება (Station1, Elev1, Station2, Elev2)
+                    if (command.Params.Length >= 4)
                         LayoutProfileDrawer.Draw(doc, command.Params, GetStringArg(command, "alignmentName"), GetStringArg(command, "profileName"), GetDoubleArgNullable(command, "viewOffsetY"));
                     break;
                 case "DrawAutoProfile":

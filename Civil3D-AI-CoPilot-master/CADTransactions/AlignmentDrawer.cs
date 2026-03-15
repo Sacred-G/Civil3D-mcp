@@ -19,11 +19,11 @@ namespace Cad_AI_Agent.CADTransactions
 
             using (Transaction trans = db.TransactionManager.StartTransaction())
             {
-                // 1. ჯერ ვხატავთ პოლილაინს წვეროების (PI) კოორდინატებით
                 BlockTable bt = (BlockTable)trans.GetObject(db.BlockTableId, OpenMode.ForRead);
                 BlockTableRecord btr = (BlockTableRecord)trans.GetObject(bt[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
 
                 Polyline pline = new Polyline();
+
                 for (int i = 0; i < coords.Length; i += 2)
                 {
                     if (i + 1 < coords.Length)
@@ -34,7 +34,6 @@ namespace Cad_AI_Agent.CADTransactions
                 ObjectId plineId = btr.AppendEntity(pline);
                 trans.AddNewlyCreatedDBObject(pline, true);
 
-                // 2. პოლილაინს ვაქცევთ Civil 3D Alignment-ად
                 ObjectId styleId = civilDoc.Styles.AlignmentStyles[0];
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.AlignmentLabelSetStyles[0];
 
@@ -42,13 +41,11 @@ namespace Cad_AI_Agent.CADTransactions
                     ? "AI_Alignment_" + DateTime.Now.ToString("HHmmss")
                     : baseName;
 
-                // პარამეტრები Alignment-ისთვის
                 PolylineOptions plOpts = new PolylineOptions();
-                plOpts.AddCurvesBetweenTangents = true; // ამატებს ავტომატურ მოსახვევებს
-                plOpts.EraseExistingEntities = true;    // შლის დროებით პოლილაინს
-                plOpts.PlineId = plineId;               // ვაწვდით ჩვენი პოლილაინის ID-ს!
+                plOpts.AddCurvesBetweenTangents = true;
+                plOpts.EraseExistingEntities = true;
+                plOpts.PlineId = plineId;
 
-                // ვქმნით Alignment-ს
                 Alignment.Create(civilDoc, plOpts, uniqueName, ObjectId.Null, db.LayerZero, styleId, labelSetId);
 
                 trans.Commit();

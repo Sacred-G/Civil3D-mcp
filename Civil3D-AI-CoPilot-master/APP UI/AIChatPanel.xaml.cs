@@ -20,7 +20,6 @@ using Microsoft.Win32;
 
 namespace Cad_AI_Agent.UI
 {
-    // --- ახალი მოდელები ჩატის ისტორიისთვის ---
     public class AiResponse
     {
         public string Message { get; set; }
@@ -40,7 +39,6 @@ namespace Cad_AI_Agent.UI
         public List<ChatMessageData> Messages { get; set; } = new List<ChatMessageData>();
     }
 
-    // --- მთავარი ლოგიკა ---
     public partial class AIChatPanel : UserControl
     {
         private DispatcherTimer _thinkingTimer;
@@ -51,7 +49,6 @@ namespace Cad_AI_Agent.UI
         private string _activeProviderTag = DefaultProviderTag;
         private bool _isLoadingProviderSettings = false;
 
-        // სესიების მართვა
         private List<ChatSession> _allSessions = new List<ChatSession>();
         private ChatSession _currentSession;
 
@@ -64,8 +61,8 @@ namespace Cad_AI_Agent.UI
             _thinkingTimer.Interval = TimeSpan.FromMilliseconds(500);
             _thinkingTimer.Tick += ThinkingTimer_Tick;
 
-            StartNewSession(); // პირველი ჩართვისას იწყებს ახალ ჩატს
-   
+            StartNewSession();
+
             LoadProviderSettings();
         }
 
@@ -86,100 +83,10 @@ namespace Cad_AI_Agent.UI
             }
         }
 
-        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            if (_isLoadingProviderSettings || ApiKeyBox == null || ProviderCombo == null) return;
-            SaveProviderSettings(_activeProviderTag, ApiKeyBox.Text.Trim());
-            _activeProviderTag = GetSelectedProviderTag();
-            ApiKeyBox.Text = ReadApiKeyForProvider(_activeProviderTag);
-            if (ConnectionStatusText != null)
-            {
-                ConnectionStatusText.Text = string.Empty;
-            }
-        }
-
-        private string GetSelectedProviderTag()
-        {
-            if (ProviderCombo?.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
-            {
-                return selectedItem.Tag.ToString();
-            }
-
-            return DefaultProviderTag;
-        }
-
-        private void SelectProviderTag(string providerTag)
-        {
-            if (ProviderCombo == null) return;
-
-            foreach (var item in ProviderCombo.Items.OfType<ComboBoxItem>())
-            {
-                if (string.Equals(item.Tag?.ToString(), providerTag, StringComparison.OrdinalIgnoreCase))
-                {
-                    ProviderCombo.SelectedItem = item;
-                    return;
-                }
-            }
-
-            if (ProviderCombo.Items.Count > 0)
-            {
-                ProviderCombo.SelectedIndex = 0;
-            }
-        }
-
-        private string GetProviderName(string providerTag)
-        {
-            if (string.IsNullOrWhiteSpace(providerTag)) return "gemini";
-            string[] parts = providerTag.Split(new[] { ':' }, 2);
-            return parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]) ? parts[0] : "gemini";
-        }
-
-        private string GetModelName(string providerTag)
-        {
-            if (string.IsNullOrWhiteSpace(providerTag)) return "gemini-2.5-flash";
-            string[] parts = providerTag.Split(new[] { ':' }, 2);
-            return parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : providerTag;
-        }
-
-        private string GetApiKeyRegistryValueName(string providerTag)
-        {
-            return GetProviderName(providerTag).Equals("openai", StringComparison.OrdinalIgnoreCase) ? "OpenAiApiKey" : "GeminiApiKey";
-        }
-
-        private string ReadApiKeyForProvider(string providerTag)
-        {
-            using RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryPath);
-            string apiKey = key?.GetValue(GetApiKeyRegistryValueName(providerTag))?.ToString() ?? "";
-            if (!string.IsNullOrWhiteSpace(apiKey))
-            {
-                return apiKey;
-            }
-
-            if (GetProviderName(providerTag).Equals("gemini", StringComparison.OrdinalIgnoreCase))
-            {
-                return key?.GetValue("ApiKey")?.ToString() ?? "";
-            }
-
-            return "";
-        }
-
-        private void SaveProviderSettings(string providerTag, string apiKey)
-        {
-            using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
-            key.SetValue("SelectedProviderTag", providerTag);
-            key.SetValue(GetApiKeyRegistryValueName(providerTag), apiKey ?? "");
-
-            if (GetProviderName(providerTag).Equals("gemini", StringComparison.OrdinalIgnoreCase))
-            {
-                key.SetValue("ApiKey", apiKey ?? "");
-            }
-        }
-
-        // ================= ისტორიის მართვის ლოგიკა =================
         private void StartNewSession()
         {
             _currentSession = new ChatSession();
-            _allSessions.Insert(0, _currentSession); // ვამატებთ სიის თავში
+            _allSessions.Insert(0, _currentSession);
             LoadSessionToUI(_currentSession);
             RefreshSidebarUI();
         }
@@ -207,15 +114,14 @@ namespace Cad_AI_Agent.UI
             HistoryListPanel.Children.Clear();
             foreach (var session in _allSessions)
             {
-                // ვქმნით Grid-ს სათაურისთვის და წაშლის ღილაკისთვის
                 Grid sessionGrid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
                 sessionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 sessionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                // ჩატის ჩამრთველი ღილაკი
                 Button loadBtn = new Button
                 {
                     Content = session.Title,
+
                     Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")) : Brushes.Transparent,
                     BorderBrush = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A3A55")) : Brushes.Transparent,
                     Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
@@ -225,20 +131,19 @@ namespace Cad_AI_Agent.UI
                     Cursor = Cursors.Hand,
                     ToolTip = session.Title
                 };
-                
+
                 loadBtn.Click += (s, e) => { LoadSessionToUI(session); RefreshSidebarUI(); };
                 Grid.SetColumn(loadBtn, 0);
                 loadBtn.Style = (Style)FindResource("SidebarButtonStyle");
 
-                // === დაამატე ეს ახალი ბლოკი RENAME (Right-Click) ფუნქციისთვის ===
                 ContextMenu ctxMenu = new ContextMenu();
                 MenuItem renameItem = new MenuItem { Header = "✏️ Rename" };
                 renameItem.Click += (s, ev) =>
                 {
-                    // ვქმნით დროებით TextBox-ს ტექსტის ჩასასწორებლად
                     TextBox renameBox = new TextBox
                     {
                         Text = session.Title,
+
                         Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
                         Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
                         CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
@@ -247,21 +152,17 @@ namespace Cad_AI_Agent.UI
                         BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
                     };
 
-                    // ვინახავთ სახელს Enter-ზე დაჭერისას
                     renameBox.KeyDown += (senderBox, args) => {
                         if (args.Key == Key.Enter) { session.Title = renameBox.Text; RefreshSidebarUI(); }
                         else if (args.Key == Key.Escape) { RefreshSidebarUI(); }
                     };
 
-                    // ვინახავთ სახელს ფოკუსის დაკარგვისას (სხვაგან დაკლიკებისას)
                     renameBox.LostFocus += (senderBox, args) => { session.Title = renameBox.Text; RefreshSidebarUI(); };
 
-                    // ვცვლით ღილაკს ამ TextBox-ით
                     Grid.SetColumn(renameBox, 0);
                     sessionGrid.Children.Remove(loadBtn);
                     sessionGrid.Children.Insert(0, renameBox);
 
-                    // ფოკუსი ავტომატურად გადაგვაქვს ტექსტზე
                     Dispatcher.BeginInvoke(new Action(() => {
                         renameBox.Focus();
                         renameBox.SelectAll();
@@ -269,15 +170,15 @@ namespace Cad_AI_Agent.UI
                 };
                 ctxMenu.Items.Add(renameItem);
                 loadBtn.ContextMenu = ctxMenu;
-                // ==========================================================
 
-                // წაშლის ღილაკი
                 Button delBtn = new Button
                 {
                     Content = "✕",
+
                     Background = Brushes.Transparent,
                     Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
                     BorderThickness = new Thickness(0),
+
                     Cursor = Cursors.Hand,
                     Padding = new Thickness(8, 8, 8, 8),
                     ToolTip = "Delete Chat"
@@ -288,7 +189,7 @@ namespace Cad_AI_Agent.UI
                     if (_currentSession == session) StartNewSession();
                     else RefreshSidebarUI();
                 };
-                
+
                 Grid.SetColumn(delBtn, 1);
                 delBtn.Style = (Style)FindResource("SidebarButtonStyle");
 
@@ -303,7 +204,6 @@ namespace Cad_AI_Agent.UI
             StartNewSession();
         }
 
-        // ================= ჩატის ვიზუალიზაცია =================
         private TextBlock AddMessageToChat(string text, bool isUser, bool saveToHistory = true)
         {
             if (saveToHistory && _currentSession != null)
@@ -376,11 +276,11 @@ namespace Cad_AI_Agent.UI
             return proxyText;
         }
 
-        // ================= ტაბები & API =================
         private void TabChatButton_Click(object sender, RoutedEventArgs e)
         {
             ChatTab.Visibility = Visibility.Visible;
             SettingsTab.Visibility = Visibility.Collapsed;
+
             TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
             TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
         }
@@ -399,6 +299,7 @@ namespace Cad_AI_Agent.UI
             string providerTag = GetSelectedProviderTag();
             string providerName = GetProviderName(providerTag);
             string modelName = GetModelName(providerTag);
+
             if (string.IsNullOrEmpty(key))
             {
                 ConnectionStatusText.Text = "❌ Please enter a key";
@@ -406,6 +307,7 @@ namespace Cad_AI_Agent.UI
                 return;
             }
             ConnectionStatusText.Text = "Testing...";
+
             ConnectionStatusText.Foreground = Brushes.Yellow;
             TestConnectionBtn.IsEnabled = false;
 
@@ -455,7 +357,6 @@ namespace Cad_AI_Agent.UI
             finally { TestConnectionBtn.IsEnabled = true; }
         }
 
-        // ================= GEMINI COMMUNICATION =================
         private void UserInputBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -721,7 +622,6 @@ namespace Cad_AI_Agent.UI
                 {
                     await CoreApp.DocumentManager.ExecuteInCommandContextAsync(async (obj) =>
                     {
-                        // ახლა პირდაპირ როუტერს გადავცემთ ბრძანებას!
                         CommandRouter.Execute(doc, command);
 
                         doc.Editor.UpdateScreen();

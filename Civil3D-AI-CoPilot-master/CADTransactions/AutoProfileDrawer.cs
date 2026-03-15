@@ -34,14 +34,14 @@ namespace Cad_AI_Agent.CADTransactions
                     return;
                 }
 
-                // 2. ვქმნით საპროექტო (Layout) პროფილს
                 ObjectId layerId = db.LayerZero;
-                ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 1 ? civilDoc.Styles.ProfileStyles[1] : civilDoc.Styles.ProfileStyles[0]; // ვცდილობთ მეორე სტილი ავიღოთ საპროექტოსთვის
+                ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 1 ? civilDoc.Styles.ProfileStyles[1] : civilDoc.Styles.ProfileStyles[0];
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0 ? civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0] : ObjectId.Null;
 
                 string resolvedProfileName = string.IsNullOrWhiteSpace(profileName)
                     ? "AI_Layout_" + DateTime.Now.ToString("HHmmss")
                     : profileName;
+
                 ObjectId layoutProfId = Profile.CreateByLayout(resolvedProfileName, align.ObjectId, layerId, styleId, labelSetId);
                 Profile layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
 
@@ -64,7 +64,6 @@ namespace Cad_AI_Agent.CADTransactions
 
                 pviPoints.Add(new Point2d(endSta, egProfile.ElevationAt(endSta)));
 
-                // 4. ტანგენსები
                 List<ProfileEntity> tangents = new List<ProfileEntity>();
                 for (int i = 0; i < pviPoints.Count - 1; i++)
                 {
@@ -72,7 +71,6 @@ namespace Cad_AI_Agent.CADTransactions
                     tangents.Add(tan);
                 }
 
-                // 5. მრუდები (60%)
                 for (int i = 0; i < tangents.Count - 1; i++)
                 {
                     ProfileTangent t1 = tangents[i] as ProfileTangent;
@@ -83,7 +81,7 @@ namespace Cad_AI_Agent.CADTransactions
                         try
                         {
                             VerticalCurveType curveType = (t1.Grade < t2.Grade) ? VerticalCurveType.Sag : VerticalCurveType.Crest;
-                            double curveLen = Math.Min(100.0, step * 0.6); // მაქსიმუმ 100მ ან ბიჯის 60%
+                            double curveLen = Math.Min(100.0, step * 0.6);
 
                             layoutProfile.Entities.AddFreeSymmetricParabolaByLength(t1.EntityId, t2.EntityId, curveType, curveLen, false);
                         }

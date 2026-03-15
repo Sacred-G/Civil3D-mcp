@@ -27,9 +27,6 @@ namespace Cad_AI_Agent.CADTransactions
 
             if (trans.GetObject(slgId, OpenMode.ForWrite) is not SampleLineGroup slg) return;
 
-            // ==========================================
-            // 1. სტილების ამოღება (Corridor & Surface)
-            // ==========================================
             var corridorStyleId = ObjectId.Null;
             foreach (ObjectId styleId in civilDoc.Styles.CodeSetStyles)
             {
@@ -45,9 +42,6 @@ namespace Cad_AI_Agent.CADTransactions
 
             var surfStyleId = civilDoc.Styles.SectionStyles.Count > 0 ? civilDoc.Styles.SectionStyles[0] : ObjectId.Null;
 
-            // ==========================================
-            // 2. მოდელების ჩართვა (Sampling)
-            // ==========================================
             var sources = slg.GetSectionSources();
             foreach (SectionSource source in sources)
             {
@@ -68,9 +62,6 @@ namespace Cad_AI_Agent.CADTransactions
                 catch { }
             }
 
-            // ==========================================
-            // 3. Sample Line-ების დახაზვა
-            // ==========================================
             double startSta = align.StartingStation;
             double endSta = align.EndingStation;
             for (double sta = startSta; sta <= endSta; sta += interval)
@@ -92,9 +83,6 @@ namespace Cad_AI_Agent.CADTransactions
                 catch { }
             }
 
-            // ==========================================
-            // 4. Band Set N1-ის მოძებნა
-            // ==========================================
             var bandSetId = ObjectId.Null;
             if (civilDoc.Styles.SectionViewBandSetStyles.Count > 0)
             {
@@ -112,20 +100,16 @@ namespace Cad_AI_Agent.CADTransactions
 
             var svStyleId = civilDoc.Styles.SectionViewStyles.Count > 0 ? civilDoc.Styles.SectionViewStyles[0] : ObjectId.Null;
 
-            // ==========================================
-            // 5. Section View-ების დახაზვა (10-კვეთიანი რიგებით)
-            // ==========================================
             double startX = 0, startY = 0;
             align.PointLocation(startSta, 0, ref startX, ref startY);
 
-            // საბაზისო წერტილი (პირველი კვეთის ადგილი)
             double baseX = startX;
             double baseY = startY - 300;
 
             columns = columns <= 0 ? 10 : columns;
             spacingX = spacingX <= 0 ? 80.0 : spacingX;
             spacingY = spacingY <= 0 ? 50.0 : spacingY;
-            int count = 0;           // მთვლელი
+            int count = 0;
 
             foreach (ObjectId slId in slg.GetSampleLineIds())
             {
@@ -133,28 +117,24 @@ namespace Cad_AI_Agent.CADTransactions
                 {
                     string svName = "SV_" + DateTime.Now.ToString("HHmmssff") + "_" + count;
 
-                    // 💡 ვითვლით მიმდინარე რიგს და სვეტს
                     int row = count / columns;
                     int col = count % columns;
 
-                    // 💡 ვითვლით ზუსტ კოორდინატს: X იზრდება მარჯვნივ, Y მცირდება ქვევით (ახალ რიგში)
                     Point3d insertPt = new Point3d(
                         baseX + (col * spacingX),
                         baseY - (row * spacingY),
                         0
                     );
 
-                    // 💡 SectionView.Create იღებს მკაცრად 3 პარამეტრს
                     ObjectId svId = SectionView.Create(svName, slId, insertPt);
 
-                    // ვხსნით შექმნილ ხედს და ვადებთ მთავარ სტილს
                     SectionView sv = trans.GetObject(svId, OpenMode.ForWrite) as SectionView;
                     if (sv != null && svStyleId != ObjectId.Null)
                     {
                         sv.StyleId = svStyleId;
                     }
 
-                    count++; // ვზრდით მთვლელს შემდეგი კვეთისთვის
+                    count++;
                 }
                 catch { }
             }
