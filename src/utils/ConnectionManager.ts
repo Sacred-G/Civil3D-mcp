@@ -1,17 +1,19 @@
 import { ApplicationClientConnection } from "./SocketClient.js";
 
+const CIVIL3D_HOST = process.env.CIVIL3D_HOST ?? "localhost";
+const CIVIL3D_PORT = parseInt(process.env.CIVIL3D_PORT ?? "8080", 10);
+const CONNECT_TIMEOUT_MS = parseInt(process.env.CIVIL3D_CONNECT_TIMEOUT ?? "5000", 10);
+
 /**
- * 连接到应用程序客户端并执行操作
- * @param operation 连接成功后要执行的操作函数
- * @returns 操作的结果
+ * Opens a short-lived connection to the Civil 3D plugin, runs the given
+ * operation, and tears the connection down afterwards.
  */
 export async function withApplicationConnection<T>(
   operation: (client: ApplicationClientConnection) => Promise<T>
 ): Promise<T> {
-  const appClient = new ApplicationClientConnection("localhost", 8080); // Default port, may need to be configured for Civil 3D plugin
+  const appClient = new ApplicationClientConnection(CIVIL3D_HOST, CIVIL3D_PORT);
 
   try {
-    // 连接到应用程序客户端
     if (!appClient.isConnected) {
       await new Promise<void>((resolve, reject) => {
         const onConnect = () => {
@@ -23,7 +25,7 @@ export async function withApplicationConnection<T>(
         const onError = (error: any) => {
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
-          reject(new Error("connect to application client failed"));
+          reject(new Error(`Failed to connect to Civil 3D plugin at ${CIVIL3D_HOST}:${CIVIL3D_PORT}`));
         };
 
         appClient.socket.on("connect", onConnect);
@@ -34,15 +36,13 @@ export async function withApplicationConnection<T>(
         setTimeout(() => {
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
-          reject(new Error("连接到应用程序客户端失败"));
-        }, 5000);
+          reject(new Error(`Connection to Civil 3D plugin timed out after ${CONNECT_TIMEOUT_MS}ms`));
+        }, CONNECT_TIMEOUT_MS);
       });
     }
 
-    // 执行操作
     return await operation(appClient);
   } finally {
-    // 断开连接
     appClient.disconnect();
   }
 }

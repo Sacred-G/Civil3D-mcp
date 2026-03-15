@@ -1,5 +1,7 @@
 import * as net from "net";
 
+const COMMAND_TIMEOUT_MS = parseInt(process.env.CIVIL3D_COMMAND_TIMEOUT ?? "120000", 10);
+
 export class ApplicationClientConnection {
   host: string;
   port: number;
@@ -21,11 +23,7 @@ export class ApplicationClientConnection {
     });
 
     this.socket.on("data", (data) => {
-      // 将接收到的数据添加到缓冲区
-      const dataString = data.toString();
-      this.buffer += dataString;
-
-      // 尝试解析完整的JSON响应
+      this.buffer += data.toString();
       this.processBuffer();
     });
 
@@ -41,13 +39,11 @@ export class ApplicationClientConnection {
 
   private processBuffer(): void {
     try {
-      // 尝试解析JSON
-      const response = JSON.parse(this.buffer);
-      // 如果成功解析，处理响应并清空缓冲区
+      JSON.parse(this.buffer);
       this.handleResponse(this.buffer);
       this.buffer = "";
-    } catch (e) {
-      // 如果解析失败，可能是因为数据不完整，继续等待更多数据
+    } catch {
+      // Incomplete JSON — wait for more data
     }
   }
 
@@ -77,7 +73,6 @@ export class ApplicationClientConnection {
   private handleResponse(responseData: string): void {
     try {
       const response = JSON.parse(responseData);
-      // 从响应中获取ID
       const requestId = response.id || "default";
 
       const callback = this.responseCallbacks.get(requestId);
@@ -97,10 +92,8 @@ export class ApplicationClientConnection {
           this.connect();
         }
 
-        // 生成请求ID
         const requestId = this.generateRequestId();
 
-        // 创建符合JSON-RPC标准的请求对象
         const commandObj = {
           jsonrpc: "2.0",
           method: command,
@@ -108,7 +101,6 @@ export class ApplicationClientConnection {
           id: requestId,
         };
 
-        // 存储回调函数
         this.responseCallbacks.set(requestId, (responseData) => {
           try {
             const response = JSON.parse(responseData);
@@ -128,17 +120,15 @@ export class ApplicationClientConnection {
           }
         });
 
-        // 发送命令
         const commandString = JSON.stringify(commandObj);
         this.socket.write(commandString);
 
-        // 设置超时
         setTimeout(() => {
           if (this.responseCallbacks.has(requestId)) {
             this.responseCallbacks.delete(requestId);
-            reject(new Error(`Command timed out after 2 minutes: ${command}`));
+            reject(new Error(`Command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command}`));
           }
-        }, 120000); // 2分钟超时
+        }, COMMAND_TIMEOUT_MS);
       } catch (error) {
         reject(error);
       }
