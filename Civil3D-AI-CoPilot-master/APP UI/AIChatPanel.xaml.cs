@@ -717,23 +717,326 @@ namespace Cad_AI_Agent.UI
                 Document doc = CoreApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
 
-                foreach (var command in commands)
+                // Create execution progress UI
+                var executionPanel = CreateExecutionLogPanel(commands.Count);
+                AddMessageContainerToChat(executionPanel);
+
+                // Create progress reporter that updates the UI
+                var progress = new Progress<ExecutionStep>(step =>
                 {
+                    Dispatcher.Invoke(() =>
+                    {
+                        UpdateExecutionLog(executionPanel, step);
+                    });
+                });
+
+                var reporter = new ExecutionProgressReporter(progress);
+                reporter.Initialize(commands.Count);
+
+                int completedCount = 0;
+                int errorCount = 0;
+
+                for (int i = 0; i < commands.Count; i++)
+                {
+                    var command = commands[i];
+                    
                     await CoreApp.DocumentManager.ExecuteInCommandContextAsync(async (obj) =>
                     {
-                        // ახლა პირდაპირ როუტერს გადავცემთ ბრძანებას!
-                        CommandRouter.Execute(doc, command);
+                        try
+                        {
+                            // ახლა პირდაპირ როუტერს გადავცემთ ბრძანებას პროგრესის რეპორტერით!
+                            CommandRouter.Execute(doc, command, reporter);
+                            completedCount++;
+                        }
+                        catch (Exception cmdEx)
+                        {
+                            errorCount++;
+                            // Error is already reported via progress reporter
+                            doc.Editor.WriteMessage($"\n[AI Agent] Command error: {cmdEx.Message}");
+                        }
 
                         doc.Editor.UpdateScreen();
                     }, null);
 
                     await Task.Delay(300);
                 }
+
+                // Final summary
+                Dispatcher.Invoke(() =>
+                {
+                    AddExecutionSummary(executionPanel, completedCount, errorCount, commands.Count);
+                });
             }
             catch (Exception ex)
             {
-                AddMessageToChat($"[Draw Error]: {ex.Message}", false);
+                AddMessageToChat($"[Execution Error]: {ex.Message}", false);
             }
+        }
+
+        private StackPanel CreateExecutionLogPanel(int totalSteps)
+        {
+            var container = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 8, 0, 12),
+                MaxWidth = 520
+            };
+
+            // Header
+            var headerBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8, 8, 0, 0),
+                Padding = new Thickness(12, 10, 12, 10)
+            };
+
+            var headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var statusIcon = new TextBlock
+            {
+                Text = "▶️",
+                FontSize = 16,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(statusIcon, 0);
+
+            var headerText = new TextBlock
+            {
+                Text = $"Executing {totalSteps} CAD Commands...",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(headerText, 1);
+
+            headerGrid.Children.Add(statusIcon);
+            headerGrid.Children.Add(headerText);
+            headerBorder.Child = headerGrid;
+            container.Children.Add(headerBorder);
+
+            // Execution log content
+            var logBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                BorderThickness = new Thickness(1, 0, 1, 1),
+                CornerRadius = new CornerRadius(0, 0, 8, 8),
+                Padding = new Thickness(8),
+                MaxHeight = 400
+            };
+
+            var scrollViewer = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+
+            var logPanel = new StackPanel
+            {
+                Name = "ExecutionLogPanel"
+            };
+            scrollViewer.Content = logPanel;
+            logBorder.Child = scrollViewer;
+            container.Children.Add(logBorder);
+
+            // Store reference for updates
+            container.Tag = new ExecutionLogState
+            {
+                LogPanel = logPanel,
+                HeaderIcon = statusIcon,
+                HeaderText = headerText,
+                ScrollViewer = scrollViewer
+            };
+
+            return container;
+        }
+
+        private void UpdateExecutionLog(StackPanel container, ExecutionStep step)
+        {
+            if (container.Tag is not ExecutionLogState state) return;
+
+            // Create step entry
+            var stepBorder = new Border
+            {
+                Background = GetStatusBackground(step.Status),
+                BorderBrush = GetStatusBorderBrush(step.Status),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+
+            var stepGrid = new Grid();
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Step #
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Message
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Status icon
+
+            // Step number with timestamp
+            var stepNumber = new TextBlock
+            {
+                Text = $"[{step.StepNumber}/{step.TotalSteps}] {step.GetFormattedTime()}",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                FontSize = 10,
+                FontFamily = new FontFamily("Consolas"),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            Grid.SetColumn(stepNumber, 0);
+
+            // Message area
+            var messageStack = new StackPanel();
+
+            var commandName = new TextBlock
+            {
+                Text = step.CommandName,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+
+            var messageText = new TextBlock
+            {
+                Text = step.Message,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, step.Details != null ? 4 : 0)
+            };
+
+            messageStack.Children.Add(commandName);
+            messageStack.Children.Add(messageText);
+
+            if (!string.IsNullOrEmpty(step.Details))
+            {
+                var detailsText = new TextBlock
+                {
+                    Text = step.Details,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                messageStack.Children.Add(detailsText);
+            }
+
+            Grid.SetColumn(messageStack, 1);
+
+            // Status icon
+            var statusIcon = new TextBlock
+            {
+                Text = GetStatusIcon(step.Status),
+                FontSize = 14,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(statusIcon, 2);
+
+            stepGrid.Children.Add(stepNumber);
+            stepGrid.Children.Add(messageStack);
+            stepGrid.Children.Add(statusIcon);
+            stepBorder.Child = stepGrid;
+
+            state.LogPanel.Children.Add(stepBorder);
+            state.ScrollViewer.ScrollToEnd();
+
+            // Update header based on status
+            if (step.Status == "Error")
+            {
+                state.HeaderIcon.Text = "⚠️";
+                state.HeaderText.Text = $"Executing {step.TotalSteps} CAD Commands... (Error on step {step.StepNumber})";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F87171"));
+            }
+        }
+
+        private void AddExecutionSummary(StackPanel container, int completed, int errors, int total)
+        {
+            if (container.Tag is not ExecutionLogState state) return;
+
+            // Update header
+            if (errors > 0)
+            {
+                state.HeaderIcon.Text = "⚠️";
+                state.HeaderText.Text = $"Completed with {errors} error(s)";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F87171"));
+            }
+            else
+            {
+                state.HeaderIcon.Text = "✅";
+                state.HeaderText.Text = $"All {total} commands executed successfully";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4ADE80"));
+            }
+
+            // Add summary footer
+            var summaryBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 10, 12, 10),
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+
+            var summaryText = new TextBlock
+            {
+                Text = $"✓ {completed} successful  •  ✗ {errors} failed  •  ⏱️ {DateTime.Now:HH:mm:ss}",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                FontSize = 11,
+                FontFamily = new FontFamily("Consolas"),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            summaryBorder.Child = summaryText;
+
+            state.LogPanel.Children.Add(summaryBorder);
+            state.ScrollViewer.ScrollToEnd();
+        }
+
+        private string GetStatusIcon(string status) => status switch
+        {
+            "Running" => "⏳",
+            "Success" => "✓",
+            "Error" => "✗",
+            "Skipped" => "⊘",
+            _ => "•"
+        };
+
+        private Brush GetStatusBackground(string status) => status switch
+        {
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A5F")),
+            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#064E3B")),
+            "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#450A0A")),
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033"))
+        };
+
+        private Brush GetStatusBorderBrush(string status) => status switch
+        {
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22C55E")),
+            "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D"))
+        };
+
+        private void AddMessageContainerToChat(StackPanel container)
+        {
+            ChatHistoryPanel.Children.Add(container);
+            ChatScrollViewer.ScrollToEnd();
+        }
+
+        private class ExecutionLogState
+        {
+            public StackPanel LogPanel { get; set; }
+            public TextBlock HeaderIcon { get; set; }
+            public TextBlock HeaderText { get; set; }
+            public ScrollViewer ScrollViewer { get; set; }
         }
     }
 }
