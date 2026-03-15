@@ -3,13 +3,18 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { withApplicationConnection } from "../utils/ConnectionManager.js";
 
 const Civil3DHydrologyInputShape = {
-  action: z.enum(["list_capabilities", "trace_flow_path", "find_low_point", "estimate_runoff"]),
+  action: z.enum(["list_capabilities", "trace_flow_path", "find_low_point", "estimate_runoff", "delineate_watershed", "calculate_catchment_area"]),
   surfaceName: z.string().optional(),
   x: z.number().optional(),
   y: z.number().optional(),
+  outletX: z.number().optional(),
+  outletY: z.number().optional(),
   stepDistance: z.number().optional(),
   maxSteps: z.number().int().optional(),
   sampleSpacing: z.number().optional(),
+  gridSpacing: z.number().optional(),
+  searchRadius: z.number().optional(),
+  maxDistance: z.number().optional(),
   drainageArea: z.number().optional(),
   runoffCoefficient: z.number().optional(),
   rainfallIntensity: z.number().optional(),
@@ -45,6 +50,24 @@ const HydrologyEstimateRunoffArgsSchema = Civil3DHydrologyInputSchema.extend({
   rainfallIntensity: z.number().positive(),
   areaUnits: z.enum(["acres", "hectares"]),
   intensityUnits: z.enum(["in_per_hr", "mm_per_hr"]),
+});
+
+const HydrologyDelineateWatershedArgsSchema = Civil3DHydrologyInputSchema.extend({
+  action: z.literal("delineate_watershed"),
+  surfaceName: z.string(),
+  outletX: z.number(),
+  outletY: z.number(),
+  gridSpacing: z.number().positive().optional(),
+  searchRadius: z.number().positive().optional(),
+});
+
+const HydrologyCalculateCatchmentAreaArgsSchema = Civil3DHydrologyInputSchema.extend({
+  action: z.literal("calculate_catchment_area"),
+  surfaceName: z.string(),
+  outletX: z.number(),
+  outletY: z.number(),
+  sampleSpacing: z.number().positive().optional(),
+  maxDistance: z.number().positive().optional(),
 });
 
 const HydrologyCapabilitiesResponseSchema = z.object({
@@ -119,6 +142,53 @@ const HydrologyRunoffResponseSchema = z.object({
   }),
 });
 
+const HydrologyWatershedResponseSchema = z.object({
+  surfaceName: z.string(),
+  outletPoint: z.object({
+    x: z.number(),
+    y: z.number(),
+    elevation: z.number(),
+  }),
+  gridSpacing: z.number(),
+  searchRadius: z.number(),
+  contributingPointCount: z.number(),
+  boundaryPoints: z.array(z.object({
+    x: z.number(),
+    y: z.number(),
+    elevation: z.number(),
+  })),
+  approximateArea: z.number(),
+  units: z.object({
+    horizontal: z.string(),
+    vertical: z.string(),
+    area: z.string(),
+  }),
+});
+
+const HydrologyCatchmentAreaResponseSchema = z.object({
+  surfaceName: z.string(),
+  outletPoint: z.object({
+    x: z.number(),
+    y: z.number(),
+    elevation: z.number(),
+  }),
+  sampleSpacing: z.number(),
+  maxDistance: z.number(),
+  contributingCellCount: z.number(),
+  catchmentArea: z.number(),
+  elevationStatistics: z.object({
+    minimum: z.number(),
+    maximum: z.number(),
+    average: z.number(),
+    relief: z.number(),
+  }),
+  units: z.object({
+    horizontal: z.string(),
+    vertical: z.string(),
+    area: z.string(),
+  }),
+});
+
 export function registerCivil3DHydrologyTool(server: McpServer) {
   server.tool(
     "civil3d_hydrology",
@@ -133,7 +203,11 @@ export function registerCivil3DHydrologyTool(server: McpServer) {
               ? HydrologyTraceFlowPathArgsSchema.parse(args)
               : args.action === "find_low_point"
                 ? HydrologyFindLowPointArgsSchema.parse(args)
-                : HydrologyEstimateRunoffArgsSchema.parse(args);
+                : args.action === "estimate_runoff"
+                  ? HydrologyEstimateRunoffArgsSchema.parse(args)
+                  : args.action === "delineate_watershed"
+                    ? HydrologyDelineateWatershedArgsSchema.parse(args)
+                    : HydrologyCalculateCatchmentAreaArgsSchema.parse(args);
 
         const response = await withApplicationConnection(async (appClient) => {
           if (parsedArgs.action === "list_capabilities") {
@@ -157,12 +231,32 @@ export function registerCivil3DHydrologyTool(server: McpServer) {
             });
           }
 
-          return await appClient.sendCommand("estimateHydrologyRunoff", {
-            drainageArea: parsedArgs.drainageArea,
-            runoffCoefficient: parsedArgs.runoffCoefficient,
-            rainfallIntensity: parsedArgs.rainfallIntensity,
-            areaUnits: parsedArgs.areaUnits,
-            intensityUnits: parsedArgs.intensityUnits,
+          if (parsedArgs.action === "estimate_runoff") {
+            return await appClient.sendCommand("estimateHydrologyRunoff", {
+              drainageArea: parsedArgs.drainageArea,
+              runoffCoefficient: parsedArgs.runoffCoefficient,
+              rainfallIntensity: parsedArgs.rainfallIntensity,
+              areaUnits: parsedArgs.areaUnits,
+              intensityUnits: parsedArgs.intensityUnits,
+            });
+          }
+
+          if (parsedArgs.action === "delineate_watershed") {
+            return await appClient.sendCommand("delineateWatershed", {
+              surfaceName: parsedArgs.surfaceName,
+              outletX: parsedArgs.outletX,
+              outletY: parsedArgs.outletY,
+              gridSpacing: parsedArgs.gridSpacing,
+              searchRadius: parsedArgs.searchRadius,
+            });
+          }
+
+          return await appClient.sendCommand("calculateCatchmentArea", {
+            surfaceName: parsedArgs.surfaceName,
+            outletX: parsedArgs.outletX,
+            outletY: parsedArgs.outletY,
+            sampleSpacing: parsedArgs.sampleSpacing,
+            maxDistance: parsedArgs.maxDistance,
           });
         });
 
@@ -173,7 +267,11 @@ export function registerCivil3DHydrologyTool(server: McpServer) {
               ? HydrologyFlowPathResponseSchema.parse(response)
               : parsedArgs.action === "find_low_point"
                 ? HydrologyLowPointResponseSchema.parse(response)
-                : HydrologyRunoffResponseSchema.parse(response);
+                : parsedArgs.action === "estimate_runoff"
+                  ? HydrologyRunoffResponseSchema.parse(response)
+                  : parsedArgs.action === "delineate_watershed"
+                    ? HydrologyWatershedResponseSchema.parse(response)
+                    : HydrologyCatchmentAreaResponseSchema.parse(response);
 
         return {
           content: [

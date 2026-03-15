@@ -61,6 +61,8 @@ public static class CommandDispatcher
       "traceHydrologyFlowPath" => HydrologyCommands.TraceFlowPathAsync(parameters),
       "findHydrologyLowPoint" => HydrologyCommands.FindLowPointAsync(parameters),
       "estimateHydrologyRunoff" => HydrologyCommands.EstimateRunoffAsync(parameters),
+      "delineateWatershed" => HydrologyCommands.DelineateWatershedAsync(parameters),
+      "calculateCatchmentArea" => HydrologyCommands.CalculateCatchmentAreaAsync(parameters),
       "listCorridors" => CorridorCommands.ListCorridorsAsync(),
       "getCorridor" => CorridorCommands.GetCorridorAsync(parameters),
       "rebuildCorridor" => CorridorCommands.RebuildCorridorAsync(parameters),

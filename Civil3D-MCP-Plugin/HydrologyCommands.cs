@@ -34,9 +34,15 @@ public static class HydrologyCommands
         },
         new()
         {
-          ["name"] = "watershed",
-          ["status"] = "planned",
-          ["description"] = "Future watershed delineation support.",
+          ["name"] = "delineate_watershed",
+          ["status"] = "implemented",
+          ["description"] = "Delineates a watershed boundary by tracing flow paths from perimeter points to determine contributing area to an outlet point.",
+        },
+        new()
+        {
+          ["name"] = "calculate_catchment_area",
+          ["status"] = "implemented",
+          ["description"] = "Calculates the catchment area for a given outlet point by analyzing surface drainage patterns.",
         },
         new()
         {
@@ -327,4 +333,284 @@ public static class HydrologyCommands
   }
 
   private sealed record FlowPoint(double X, double Y, double Elevation);
+
+  public static Task<object?> DelineateWatershedAsync(JsonObject? parameters)
+  {
+    var surfaceName = PluginRuntime.GetRequiredString(parameters, "surfaceName");
+    var outletX = PluginRuntime.GetRequiredDouble(parameters, "outletX");
+    var outletY = PluginRuntime.GetRequiredDouble(parameters, "outletY");
+    var gridSpacing = PluginRuntime.GetOptionalDouble(parameters, "gridSpacing") ?? 10d;
+    var searchRadius = PluginRuntime.GetOptionalDouble(parameters, "searchRadius") ?? 100d;
+
+    if (gridSpacing <= 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "delineateWatershed requires a positive gridSpacing.");
+    }
+
+    if (searchRadius <= 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "delineateWatershed requires a positive searchRadius.");
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, surfaceName, OpenMode.ForRead);
+      var outletElevation = GetSurfaceElevation(surface, outletX, outletY);
+      
+      var watershedPoints = new List<Dictionary<string, object?>>();
+      var contributingPoints = new HashSet<(double x, double y)>();
+      var testedPoints = new HashSet<(double x, double y)>();
+      
+      var minX = outletX - searchRadius;
+      var maxX = outletX + searchRadius;
+      var minY = outletY - searchRadius;
+      var maxY = outletY + searchRadius;
+
+      for (var testX = minX; testX <= maxX; testX += gridSpacing)
+      {
+        for (var testY = minY; testY <= maxY; testY += gridSpacing)
+        {
+          var key = (Math.Round(testX / gridSpacing) * gridSpacing, Math.Round(testY / gridSpacing) * gridSpacing);
+          if (testedPoints.Contains(key))
+          {
+            continue;
+          }
+          testedPoints.Add(key);
+
+          double testElevation;
+          try
+          {
+            testElevation = GetSurfaceElevation(surface, testX, testY);
+          }
+          catch
+          {
+            continue;
+          }
+
+          var flowPath = TraceFlowToOutlet(surface, testX, testY, outletX, outletY, gridSpacing * 0.5, 500);
+          if (flowPath.ReachesOutlet)
+          {
+            contributingPoints.Add((testX, testY));
+          }
+        }
+      }
+
+      foreach (var point in contributingPoints)
+      {
+        double elevation;
+        try
+        {
+          elevation = GetSurfaceElevation(surface, point.x, point.y);
+        }
+        catch
+        {
+          elevation = 0;
+        }
+        watershedPoints.Add(ToHydrologyPoint(point.x, point.y, elevation));
+      }
+
+      var boundaryPoints = ComputeConvexHull(contributingPoints.ToList());
+      var boundaryCoordinates = boundaryPoints.Select(p => ToHydrologyPoint(p.x, p.y, GetSurfaceElevation(surface, p.x, p.y))).ToList();
+
+      var area = CalculatePolygonArea(boundaryPoints);
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = surface.Name,
+        ["outletPoint"] = ToHydrologyPoint(outletX, outletY, outletElevation),
+        ["gridSpacing"] = gridSpacing,
+        ["searchRadius"] = searchRadius,
+        ["contributingPointCount"] = contributingPoints.Count,
+        ["boundaryPoints"] = boundaryCoordinates,
+        ["approximateArea"] = area,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["horizontal"] = CivilObjectUtils.LinearUnits(database),
+          ["vertical"] = CivilObjectUtils.LinearUnits(database),
+          ["area"] = $"{CivilObjectUtils.LinearUnits(database)}²",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> CalculateCatchmentAreaAsync(JsonObject? parameters)
+  {
+    var surfaceName = PluginRuntime.GetRequiredString(parameters, "surfaceName");
+    var outletX = PluginRuntime.GetRequiredDouble(parameters, "outletX");
+    var outletY = PluginRuntime.GetRequiredDouble(parameters, "outletY");
+    var sampleSpacing = PluginRuntime.GetOptionalDouble(parameters, "sampleSpacing") ?? 15d;
+    var maxDistance = PluginRuntime.GetOptionalDouble(parameters, "maxDistance") ?? 200d;
+
+    if (sampleSpacing <= 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "calculateCatchmentArea requires a positive sampleSpacing.");
+    }
+
+    if (maxDistance <= 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "calculateCatchmentArea requires a positive maxDistance.");
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, surfaceName, OpenMode.ForRead);
+      var outletElevation = GetSurfaceElevation(surface, outletX, outletY);
+
+      var contributingCells = new List<(double x, double y, double elevation)>();
+      var minX = outletX - maxDistance;
+      var maxX = outletX + maxDistance;
+      var minY = outletY - maxDistance;
+      var maxY = outletY + maxDistance;
+
+      for (var sampleX = minX; sampleX <= maxX; sampleX += sampleSpacing)
+      {
+        for (var sampleY = minY; sampleY <= maxY; sampleY += sampleSpacing)
+        {
+          double elevation;
+          try
+          {
+            elevation = GetSurfaceElevation(surface, sampleX, sampleY);
+          }
+          catch
+          {
+            continue;
+          }
+
+          var flowResult = TraceFlowToOutlet(surface, sampleX, sampleY, outletX, outletY, sampleSpacing * 0.5, 300);
+          if (flowResult.ReachesOutlet)
+          {
+            contributingCells.Add((sampleX, sampleY, elevation));
+          }
+        }
+      }
+
+      var cellArea = sampleSpacing * sampleSpacing;
+      var totalArea = contributingCells.Count * cellArea;
+
+      var elevations = contributingCells.Select(c => c.elevation).ToList();
+      var avgElevation = elevations.Any() ? elevations.Average() : outletElevation;
+      var maxElevation = elevations.Any() ? elevations.Max() : outletElevation;
+      var minElevation = elevations.Any() ? elevations.Min() : outletElevation;
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = surface.Name,
+        ["outletPoint"] = ToHydrologyPoint(outletX, outletY, outletElevation),
+        ["sampleSpacing"] = sampleSpacing,
+        ["maxDistance"] = maxDistance,
+        ["contributingCellCount"] = contributingCells.Count,
+        ["catchmentArea"] = totalArea,
+        ["elevationStatistics"] = new Dictionary<string, object?>
+        {
+          ["minimum"] = minElevation,
+          ["maximum"] = maxElevation,
+          ["average"] = avgElevation,
+          ["relief"] = maxElevation - minElevation,
+        },
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["horizontal"] = CivilObjectUtils.LinearUnits(database),
+          ["vertical"] = CivilObjectUtils.LinearUnits(database),
+          ["area"] = $"{CivilObjectUtils.LinearUnits(database)}²",
+        },
+      };
+    });
+  }
+
+  private static (bool ReachesOutlet, int Steps) TraceFlowToOutlet(Surface surface, double startX, double startY, double outletX, double outletY, double stepDistance, int maxSteps)
+  {
+    var currentX = startX;
+    var currentY = startY;
+    var tolerance = stepDistance * 2;
+
+    for (var step = 0; step < maxSteps; step++)
+    {
+      var distanceToOutlet = Math.Sqrt(Math.Pow(currentX - outletX, 2) + Math.Pow(currentY - outletY, 2));
+      if (distanceToOutlet <= tolerance)
+      {
+        return (true, step);
+      }
+
+      double currentElevation;
+      try
+      {
+        currentElevation = GetSurfaceElevation(surface, currentX, currentY);
+      }
+      catch
+      {
+        return (false, step);
+      }
+
+      var nextPoint = FindSteepestDescentPoint(surface, currentX, currentY, currentElevation, stepDistance);
+      if (nextPoint == null)
+      {
+        return (false, step);
+      }
+
+      currentX = nextPoint.X;
+      currentY = nextPoint.Y;
+    }
+
+    return (false, maxSteps);
+  }
+
+  private static List<(double x, double y)> ComputeConvexHull(List<(double x, double y)> points)
+  {
+    if (points.Count < 3)
+    {
+      return points;
+    }
+
+    var sorted = points.OrderBy(p => p.x).ThenBy(p => p.y).ToList();
+    var lower = new List<(double x, double y)>();
+    
+    foreach (var p in sorted)
+    {
+      while (lower.Count >= 2 && CrossProduct(lower[^2], lower[^1], p) <= 0)
+      {
+        lower.RemoveAt(lower.Count - 1);
+      }
+      lower.Add(p);
+    }
+
+    var upper = new List<(double x, double y)>();
+    for (var i = sorted.Count - 1; i >= 0; i--)
+    {
+      var p = sorted[i];
+      while (upper.Count >= 2 && CrossProduct(upper[^2], upper[^1], p) <= 0)
+      {
+        upper.RemoveAt(upper.Count - 1);
+      }
+      upper.Add(p);
+    }
+
+    lower.RemoveAt(lower.Count - 1);
+    upper.RemoveAt(upper.Count - 1);
+    lower.AddRange(upper);
+    
+    return lower;
+  }
+
+  private static double CrossProduct((double x, double y) o, (double x, double y) a, (double x, double y) b)
+  {
+    return (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  }
+
+  private static double CalculatePolygonArea(List<(double x, double y)> points)
+  {
+    if (points.Count < 3)
+    {
+      return 0;
+    }
+
+    var area = 0d;
+    for (var i = 0; i < points.Count; i++)
+    {
+      var j = (i + 1) % points.Count;
+      area += points[i].x * points[j].y;
+      area -= points[j].x * points[i].y;
+    }
+    
+    return Math.Abs(area) / 2d;
+  }
 }
