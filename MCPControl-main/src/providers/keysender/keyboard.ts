@@ -1,0 +1,213 @@
+import { createRequire } from 'module';
+// Try to require the optional 'keysender' package at runtime. If it's not
+// available we provide no-op fallbacks so importing this module does not
+// throw. The factory will fall back to AutoHotkey when keysender isn't
+// available, but keeping no-op implementations here avoids startup crashes
+// when files are imported from the compiled build output.
+const requirePkg = createRequire(import.meta.url);
+let Hardware: any = undefined;
+try {
+  const pkg = requirePkg('keysender');
+  Hardware = pkg?.Hardware;
+} catch (err) {
+  // hardware will remain undefined and we'll handle it in the class
+}
+
+// Define keyboard button type directly
+type KeyboardButtonType = string;
+import { KeyboardInput, KeyCombination, KeyHoldOperation } from '../../types/common.js';
+import { WindowsControlResponse } from '../../types/responses.js';
+import { KeyboardAutomation } from '../../interfaces/automation.js';
+import {
+  MAX_TEXT_LENGTH,
+  KeySchema,
+  VALID_KEYS,
+  KeyCombinationSchema,
+  KeyHoldOperationSchema,
+} from '../../tools/validation.zod.js';
+import { createLogger } from '../../logger.js';
+
+/**
+ * Keysender implementation of the KeyboardAutomation interface
+ */
+export class KeysenderKeyboardAutomation implements KeyboardAutomation {
+  private keyboard: any;
+  private logger = createLogger('keysender:keyboard');
+  constructor() {
+    if (Hardware) {
+      try {
+        this.keyboard = new Hardware().keyboard;
+      } catch (e) {
+        this.logger.warn('Failed to initialize keysender Hardware, using no-op keyboard', e);
+        this.keyboard = this._createNoopKeyboard();
+      }
+    } else {
+      this.logger.warn('Optional dependency "keysender" not installed; using no-op keyboard implementation');
+      this.keyboard = this._createNoopKeyboard();
+    }
+  }
+
+  private _createNoopKeyboard() {
+    return {
+      printText: async (_: string) => Promise.resolve(),
+      sendKey: async (_: string) => Promise.resolve(),
+      toggleKey: async (_: any, _?: any, __?: any) => Promise.resolve(),
+    };
+  }
+
+  typeText(input: KeyboardInput): WindowsControlResponse {
+    try {
+      // Validate text
+      if (!input.text) {
+        throw new Error('Text is required');
+      }
+
+      if (input.text.length > MAX_TEXT_LENGTH) {
+        throw new Error(`Text too long: ${input.text.length} characters (max ${MAX_TEXT_LENGTH})`);
+      }
+
+      // Start the asynchronous operation and handle errors properly
+      this.keyboard.printText(input.text).catch((err: any) => {
+        this.logger.error('Error typing text', err);
+        // We can't update the response after it's returned, but at least log the error
+      });
+
+      return {
+        success: true,
+        message: `Typed text successfully`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to type text: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  pressKey(key: string): WindowsControlResponse {
+    try {
+      // Validate the key using Zod schema
+      KeySchema.parse(key);
+      const keyboardKey = this._findMatchingString(key, VALID_KEYS);
+
+      // Start the asynchronous operation and handle errors properly
+      this.keyboard.sendKey(keyboardKey).catch((err: any) => {
+        this.logger.error(`Error pressing key ${key}`, err);
+        // We can't update the response after it's returned, but at least log the error
+      });
+
+      return {
+        success: true,
+        message: `Pressed key: ${key}`,
+      };
+    } catch (error) {
+      return {
+        success: false,
+        message: `Failed to press key: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  _findMatchingString(A: KeyboardButtonType, ButtonList: KeyboardButtonType[]): KeyboardButtonType {
+    const lowerA = A.toLowerCase();
+    return ButtonList.filter((item) => lowerA == item.toLowerCase())[0];
+  }
+
+  async pressKeyCombination(combination: KeyCombination): Promise<WindowsControlResponse> {
+    try {
+      // Validate the key combination using Zod schema
+      KeyCombinationSchema.parse(combination);
+
+      // Store original keys for the message
+      const keysForMessage = [...combination.keys];
+
+      // Validate each key and collect press
+      const validatedKeys: KeyboardButtonType[] = [];
+      for (const key of combination.keys) {
+        KeySchema.parse(key);
+        const keyboardKey = this._findMatchingString(key, VALID_KEYS);
+        validatedKeys.push(keyboardKey);
+      }
+      await this.keyboard.toggleKey(validatedKeys, true, 50).catch((err: any) => {
+        this.logger.error('Error pressing keys', err);
+        throw err; // Re-throw to be caught by the outer try/catch
+      });
+      await this.keyboard.toggleKey(validatedKeys, false, 50).catch((err: any) => {
+        this.logger.error('Error releasing keys', err);
+        throw err; // Re-throw to be caught by the outer try/catch
+      });
+      return {
+        success: true,
+        message: `Pressed key combination: ${keysForMessage.join('+')}`,
+      };
+    } catch (error) {
+      // Ensure all keys are released in case of error
+      try {
+        const cleanupPromises: Promise<void>[] = [];
+        for (const key of combination.keys) {
+          try {
+            KeySchema.parse(key);
+            const keyboardKey = this._findMatchingString(key, VALID_KEYS);
+            cleanupPromises.push(
+            this.keyboard.toggleKey(keyboardKey, false).catch((err: any) => {
+                this.logger.error(`Error releasing key ${key} during cleanup`, err);
+                // Ignore errors during cleanup
+              }),
+            );
+          } catch (validationError) {
+            this.logger.error(`Error validating key ${key} during cleanup`, validationError);
+            // Continue with other keys
+          }
+        }
+        await Promise.all(cleanupPromises);
+      } catch {
+        // Ignore errors during cleanup
+      }
+
+      return {
+        success: false,
+        message: `Failed to press key combination: ${error instanceof Error ? error.message : String(error)}`,
+      };
+    }
+  }
+
+  async holdKey(operation: KeyHoldOperation): Promise<WindowsControlResponse> {
+    try {
+      // Validate key hold operation using Zod schema
+      KeyHoldOperationSchema.parse(operation);
+
+      // Toggle the key state (down/up)
+      await this.keyboard.toggleKey(operation.key, operation.state === 'down');
+
+      // If it's a key press (down) with duration, wait for the specified duration then release
+      if (operation.state === 'down' && operation.duration) {
+        await new Promise((resolve) => setTimeout(resolve, operation.duration));
+        await this.keyboard.toggleKey(operation.key, false);
+      }
+
+      return {
+        success: true,
+        message: `Key ${operation.key} ${operation.state === 'down' ? 'held' : 'released'} successfully${
+          operation.state === 'down' && operation.duration ? ` for ${operation.duration}ms` : ''
+        }`,
+      };
+    } catch (error) {
+      // Ensure key is released in case of error during hold
+      if (operation.state === 'down') {
+        try {
+          await this.keyboard.toggleKey(operation.key, false);
+        } catch (releaseError) {
+          this.logger.error(`Error releasing key ${operation.key} during cleanup`, releaseError);
+          // Ignore errors during cleanup
+        }
+      }
+
+      return {
+        success: false,
+        message: `Failed to ${operation.state} key ${operation.key}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+  }
+}

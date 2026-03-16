@@ -1,2 +1,9 @@
 build/
 node_modules/
+.vs/
+dist/
+**/bin/
+**/obj/
+.DS_Store
+.claude
+.claude.md.local
