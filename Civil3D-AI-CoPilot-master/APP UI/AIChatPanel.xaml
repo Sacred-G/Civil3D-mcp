@@ -113,7 +113,7 @@
             <Grid x:Name="SettingsTab" Grid.Row="1" Visibility="Collapsed" Margin="20">
                 <StackPanel>
                     <TextBlock Text="AI Provider" Foreground="#A0A0A0" Margin="0,0,0,5"/>
-                    <ComboBox x:Name="ProviderCombo" Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#3F3F46" Padding="5" Margin="0,0,0,15">
+                    <ComboBox x:Name="ProviderCombo" Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#3F3F46" Padding="5" Margin="0,0,0,15" SelectionChanged="ProviderCombo_SelectionChanged">
                         <ComboBox.Style>
                             <Style TargetType="ComboBox">
                                 <Setter Property="Template">
@@ -169,11 +169,18 @@
 
                         <ComboBoxItem Content="Google Gemini (2.5 Flash)" Tag="gemini-2.5-flash" IsSelected="True"/>
                         <ComboBoxItem Content="Google Gemini (3.1 Pro)" Tag="gemini-3.1-pro"/>
-                        <ComboBoxItem Content="OpenAI (ChatGPT) - Coming Soon" IsEnabled="False"/>
+                        <ComboBoxItem Content="OpenAI GPT-4o" Tag="openai-gpt-4o"/>
+                        <ComboBoxItem Content="OpenAI GPT-4o Mini" Tag="openai-gpt-4o-mini"/>
                     </ComboBox>
 
-                    <TextBlock Text="API Key" Foreground="#A0A0A0" Margin="0,0,0,5"/>
+                    <TextBlock x:Name="ApiKeyLabel" Text="API Key" Foreground="#A0A0A0" Margin="0,0,0,5"/>
                     <TextBox x:Name="ApiKeyBox" Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#3F3F46" Padding="8" Margin="0,0,0,15"/>
+
+                    <StackPanel x:Name="VectorStoreIdPanel" Visibility="Collapsed" Margin="0,0,0,15">
+                        <TextBlock Text="Vector Store ID" Foreground="#A0A0A0" Margin="0,0,0,5"/>
+                        <TextBox x:Name="VectorStoreIdBox" Background="#1E1E1E" Foreground="#D4D4D4" BorderBrush="#3F3F46" Padding="8" Margin="0,0,0,5"/>
+                        <TextBlock Text="Optional: Connect your OpenAI Vector Store for knowledge retrieval (file search)." Foreground="#666666" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
 
                     <Grid>
                         <Grid.ColumnDefinitions>

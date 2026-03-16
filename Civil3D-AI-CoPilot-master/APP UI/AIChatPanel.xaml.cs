@@ -60,7 +60,7 @@ namespace Cad_AI_Agent.UI
             _thinkingTimer.Tick += ThinkingTimer_Tick;
 
             StartNewSession(); // პირველი ჩართვისას იწყებს ახალ ჩატს
-   
+
             using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\CadAiAgent"))
             {
                 if (key != null)
@@ -68,6 +68,9 @@ namespace Cad_AI_Agent.UI
                     ApiKeyBox.Text = key.GetValue("ApiKey")?.ToString() ?? "";
                 }
             }
+
+            // Vector Store panel is hidden by default (Gemini is selected by default)
+            VectorStoreIdPanel.Visibility = Visibility.Collapsed;
         }
 
         // ================= ისტორიის მართვის ლოგიკა =================
@@ -266,6 +269,30 @@ namespace Cad_AI_Agent.UI
             TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
         }
 
+        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (ProviderCombo.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
+            {
+                bool isOpenAI = selectedItem.Tag.ToString().StartsWith("openai-");
+
+                VectorStoreIdPanel.Visibility = isOpenAI ? Visibility.Visible : Visibility.Collapsed;
+                ApiKeyLabel.Text = isOpenAI ? "OpenAI API Key" : "API Key";
+
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\CadAiAgent"))
+                {
+                    if (key != null)
+                    {
+                        ApiKeyBox.Text = isOpenAI
+                            ? key.GetValue("OpenAIApiKey")?.ToString() ?? ""
+                            : key.GetValue("ApiKey")?.ToString() ?? "";
+
+                        if (isOpenAI)
+                            VectorStoreIdBox.Text = key.GetValue("OpenAIVectorStoreId")?.ToString() ?? "";
+                    }
+                }
+            }
+        }
+
         private async void TestConnectionBtn_Click(object sender, RoutedEventArgs e)
         {
             string key = ApiKeyBox.Text.Trim();
@@ -279,28 +306,55 @@ namespace Cad_AI_Agent.UI
             ConnectionStatusText.Foreground = Brushes.Yellow;
             TestConnectionBtn.IsEnabled = false;
 
+            bool isOpenAI = ProviderCombo.SelectedItem is ComboBoxItem item && item.Tag?.ToString().StartsWith("openai-") == true;
+
             try
             {
-                string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}";
-                using var client = new HttpClient();
-                var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(testUrl, content);
-                if (response.IsSuccessStatusCode)
+                if (isOpenAI)
                 {
-                    ConnectionStatusText.Text = "✅ Connected!";
-                    using (RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\CadAiAgent"))
+                    using var client = new HttpClient();
+                    client.DefaultRequestHeaders.Add("Authorization", $"Bearer {key}");
+                    var response = await client.GetAsync("https://api.openai.com/v1/models");
+                    if (response.IsSuccessStatusCode)
                     {
-                        regKey.SetValue("ApiKey", key);
+                        ConnectionStatusText.Text = "✅ Connected!";
+                        ConnectionStatusText.Foreground = Brushes.LightGreen;
+                        using (RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\CadAiAgent"))
+                        {
+                            regKey.SetValue("OpenAIApiKey", key);
+                            regKey.SetValue("OpenAIVectorStoreId", VectorStoreIdBox.Text.Trim());
+                        }
                     }
-                    ConnectionStatusText.Foreground = Brushes.LightGreen;
+                    else
+                    {
+                        string errorDetails = await response.Content.ReadAsStringAsync();
+                        ConnectionStatusText.Text = "❌ Connection Failed";
+                        ConnectionStatusText.Foreground = Brushes.Red;
+                        MessageBox.Show($"OpenAI API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
                 else
                 {
-                    // === აქ ვიჭერთ Google-ის რეალურ პასუხს და ვაგდებთ ეკრანზე ===
-                    string errorDetails = await response.Content.ReadAsStringAsync();
-                    ConnectionStatusText.Text = "❌ Connection Failed";
-                    ConnectionStatusText.Foreground = Brushes.Red;
-                    MessageBox.Show($"Google API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                    string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}";
+                    using var client = new HttpClient();
+                    var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
+                    var response = await client.PostAsync(testUrl, content);
+                    if (response.IsSuccessStatusCode)
+                    {
+                        ConnectionStatusText.Text = "✅ Connected!";
+                        ConnectionStatusText.Foreground = Brushes.LightGreen;
+                        using (RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\CadAiAgent"))
+                        {
+                            regKey.SetValue("ApiKey", key);
+                        }
+                    }
+                    else
+                    {
+                        string errorDetails = await response.Content.ReadAsStringAsync();
+                        ConnectionStatusText.Text = "❌ Connection Failed";
+                        ConnectionStatusText.Foreground = Brushes.Red;
+                        MessageBox.Show($"Google API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                    }
                 }
             }
             catch
@@ -347,11 +401,21 @@ namespace Cad_AI_Agent.UI
                 return;
             }
 
-            // 1. აქ ვკითხულობთ, რომელი მოდელი აირჩია მომხმარებელმა Settings ტაბში
-            string selectedModel = "gemini-2.5-flash"; // Default მნიშვნელობა
+            // 1. Determine selected provider and model
+            string selectedModel = "gemini-2.5-flash";
+            bool isOpenAI = false;
             if (ProviderCombo.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
             {
-                selectedModel = selectedItem.Tag.ToString();
+                string tag = selectedItem.Tag.ToString();
+                if (tag.StartsWith("openai-"))
+                {
+                    isOpenAI = true;
+                    selectedModel = tag.Substring("openai-".Length);
+                }
+                else
+                {
+                    selectedModel = tag;
+                }
             }
 
             AddMessageToChat(message, true);
@@ -365,8 +429,10 @@ namespace Cad_AI_Agent.UI
 
             try
             {
-                // 2. აქ ვაწვდით არჩეულ მოდელს GetGeminiResponse ფუნქციას
-                string jsonPayload = await GetGeminiResponse(message, apiKey, selectedModel);
+                // 2. Route to the appropriate provider
+                string jsonPayload = isOpenAI
+                    ? await GetOpenAIResponse(message, apiKey, selectedModel, VectorStoreIdBox.Text.Trim())
+                    : await GetGeminiResponse(message, apiKey, selectedModel);
                 _thinkingTimer.Stop();
 
                 if (!string.IsNullOrEmpty(jsonPayload))
@@ -424,6 +490,76 @@ namespace Cad_AI_Agent.UI
             // თუ ერორია, ვისვრით Google-ის რეალურ ტექსტს
             string errorRaw = await response.Content.ReadAsStringAsync();
             throw new Exception($"API Error ({modelName}): {errorRaw}");
+        }
+
+        private async Task<string> GetOpenAIResponse(string prompt, string key, string modelName, string vectorStoreId)
+        {
+            string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("Authorization", $"Bearer {key}");
+
+            string aiText;
+
+            if (!string.IsNullOrEmpty(vectorStoreId))
+            {
+                // Use Responses API with file_search tool for vector store access
+                string url = "https://api.openai.com/v1/responses";
+                var requestBody = new
+                {
+                    model = modelName,
+                    instructions = systemInstruction,
+                    tools = new[] { new { type = "file_search", vector_store_ids = new[] { vectorStoreId } } },
+                    input = prompt
+                };
+
+                var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorRaw = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"OpenAI API Error ({modelName}): {errorRaw}");
+                }
+
+                string responseString = await response.Content.ReadAsStringAsync();
+                JObject jsonResponse = JObject.Parse(responseString);
+                // Extract text from Responses API output array
+                aiText = jsonResponse["output"]
+                    ?.FirstOrDefault(o => o["type"]?.ToString() == "message")
+                    ?["content"]
+                    ?.FirstOrDefault(c => c["type"]?.ToString() == "output_text")
+                    ?["text"]?.ToString() ?? "";
+            }
+            else
+            {
+                // Fall back to Chat Completions API when no vector store is configured
+                string url = "https://api.openai.com/v1/chat/completions";
+                var requestBody = new
+                {
+                    model = modelName,
+                    messages = new[]
+                    {
+                        new { role = "system", content = systemInstruction },
+                        new { role = "user", content = prompt }
+                    },
+                    temperature = 0.0
+                };
+
+                var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                var response = await client.PostAsync(url, content);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    string errorRaw = await response.Content.ReadAsStringAsync();
+                    throw new Exception($"OpenAI API Error ({modelName}): {errorRaw}");
+                }
+
+                string responseString = await response.Content.ReadAsStringAsync();
+                JObject jsonResponse = JObject.Parse(responseString);
+                aiText = jsonResponse["choices"][0]["message"]["content"].ToString();
+            }
+
+            return aiText.Replace("```json", "").Replace("```", "").Trim();
         }
 
         private async Task ExecuteCadCommandsLive(List<CadCommand> commands)
