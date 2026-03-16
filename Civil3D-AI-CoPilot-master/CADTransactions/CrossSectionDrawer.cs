@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class CrossSectionDrawer
     {
-        public static void Draw(Document doc, double interval = 10.0, string alignmentName = null, double leftWidth = 20.0, double rightWidth = 20.0, int columns = 10, double spacingX = 80.0, double spacingY = 50.0)
+        public static void Draw(Document doc, double interval = 10.0, string? alignmentName = null, double leftWidth = 20.0, double rightWidth = 20.0, int columns = 10, double spacingX = 80.0, double spacingY = 50.0)
         {
             var db = doc.Database;
             var civilDoc = CivilApplication.ActiveDocument;
@@ -134,8 +134,7 @@ namespace Cad_AI_Agent.CADTransactions
 
                     ObjectId svId = SectionView.Create(svName, slId, insertPt);
 
-                    SectionView sv = trans.GetObject(svId, OpenMode.ForWrite) as SectionView;
-                    if (sv != null && svStyleId != ObjectId.Null)
+                    if (trans.GetObject(svId, OpenMode.ForWrite) is SectionView sv && svStyleId != ObjectId.Null)
                     {
                         sv.StyleId = svStyleId;
                     }

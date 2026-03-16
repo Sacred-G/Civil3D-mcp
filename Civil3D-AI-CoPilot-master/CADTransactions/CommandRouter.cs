@@ -37,7 +37,7 @@ namespace Cad_AI_Agent.CADTransactions
         private const double DefaultSectionSpacingX = 80.0;
         private const double DefaultSectionSpacingY = 50.0;
 
-        public static void Execute(Document doc, CadCommand command, ExecutionProgressReporter progress = null)
+        public static void Execute(Document doc, CadCommand command, ExecutionProgressReporter? progress = null)
         {
             if (command == null)
             {
@@ -135,7 +135,7 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "AddSurfaceBreakline":
-                        string targetSurface = GetStringArg(command, "surfaceName");
+                        string? targetSurface = GetStringArg(command, "surfaceName");
                         progress?.ReportRunning(command.Action, "Adding breakline to surface...", targetSurface != null ? $"Target: {targetSurface}" : "Using first active surface");
                         if (command.Params.Length < MinBreaklineParams)
                         {
@@ -147,8 +147,8 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "DrawProfile":
-                        string profileAlignment = GetStringArg(command, "alignmentName");
-                        string profileSurface = GetStringArg(command, "surfaceName");
+                        string? profileAlignment = GetStringArg(command, "alignmentName");
+                        string? profileSurface = GetStringArg(command, "surfaceName");
                         string profileName = GetStringArg(command, "profileName") ?? DefaultProfileName;
                         progress?.ReportRunning(command.Action, $"Creating surface profile '{profileName}'...", $"Alignment: {profileAlignment ?? "first"}, Surface: {profileSurface ?? "first"}");
                         if (command.Params.Length >= MinProfileParams || command.Args != null)
@@ -169,7 +169,7 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "DrawLayoutProfile":
-                        string layoutAlignment = GetStringArg(command, "alignmentName");
+                        string? layoutAlignment = GetStringArg(command, "alignmentName");
                         string layoutProfileName = GetStringArg(command, "profileName") ?? DefaultLayoutProfileName;
                         int pviCount = command.Params.Length / 2;
                         progress?.ReportRunning(command.Action, $"Creating layout profile '{layoutProfileName}'...", $"Processing {pviCount} PVI points");
@@ -184,8 +184,8 @@ namespace Cad_AI_Agent.CADTransactions
 
                     case "DrawAutoProfile":
                         double interval = command.Params.Length > 0 ? command.Params[0] : DefaultAutoProfileInterval;
-                        string autoAlignment = GetStringArg(command, "alignmentName");
-                        string sourceProfile = GetStringArg(command, "sourceProfileName");
+                        string? autoAlignment = GetStringArg(command, "alignmentName");
+                        string? sourceProfile = GetStringArg(command, "sourceProfileName");
                         string autoProfileName = GetStringArg(command, "profileName") ?? DefaultAutoProfileName;
                         progress?.ReportRunning(command.Action, $"Generating auto-profile '{autoProfileName}'...", $"Sampling every {interval:F0} units from {sourceProfile ?? "EG profile"}");
                         AutoProfileDrawer.Draw(doc, interval, autoAlignment, sourceProfile, autoProfileName);
@@ -194,10 +194,10 @@ namespace Cad_AI_Agent.CADTransactions
 
                     case "DrawCorridor":
                         string corridorName = GetStringArg(command, "corridorName") ?? DefaultCorridorName;
-                        string corrAlignment = GetStringArg(command, "alignmentName");
-                        string corrProfile = GetStringArg(command, "profileName");
-                        string corrAssembly = GetStringArg(command, "assemblyName");
-                        string corrSurface = GetStringArg(command, "surfaceName");
+                        string? corrAlignment = GetStringArg(command, "alignmentName");
+                        string? corrProfile = GetStringArg(command, "profileName");
+                        string? corrAssembly = GetStringArg(command, "assemblyName");
+                        string? corrSurface = GetStringArg(command, "surfaceName");
                         double frequency = GetDoubleArg(command, "frequency", DefaultCorridorFrequency);
                         progress?.ReportRunning(command.Action, $"Building corridor '{corridorName}'...", $"Alignment: {corrAlignment ?? "first"}, Profile: {corrProfile ?? "first FG"}, Assembly: {corrAssembly ?? "first"}");
                         CorridorDrawer.Draw(
@@ -212,7 +212,7 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "DrawCrossSections":
-                        string sectionAlignment = GetStringArg(command, "alignmentName");
+                        string? sectionAlignment = GetStringArg(command, "alignmentName");
                         double sectionInterval = command.Params.Length > 0 ? command.Params[0] : GetDoubleArg(command, "interval", DefaultSectionInterval);
                         double leftWidth = GetDoubleArg(command, "leftWidth", DefaultSectionWidth);
                         double rightWidth = GetDoubleArg(command, "rightWidth", DefaultSectionWidth);
@@ -230,7 +230,7 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "DrawSampleLines":
-                        string sampleAlignment = GetStringArg(command, "alignmentName");
+                        string? sampleAlignment = GetStringArg(command, "alignmentName");
                         string groupName = GetStringArg(command, "groupName") ?? DefaultSampleGroupName;
                         progress?.ReportRunning(command.Action, $"Creating sample line group '{groupName}'...", $"Interval: {command.Params[0]:F1}, Widths: {command.Params[1]:F1}L/{command.Params[2]:F1}R");
                         if (command.Params.Length < MinSampleLineParams)
@@ -243,7 +243,7 @@ namespace Cad_AI_Agent.CADTransactions
                         break;
 
                     case "ExtractSurfaceContours":
-                        string contourSurface = GetStringArg(command, "surfaceName");
+                        string? contourSurface = GetStringArg(command, "surfaceName");
                         progress?.ReportRunning(command.Action, "Extracting surface contours...", $"Major: {command.Params[0]:F1}, Minor: {command.Params[1]:F1}" + (contourSurface != null ? $", Surface: {contourSurface}" : ""));
                         if (command.Params.Length < MinContourParams)
                         {
@@ -278,14 +278,14 @@ namespace Cad_AI_Agent.CADTransactions
             }
         }
 
-        private static string GetStringArg(CadCommand command, string name)
+        private static string? GetStringArg(CadCommand command, string name)
         {
             return command.Args?.Value<string>(name);
         }
 
         private static double GetDoubleArg(CadCommand command, string name, double fallback)
         {
-            JToken token = command.Args?[name];
+            JToken? token = command.Args?[name];
             if (token == null) return fallback;
             return token.Type == JTokenType.Integer || token.Type == JTokenType.Float
                 ? token.Value<double>()
@@ -294,7 +294,7 @@ namespace Cad_AI_Agent.CADTransactions
 
         private static double? GetDoubleArgNullable(CadCommand command, string name)
         {
-            JToken token = command.Args?[name];
+            JToken? token = command.Args?[name];
             if (token == null) return null;
             return token.Type == JTokenType.Integer || token.Type == JTokenType.Float
                 ? token.Value<double>()
@@ -303,7 +303,7 @@ namespace Cad_AI_Agent.CADTransactions
 
         private static int GetIntArg(CadCommand command, string name, int fallback)
         {
-            JToken token = command.Args?[name];
+            JToken? token = command.Args?[name];
             if (token == null) return fallback;
             return token.Type == JTokenType.Integer
                 ? token.Value<int>()

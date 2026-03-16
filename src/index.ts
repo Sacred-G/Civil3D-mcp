@@ -1,6 +1,7 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { registerTools } from "./tools/register.js";
+import { startHttpBridge } from "./httpBridge.js";
 import { createLogger } from "./utils/logger.js";
 
 const log = createLogger("MCP");
@@ -12,6 +13,7 @@ const server = new McpServer({
 
 async function main() {
   await registerTools(server);
+  startHttpBridge();
 
   const transport = new StdioServerTransport();
   await server.connect(transport);

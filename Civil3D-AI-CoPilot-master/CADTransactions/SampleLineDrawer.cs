@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class SampleLineDrawer
     {
-        public static void Draw(Document doc, double leftWidth, double rightWidth, double interval, string alignmentName = null, string groupName = null)
+        public static void Draw(Document doc, double leftWidth, double rightWidth, double interval, string? alignmentName = null, string? groupName = null)
         {
             if (interval <= 0 || leftWidth <= 0 || rightWidth <= 0)
             {
@@ -24,15 +24,13 @@ namespace Cad_AI_Agent.CADTransactions
             using Transaction trans = db.TransactionManager.StartTransaction();
 
             ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
-            Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
-            if (align == null) return;
+            if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align) return;
 
             string resolvedGroupName = string.IsNullOrWhiteSpace(groupName)
                 ? "AI_SLG_" + DateTime.Now.ToString("HHmmss")
                 : groupName;
             ObjectId groupId = SampleLineGroup.Create(resolvedGroupName, align.ObjectId);
-            SampleLineGroup group = trans.GetObject(groupId, OpenMode.ForWrite) as SampleLineGroup;
-            if (group == null) return;
+            if (trans.GetObject(groupId, OpenMode.ForWrite) is not SampleLineGroup group) return;
 
             SectionSourceCollection sources = group.GetSectionSources();
             foreach (SectionSource source in sources)

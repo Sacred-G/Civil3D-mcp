@@ -16,7 +16,7 @@ namespace Cad_AI_Agent
             {
                 WriteMessage("[AI Agent] Plugin initialized. Run AIChat to open the palette.");
             }
-            catch (Exception ex)
+            catch (System.Exception ex)
             {
                 WriteMessage($"[AI Agent] Initialization error: {ex.Message}");
             }

@@ -1,12 +1,18 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
 
 	<PropertyGroup>
 		<TargetFramework>net8.0-windows</TargetFramework>
 		<UseWPF>true</UseWPF>
 
+		<!-- Civil 3D 2025+ runs on .NET 8. Plugin must target net8.0-windows to match. -->
+		<AssemblyName>CadAIAgent</AssemblyName>
+		<PlatformTarget>x64</PlatformTarget>
+		<Prefer32Bit>false</Prefer32Bit>
 		<RootNamespace>Cad_AI_Agent</RootNamespace>
-		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+		<NoWarn>$(NoWarn);MSB3277</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
@@ -15,25 +21,25 @@
 
 	<ItemGroup>
 		<Reference Include="accoremgd">
-			<HintPath>..\..\..\C_References\accoremgd.dll</HintPath>
+			<HintPath>..\C_References\accoremgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Acdbmgd">
-			<HintPath>..\..\..\C_References\AcDbMgd.dll</HintPath>
+			<HintPath>..\C_References\AcDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="Acmgd">
-			<HintPath>..\..\..\C_References\acmgd.dll</HintPath>
+			<HintPath>..\C_References\acmgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AecBaseMgd">
-			<HintPath>..\..\..\C_References\AecBaseMgd.dll</HintPath>
+			<HintPath>..\C_References\AecBaseMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 		<Reference Include="AeccDbMgd">
-			<HintPath>..\..\..\C_References\AeccDbMgd.dll</HintPath>
+			<HintPath>..\C_References\AeccDbMgd.dll</HintPath>
 			<Private>False</Private>
 		</Reference>
 	</ItemGroup>
 
-</Project>
+  </Project>

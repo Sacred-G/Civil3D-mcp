@@ -9,7 +9,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class ProfileDrawer
     {
-        public static void Draw(Document doc, double offsetX, double offsetY, string alignmentName = null, string surfaceName = null, string profileName = null)
+        public static void Draw(Document doc, double offsetX, double offsetY, string? alignmentName = null, string? surfaceName = null, string? profileName = null)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -20,7 +20,11 @@ namespace Cad_AI_Agent.CADTransactions
                 doc.Editor.WriteMessage("\n[AI]: Drawing Profile View relative to Alignment start...");
 
                 ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
-                Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
+                if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Alignment could not be resolved for profile creation.");
+                    return;
+                }
                 ObjectId surfId = CivilLookup.GetSurfaceId(civilDoc, trans, surfaceName);
 
                 ObjectId layerId = db.LayerZero;

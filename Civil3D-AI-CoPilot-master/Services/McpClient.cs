@@ -50,7 +50,7 @@ namespace Cad_AI_Agent.Services
         /// <summary>
         /// Execute an MCP tool and return the result.
         /// </summary>
-        private async Task<JObject> ExecuteToolAsync(string toolName, object parameters = null)
+        private async Task<JObject> ExecuteToolAsync(string toolName, object? parameters = null)
         {
             if (!_isAvailable)
             {
@@ -101,7 +101,7 @@ namespace Cad_AI_Agent.Services
                 {
                     alignments.Add(new AlignmentInfo
                     {
-                        Name = item["name"]?.ToString(),
+                        Name = item["name"]?.ToString() ?? string.Empty,
                         Length = item["length"]?.Value<double>() ?? 0,
                         StartStation = item["startStation"]?.Value<double>() ?? 0,
                         EndStation = item["endStation"]?.Value<double>() ?? 0
@@ -126,8 +126,8 @@ namespace Cad_AI_Agent.Services
                 {
                     surfaces.Add(new SurfaceInfo
                     {
-                        Name = item["name"]?.ToString(),
-                        Type = item["type"]?.ToString(),
+                        Name = item["name"]?.ToString() ?? string.Empty,
+                        Type = item["type"]?.ToString() ?? string.Empty,
                         MinElevation = item["minElevation"]?.Value<double>(),
                         MaxElevation = item["maxElevation"]?.Value<double>()
                     });
@@ -151,8 +151,8 @@ namespace Cad_AI_Agent.Services
                 {
                     profiles.Add(new ProfileInfo
                     {
-                        Name = item["name"]?.ToString(),
-                        Type = item["type"]?.ToString(),
+                        Name = item["name"]?.ToString() ?? string.Empty,
+                        Type = item["type"]?.ToString() ?? string.Empty,
                         AlignmentName = alignmentName
                     });
                 }
@@ -175,7 +175,7 @@ namespace Cad_AI_Agent.Services
                 {
                     assemblies.Add(new AssemblyInfo
                     {
-                        Name = item["name"]?.ToString()
+                        Name = item["name"]?.ToString() ?? string.Empty
                     });
                 }
             }
@@ -197,9 +197,9 @@ namespace Cad_AI_Agent.Services
                 {
                     corridors.Add(new CorridorInfo
                     {
-                        Name = item["name"]?.ToString(),
-                        AlignmentName = item["alignmentName"]?.ToString(),
-                        ProfileName = item["profileName"]?.ToString()
+                        Name = item["name"]?.ToString() ?? string.Empty,
+                        AlignmentName = item["alignmentName"]?.ToString() ?? string.Empty,
+                        ProfileName = item["profileName"]?.ToString() ?? string.Empty
                     });
                 }
             }
@@ -266,7 +266,7 @@ namespace Cad_AI_Agent.Services
 
     public class AlignmentInfo
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
         public double Length { get; set; }
         public double StartStation { get; set; }
         public double EndStation { get; set; }
@@ -274,29 +274,29 @@ namespace Cad_AI_Agent.Services
 
     public class SurfaceInfo
     {
-        public string Name { get; set; }
-        public string Type { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
         public double? MinElevation { get; set; }
         public double? MaxElevation { get; set; }
     }
 
     public class ProfileInfo
     {
-        public string Name { get; set; }
-        public string Type { get; set; }
-        public string AlignmentName { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string Type { get; set; } = string.Empty;
+        public string AlignmentName { get; set; } = string.Empty;
     }
 
     public class AssemblyInfo
     {
-        public string Name { get; set; }
+        public string Name { get; set; } = string.Empty;
     }
 
     public class CorridorInfo
     {
-        public string Name { get; set; }
-        public string AlignmentName { get; set; }
-        public string ProfileName { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string AlignmentName { get; set; } = string.Empty;
+        public string ProfileName { get; set; } = string.Empty;
     }
 
     public class DrawingContext
@@ -305,7 +305,7 @@ namespace Cad_AI_Agent.Services
         public List<SurfaceInfo> Surfaces { get; set; } = new List<SurfaceInfo>();
         public List<AssemblyInfo> Assemblies { get; set; } = new List<AssemblyInfo>();
         public List<CorridorInfo> Corridors { get; set; } = new List<CorridorInfo>();
-        public string Error { get; set; }
+        public string? Error { get; set; }
 
         public bool HasAlignments => Alignments?.Count > 0;
         public bool HasSurfaces => Surfaces?.Count > 0;

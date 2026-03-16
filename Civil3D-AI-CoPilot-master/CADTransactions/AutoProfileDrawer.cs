@@ -10,7 +10,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class AutoProfileDrawer
     {
-        public static void Draw(Document doc, double interval = 150.0, string alignmentName = null, string sourceProfileName = null, string profileName = null)
+        public static void Draw(Document doc, double interval = 150.0, string? alignmentName = null, string? sourceProfileName = null, string? profileName = null)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -21,12 +21,16 @@ namespace Cad_AI_Agent.CADTransactions
                 doc.Editor.WriteMessage("\n[AI]: Running Best-Fit AutoProfile on existing EG...");
 
                 ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
-                Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
+                if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Alignment could not be resolved.");
+                    return;
+                }
 
                 ObjectId sourceProfileId = string.IsNullOrWhiteSpace(sourceProfileName)
                     ? CivilLookup.GetProfileId(align, trans, null, ProfileType.EG)
                     : CivilLookup.GetProfileId(align, trans, sourceProfileName);
-                Profile egProfile = trans.GetObject(sourceProfileId, OpenMode.ForRead) as Profile;
+                Profile? egProfile = trans.GetObject(sourceProfileId, OpenMode.ForRead) as Profile;
 
                 if (egProfile == null)
                 {
@@ -43,7 +47,12 @@ namespace Cad_AI_Agent.CADTransactions
                     : profileName;
 
                 ObjectId layoutProfId = Profile.CreateByLayout(resolvedProfileName, align.ObjectId, layerId, styleId, labelSetId);
-                Profile layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
+                Profile? layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
+                if (layoutProfile == null)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Layout profile could not be created.");
+                    return;
+                }
 
                 double startSta = egProfile.StartingStation;
                 double endSta = egProfile.EndingStation;
@@ -74,8 +83,8 @@ namespace Cad_AI_Agent.CADTransactions
 
                 for (int i = 0; i < tangents.Count - 1; i++)
                 {
-                    ProfileTangent t1 = tangents[i] as ProfileTangent;
-                    ProfileTangent t2 = tangents[i + 1] as ProfileTangent;
+                    ProfileTangent? t1 = tangents[i] as ProfileTangent;
+                    ProfileTangent? t2 = tangents[i + 1] as ProfileTangent;
 
                     if (t1 != null && t2 != null && Math.Abs(t1.Grade - t2.Grade) > 0.001)
                     {

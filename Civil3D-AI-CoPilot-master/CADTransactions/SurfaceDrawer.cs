@@ -8,12 +8,13 @@ using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.Civil.ApplicationServices;
 using Autodesk.Civil.DatabaseServices;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Cad_AI_Agent.CADTransactions
 {
     public static class SurfaceDrawer
     {
-        public static void Draw(Document doc, double[] pointData, string surfaceName = null)
+        public static void Draw(Document doc, double[] pointData, string? surfaceName = null)
         {
             if (pointData == null || pointData.Length < 9 || pointData.Length % 3 != 0)
             {
@@ -32,8 +33,7 @@ namespace Cad_AI_Agent.CADTransactions
                 ? "AI_Surface_" + DateTime.Now.ToString("HHmmss")
                 : surfaceName;
             ObjectId surfaceId = CreateTinSurface(civilDoc, resolvedSurfaceName, styleId);
-            Surface surface = trans.GetObject(surfaceId, OpenMode.ForWrite) as Surface;
-            if (surface == null) return;
+            if (trans.GetObject(surfaceId, OpenMode.ForWrite) is not CivilSurface surface) return;
 
             object definition = GetSurfaceDefinition(surface);
             Point3dCollection points = ToPoint3dCollection(pointData);
@@ -51,7 +51,7 @@ namespace Cad_AI_Agent.CADTransactions
             doc.Editor.WriteMessage($"\n[AI Success]: TIN surface '{resolvedSurfaceName}' created from {points.Count} points.");
         }
 
-        public static void AddBreakline(Document doc, double[] pointData, string surfaceName = null)
+        public static void AddBreakline(Document doc, double[] pointData, string? surfaceName = null)
         {
             if (pointData == null || pointData.Length < 6 || pointData.Length % 3 != 0)
             {
@@ -66,8 +66,7 @@ namespace Cad_AI_Agent.CADTransactions
             using Transaction trans = db.TransactionManager.StartTransaction();
 
             ObjectId surfaceId = CivilLookup.GetSurfaceId(civilDoc, trans, surfaceName);
-            Surface surface = trans.GetObject(surfaceId, OpenMode.ForWrite) as Surface;
-            if (surface == null) return;
+            if (trans.GetObject(surfaceId, OpenMode.ForWrite) is not CivilSurface surface) return;
 
             object definition = GetSurfaceDefinition(surface);
             Point3dCollection points = ToPoint3dCollection(pointData);
@@ -85,7 +84,7 @@ namespace Cad_AI_Agent.CADTransactions
             doc.Editor.WriteMessage($"\n[AI Success]: Breakline added to surface '{surface.Name}'.");
         }
 
-        public static void ExtractContours(Document doc, double minorInterval, double majorInterval, string surfaceName = null)
+        public static void ExtractContours(Document doc, double minorInterval, double majorInterval, string? surfaceName = null)
         {
             if (minorInterval <= 0 || majorInterval <= 0)
             {
@@ -100,8 +99,7 @@ namespace Cad_AI_Agent.CADTransactions
             using Transaction trans = db.TransactionManager.StartTransaction();
 
             ObjectId surfaceId = CivilLookup.GetSurfaceId(civilDoc, trans, surfaceName);
-            Surface surface = trans.GetObject(surfaceId, OpenMode.ForRead) as Surface;
-            if (surface == null) return;
+            if (trans.GetObject(surfaceId, OpenMode.ForRead) is not CivilSurface surface) return;
 
             List<ObjectId> extracted = ExtractContourEntities(surface, minorInterval, majorInterval);
             trans.Commit();
@@ -135,22 +133,38 @@ namespace Cad_AI_Agent.CADTransactions
                 {
                     if (parameters.Length == 3 && parameters[0].ParameterType.Name == "CivilDocument")
                     {
-                        return (ObjectId)method.Invoke(null, new object[] { civilDoc, name, styleId });
+                        object? created = method.Invoke(null, new object[] { civilDoc, name, styleId });
+                        if (created is ObjectId objectId)
+                        {
+                            return objectId;
+                        }
                     }
 
                     if (parameters.Length == 2 && parameters[0].ParameterType == typeof(string) && parameters[1].ParameterType == typeof(ObjectId))
                     {
-                        return (ObjectId)method.Invoke(null, new object[] { name, styleId });
+                        object? created = method.Invoke(null, new object[] { name, styleId });
+                        if (created is ObjectId objectId)
+                        {
+                            return objectId;
+                        }
                     }
 
                     if (parameters.Length == 2 && parameters[0].ParameterType.Name == "CivilDocument")
                     {
-                        return (ObjectId)method.Invoke(null, new object[] { civilDoc, name });
+                        object? created = method.Invoke(null, new object[] { civilDoc, name });
+                        if (created is ObjectId objectId)
+                        {
+                            return objectId;
+                        }
                     }
 
                     if (parameters.Length == 1 && parameters[0].ParameterType == typeof(string))
                     {
-                        return (ObjectId)method.Invoke(null, new object[] { name });
+                        object? created = method.Invoke(null, new object[] { name });
+                        if (created is ObjectId objectId)
+                        {
+                            return objectId;
+                        }
                     }
                 }
                 catch
@@ -161,11 +175,11 @@ namespace Cad_AI_Agent.CADTransactions
             throw new InvalidOperationException("Unable to create a TIN surface with the available Civil 3D API overloads.");
         }
 
-        private static object GetSurfaceDefinition(Surface surface)
+        private static object GetSurfaceDefinition(CivilSurface surface)
         {
             foreach (string propertyName in new[] { "Definition", "Operations", "BoundariesDefinition" })
             {
-                object value = GetPropertyValue(surface, propertyName);
+                object? value = GetPropertyValue(surface, propertyName);
                 if (value != null)
                 {
                     return value;
@@ -175,11 +189,15 @@ namespace Cad_AI_Agent.CADTransactions
             throw new InvalidOperationException($"Surface definition API is not available for surface '{surface.Name}'.");
         }
 
-        private static List<ObjectId> ExtractContourEntities(Surface surface, double minorInterval, double majorInterval)
+        private static List<ObjectId> ExtractContourEntities(CivilSurface surface, double minorInterval, double majorInterval)
         {
             foreach (string methodName in new[] { "ExtractContours", "ExtractContour" })
             {
-                object value = InvokeMethod(surface, methodName, minorInterval, majorInterval);
+                object? value = InvokeMethod(surface, methodName, minorInterval, majorInterval);
+                if (value == null)
+                {
+                    continue;
+                }
                 List<ObjectId> objectIds = ToObjectIds(value).ToList();
                 if (objectIds.Count > 0)
                 {
@@ -190,7 +208,7 @@ namespace Cad_AI_Agent.CADTransactions
             throw new InvalidOperationException($"Unable to extract contours for surface '{surface.Name}'.");
         }
 
-        private static IEnumerable<ObjectId> ToObjectIds(object collection)
+        private static IEnumerable<ObjectId> ToObjectIds(object? collection)
         {
             if (collection is ObjectIdCollection objectIds)
             {
@@ -214,7 +232,7 @@ namespace Cad_AI_Agent.CADTransactions
             }
         }
 
-        private static object InvokeMethod(object target, string methodName, params object[] arguments)
+        private static object? InvokeMethod(object? target, string methodName, params object[] arguments)
         {
             if (target == null)
             {
@@ -245,14 +263,14 @@ namespace Cad_AI_Agent.CADTransactions
             return null;
         }
 
-        private static object GetPropertyValue(object target, string propertyName)
+        private static object? GetPropertyValue(object? target, string propertyName)
         {
             if (target == null)
             {
                 return null;
             }
 
-            PropertyInfo property = target.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+            PropertyInfo? property = target.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
             return property?.GetValue(target);
         }
 
@@ -265,7 +283,7 @@ namespace Cad_AI_Agent.CADTransactions
 
             foreach (MethodInfo method in methods)
             {
-                object[] arguments = BuildInvocationArguments(method.GetParameters(), preferredArguments);
+                object[]? arguments = BuildInvocationArguments(method.GetParameters(), preferredArguments);
                 if (arguments == null)
                 {
                     continue;
@@ -284,7 +302,7 @@ namespace Cad_AI_Agent.CADTransactions
             return false;
         }
 
-        private static object[] BuildInvocationArguments(ParameterInfo[] parameters, object[] preferredArguments)
+        private static object[]? BuildInvocationArguments(ParameterInfo[] parameters, object[] preferredArguments)
         {
             List<object> remaining = new List<object>(preferredArguments);
             object[] result = new object[parameters.Length];
@@ -300,9 +318,9 @@ namespace Cad_AI_Agent.CADTransactions
                     continue;
                 }
 
-                if (TryCreateDefaultArgument(parameter.ParameterType, out object defaultValue))
+                if (TryCreateDefaultArgument(parameter.ParameterType, out object? defaultValue))
                 {
-                    result[index] = defaultValue;
+                    result[index] = defaultValue!;
                     continue;
                 }
 
@@ -312,7 +330,7 @@ namespace Cad_AI_Agent.CADTransactions
             return result;
         }
 
-        private static bool IsCompatibleArgument(Type parameterType, object candidate)
+        private static bool IsCompatibleArgument(Type parameterType, object? candidate)
         {
             if (candidate == null)
             {
@@ -330,7 +348,7 @@ namespace Cad_AI_Agent.CADTransactions
                 || underlyingType == typeof(int) && candidate is int;
         }
 
-        private static bool TryCreateDefaultArgument(Type parameterType, out object value)
+        private static bool TryCreateDefaultArgument(Type parameterType, out object? value)
         {
             Type underlyingType = Nullable.GetUnderlyingType(parameterType) ?? parameterType;
 

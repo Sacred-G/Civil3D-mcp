@@ -23,13 +23,13 @@ namespace Cad_AI_Agent.UI
 {
     public class AiResponse
     {
-        public string Message { get; set; }
-        public List<CadCommand> Commands { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public List<CadCommand> Commands { get; set; } = new List<CadCommand>();
     }
 
     public class ChatMessageData
     {
-        public string Text { get; set; }
+        public string Text { get; set; } = string.Empty;
         public bool IsUser { get; set; }
     }
 
@@ -44,31 +44,39 @@ namespace Cad_AI_Agent.UI
     {
         private DispatcherTimer _thinkingTimer;
         private int _dotCount = 0;
-        private TextBlock _currentThinkingText;
+        private TextBlock? _currentThinkingText;
         private const string RegistryPath = @"SOFTWARE\CadAiAgent";
         private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
         private const string DefaultMcpUrl = "http://localhost:3000";
         private string _activeProviderTag = DefaultProviderTag;
         private bool _isLoadingProviderSettings = false;
-        private McpClient _mcpClient;
+        private McpClient _mcpClient = new McpClient(DefaultMcpUrl);
         private bool _mcpAvailable = false;
 
         private List<ChatSession> _allSessions = new List<ChatSession>();
-        private ChatSession _currentSession;
+        private ChatSession _currentSession = new ChatSession();
 
         public AIChatPanel()
         {
-            InitializeComponent();
-            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+            try
+            {
+                InitializeComponent();
+                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
 
-            _thinkingTimer = new DispatcherTimer();
-            _thinkingTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _thinkingTimer.Tick += ThinkingTimer_Tick;
+                _thinkingTimer = new DispatcherTimer();
+                _thinkingTimer.Interval = TimeSpan.FromMilliseconds(500);
+                _thinkingTimer.Tick += ThinkingTimer_Tick;
 
-            StartNewSession();
+                StartNewSession();
 
-            LoadProviderSettings();
-            InitializeMcpClient();
+                LoadProviderSettings();
+                InitializeMcpClient();
+            }
+            catch (Exception ex)
+            {
+                Exception baseException = ex.GetBaseException();
+                throw new InvalidOperationException($"AIChatPanel initialization failed. ExceptionType={ex.GetType().FullName}; BaseExceptionType={baseException.GetType().FullName}; Message={ex.Message}; BaseMessage={baseException.Message}", ex);
+            }
         }
 
         private async void InitializeMcpClient()
@@ -102,7 +110,7 @@ namespace Cad_AI_Agent.UI
             _isLoadingProviderSettings = true;
             try
             {
-                using RegistryKey key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryPath);
                 string selectedProviderTag = key?.GetValue("SelectedProviderTag")?.ToString() ?? DefaultProviderTag;
                 SelectProviderTag(selectedProviderTag);
                 _activeProviderTag = GetSelectedProviderTag();
@@ -112,6 +120,97 @@ namespace Cad_AI_Agent.UI
             {
                 _isLoadingProviderSettings = false;
             }
+        }
+
+        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingProviderSettings || ApiKeyBox == null || ConnectionStatusText == null)
+            {
+                return;
+            }
+
+            string providerTag = GetSelectedProviderTag();
+            _activeProviderTag = providerTag;
+            ApiKeyBox.Text = ReadApiKeyForProvider(providerTag);
+            ConnectionStatusText.Text = string.Empty;
+        }
+
+        private void SelectProviderTag(string providerTag)
+        {
+            string resolvedProviderTag = string.IsNullOrWhiteSpace(providerTag) ? DefaultProviderTag : providerTag;
+
+            foreach (var item in ProviderCombo.Items)
+            {
+                if (item is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag?.ToString(), resolvedProviderTag, StringComparison.OrdinalIgnoreCase))
+                {
+                    ProviderCombo.SelectedItem = comboBoxItem;
+                    return;
+                }
+            }
+
+            if (ProviderCombo.Items.Count > 0)
+            {
+                ProviderCombo.SelectedIndex = 0;
+            }
+        }
+
+        private string GetSelectedProviderTag()
+        {
+            if (ProviderCombo.SelectedItem is ComboBoxItem comboBoxItem)
+            {
+                return comboBoxItem.Tag?.ToString() ?? DefaultProviderTag;
+            }
+
+            return DefaultProviderTag;
+        }
+
+        private string ReadApiKeyForProvider(string providerTag)
+        {
+            string providerName = GetProviderName(providerTag);
+
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+            return providerName.Equals("openai", StringComparison.OrdinalIgnoreCase)
+                ? key?.GetValue("OpenAIApiKey")?.ToString() ?? string.Empty
+                : key?.GetValue("GeminiApiKey")?.ToString() ?? string.Empty;
+        }
+
+        private void SaveProviderSettings(string providerTag, string apiKey)
+        {
+            string providerName = GetProviderName(providerTag);
+
+            using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            key?.SetValue("SelectedProviderTag", providerTag);
+
+            if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+            {
+                key?.SetValue("OpenAIApiKey", apiKey ?? string.Empty);
+            }
+            else
+            {
+                key?.SetValue("GeminiApiKey", apiKey ?? string.Empty);
+            }
+        }
+
+        private string GetProviderName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag))
+            {
+                return "gemini";
+            }
+
+            string[] parts = providerTag.Split(':');
+            return parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]) ? parts[0] : "gemini";
+        }
+
+        private string GetModelName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag))
+            {
+                return "gemini-2.5-flash";
+            }
+
+            string[] parts = providerTag.Split(':');
+            return parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : "gemini-2.5-flash";
         }
 
         private void StartNewSession()
@@ -402,7 +501,7 @@ namespace Cad_AI_Agent.UI
             _ = SendMessageAsync();
         }
 
-        private void ThinkingTimer_Tick(object sender, EventArgs e)
+        private void ThinkingTimer_Tick(object? sender, EventArgs e)
         {
             if (_currentThinkingText != null)
             {
@@ -440,7 +539,7 @@ namespace Cad_AI_Agent.UI
             try
             {
                 // Query MCP server for drawing context if available
-                string drawingContext = null;
+                string? drawingContext = null;
                 if (_mcpAvailable)
                 {
                     try
@@ -463,6 +562,10 @@ namespace Cad_AI_Agent.UI
                 if (!string.IsNullOrEmpty(jsonPayload))
                 {
                     var responseObj = JsonConvert.DeserializeObject<AiResponse>(jsonPayload);
+                    if (responseObj == null)
+                    {
+                        throw new InvalidOperationException("AI response could not be deserialized.");
+                    }
 
                     _currentThinkingText.Text = responseObj.Message ?? "Drawing initiated...";
                     _currentSession.Messages.Add(new ChatMessageData { Text = _currentThinkingText.Text, IsUser = false });
@@ -486,7 +589,7 @@ namespace Cad_AI_Agent.UI
             }
         }
 
-        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string drawingContext = null)
+        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string? drawingContext = null)
         {
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
@@ -590,7 +693,7 @@ namespace Cad_AI_Agent.UI
             return aiText.Replace("```json", "").Replace("```", "").Trim();
         }
 
-        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName, string drawingContext = null)
+        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName, string? drawingContext = null)
         {
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
             using var client = new HttpClient();
@@ -613,7 +716,11 @@ namespace Cad_AI_Agent.UI
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 JObject jsonResponse = JObject.Parse(responseString);
-                string aiText = jsonResponse["candidates"][0]["content"]["parts"][0]["text"].ToString();
+                string? aiText = jsonResponse["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                if (string.IsNullOrWhiteSpace(aiText))
+                {
+                    throw new Exception("Gemini response did not contain any text output.");
+                }
                 return aiText.Replace("```json", "").Replace("```", "").Trim();
             }
             string errorRaw = await response.Content.ReadAsStringAsync();
@@ -622,35 +729,35 @@ namespace Cad_AI_Agent.UI
 
         private string ExtractOpenAiText(JObject jsonResponse)
         {
-            string directText = jsonResponse["output_text"]?.ToString();
+            string? directText = jsonResponse["output_text"]?.ToString();
             if (!string.IsNullOrWhiteSpace(directText))
             {
                 return directText;
             }
 
-            JArray outputItems = jsonResponse["output"] as JArray;
+            JArray? outputItems = jsonResponse["output"] as JArray;
             if (outputItems != null)
             {
                 foreach (JObject outputItem in outputItems.OfType<JObject>())
                 {
-                    JArray contentItems = outputItem["content"] as JArray;
+                    JArray? contentItems = outputItem["content"] as JArray;
                     if (contentItems == null) continue;
 
                     foreach (JObject contentItem in contentItems.OfType<JObject>())
                     {
-                        JToken parsedValue = contentItem["parsed"] ?? contentItem["json"] ?? contentItem["value"];
+                        JToken? parsedValue = contentItem["parsed"] ?? contentItem["json"] ?? contentItem["value"];
                         if (parsedValue is JObject || parsedValue is JArray)
                         {
                             return parsedValue.ToString(Formatting.None);
                         }
 
-                        string textValue = contentItem["text"]?.ToString();
+                        string? textValue = contentItem["text"]?.ToString();
                         if (!string.IsNullOrWhiteSpace(textValue))
                         {
                             return textValue;
                         }
 
-                        string textObjectValue = contentItem["text"]?["value"]?.ToString();
+                        string? textObjectValue = contentItem["text"]?["value"]?.ToString();
                         if (!string.IsNullOrWhiteSpace(textObjectValue))
                         {
                             return textObjectValue;
@@ -985,10 +1092,10 @@ namespace Cad_AI_Agent.UI
 
         private class ExecutionLogState
         {
-            public StackPanel LogPanel { get; set; }
-            public TextBlock HeaderIcon { get; set; }
-            public TextBlock HeaderText { get; set; }
-            public ScrollViewer ScrollViewer { get; set; }
+            public required StackPanel LogPanel { get; set; }
+            public required TextBlock HeaderIcon { get; set; }
+            public required TextBlock HeaderText { get; set; }
+            public required ScrollViewer ScrollViewer { get; set; }
         }
     }
 }

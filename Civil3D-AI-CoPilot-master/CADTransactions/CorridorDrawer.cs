@@ -8,7 +8,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class CorridorDrawer
     {
-        public static void Draw(Document doc, string corridorName = null, string alignmentName = null, string profileName = null, string assemblyName = null, string surfaceName = null, double frequency = 10.0)
+        public static void Draw(Document doc, string? corridorName = null, string? alignmentName = null, string? profileName = null, string? assemblyName = null, string? surfaceName = null, double frequency = 10.0)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -17,7 +17,11 @@ namespace Cad_AI_Agent.CADTransactions
             using (Transaction trans = db.TransactionManager.StartTransaction())
             {
                 ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
-                Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
+                if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Alignment could not be resolved for corridor creation.");
+                    return;
+                }
 
                 ObjectId layoutProfId = string.IsNullOrWhiteSpace(profileName)
                     ? CivilLookup.GetProfileId(align, trans, null, ProfileType.FG)
@@ -30,7 +34,11 @@ namespace Cad_AI_Agent.CADTransactions
                     : corridorName;
                 ObjectId corrId = civilDoc.CorridorCollection.Add(corrName, "AI_Baseline", alignId, layoutProfId, "AI_Region", assemblyId);
 
-                Corridor corridor = trans.GetObject(corrId, OpenMode.ForWrite) as Corridor;
+                if (trans.GetObject(corrId, OpenMode.ForWrite) is not Corridor corridor)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Corridor object could not be created.");
+                    return;
+                }
                 corridor.Rebuild(); 
 
                 if (corridor.Baselines.Count > 0 && corridor.Baselines[0].BaselineRegions.Count > 0)

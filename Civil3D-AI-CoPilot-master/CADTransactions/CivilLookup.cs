@@ -2,12 +2,13 @@ using System;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.Civil.ApplicationServices;
 using Autodesk.Civil.DatabaseServices;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Cad_AI_Agent.CADTransactions
 {
     public static class CivilLookup
     {
-        public static ObjectId GetAlignmentId(CivilDocument civilDoc, Transaction trans, string alignmentName = null)
+        public static ObjectId GetAlignmentId(CivilDocument civilDoc, Transaction trans, string? alignmentName = null)
         {
             ObjectIdCollection alignmentIds = civilDoc.GetAlignmentIds();
             if (alignmentIds.Count == 0)
@@ -22,7 +23,7 @@ namespace Cad_AI_Agent.CADTransactions
 
             foreach (ObjectId alignId in alignmentIds)
             {
-                Alignment align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
+                Alignment? align = trans.GetObject(alignId, OpenMode.ForRead) as Alignment;
                 if (align != null && string.Equals(align.Name, alignmentName, StringComparison.OrdinalIgnoreCase))
                 {
                     return alignId;
@@ -32,7 +33,7 @@ namespace Cad_AI_Agent.CADTransactions
             throw new InvalidOperationException($"Alignment '{alignmentName}' was not found.");
         }
 
-        public static ObjectId GetSurfaceId(CivilDocument civilDoc, Transaction trans, string surfaceName = null)
+        public static ObjectId GetSurfaceId(CivilDocument civilDoc, Transaction trans, string? surfaceName = null)
         {
             ObjectIdCollection surfaceIds = civilDoc.GetSurfaceIds();
             if (surfaceIds.Count == 0)
@@ -47,7 +48,7 @@ namespace Cad_AI_Agent.CADTransactions
 
             foreach (ObjectId surfaceId in surfaceIds)
             {
-                Surface surface = trans.GetObject(surfaceId, OpenMode.ForRead) as Surface;
+                CivilSurface? surface = trans.GetObject(surfaceId, OpenMode.ForRead) as CivilSurface;
                 if (surface != null && string.Equals(surface.Name, surfaceName, StringComparison.OrdinalIgnoreCase))
                 {
                     return surfaceId;
@@ -57,7 +58,7 @@ namespace Cad_AI_Agent.CADTransactions
             throw new InvalidOperationException($"Surface '{surfaceName}' was not found.");
         }
 
-        public static ObjectId GetProfileId(Alignment alignment, Transaction trans, string profileName = null, ProfileType? profileType = null)
+        public static ObjectId GetProfileId(Alignment alignment, Transaction trans, string? profileName = null, ProfileType? profileType = null)
         {
             ObjectIdCollection profileIds = alignment.GetProfileIds();
             if (profileIds.Count == 0)
@@ -67,7 +68,7 @@ namespace Cad_AI_Agent.CADTransactions
 
             foreach (ObjectId profileId in profileIds)
             {
-                Profile profile = trans.GetObject(profileId, OpenMode.ForRead) as Profile;
+                Profile? profile = trans.GetObject(profileId, OpenMode.ForRead) as Profile;
                 if (profile == null)
                 {
                     continue;
@@ -94,7 +95,7 @@ namespace Cad_AI_Agent.CADTransactions
             return profileIds[0];
         }
 
-        public static ObjectId GetAssemblyId(CivilDocument civilDoc, Transaction trans, string assemblyName = null)
+        public static ObjectId GetAssemblyId(CivilDocument civilDoc, Transaction trans, string? assemblyName = null)
         {
             var assemblyIds = civilDoc.AssemblyCollection;
             if (assemblyIds.Count == 0)
@@ -109,7 +110,7 @@ namespace Cad_AI_Agent.CADTransactions
 
             foreach (ObjectId assemblyId in assemblyIds)
             {
-                Autodesk.Civil.DatabaseServices.Assembly assembly = trans.GetObject(assemblyId, OpenMode.ForRead) as Autodesk.Civil.DatabaseServices.Assembly;
+                Autodesk.Civil.DatabaseServices.Assembly? assembly = trans.GetObject(assemblyId, OpenMode.ForRead) as Autodesk.Civil.DatabaseServices.Assembly;
                 if (assembly != null && string.Equals(assembly.Name, assemblyName, StringComparison.OrdinalIgnoreCase))
                 {
                     return assemblyId;
