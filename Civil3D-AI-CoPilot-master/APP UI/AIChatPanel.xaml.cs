@@ -89,19 +89,92 @@ namespace Cad_AI_Agent.UI
             }
             catch { /* Registry read failure is non-critical */ }
 
-            _mcpClient = new McpClient(mcpUrl);
+            // Populate Settings URL field
+            if (McpServerUrlBox != null)
+                McpServerUrlBox.Text = mcpUrl;
+
+            await ConnectMcpAsync(mcpUrl);
+        }
+
+        private async Task ConnectMcpAsync(string mcpUrl)
+        {
+            if (McpStatusText != null)
+            {
+                McpStatusText.Text = "Connecting...";
+                McpStatusText.Foreground = Brushes.Yellow;
+            }
+
             try
             {
-                _mcpAvailable = await _mcpClient.CheckAvailabilityAsync();
-                if (_mcpAvailable)
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var response = await httpClient.GetAsync($"{mcpUrl}/health");
+
+                _mcpClient = new McpClient(mcpUrl);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    AddMessageToChat("MCP server connected - AI can now query drawing context", false, false);
+                    // Civil 3D is open and connected
+                    _mcpAvailable = true;
+                    AddMessageToChat("✅ MCP server connected — AI can query drawing context", false, false);
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = "✅ Civil 3D connected";
+                        McpStatusText.Foreground = Brushes.LightGreen;
+                    }
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    // Server is running but Civil 3D isn't open yet — queries will still be attempted
+                    _mcpAvailable = true;
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = "⚠️ Server up — open Civil 3D";
+                        McpStatusText.Foreground = Brushes.Orange;
+                    }
+                }
+                else
+                {
+                    _mcpAvailable = false;
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = $"❌ HTTP {(int)response.StatusCode}";
+                        McpStatusText.Foreground = Brushes.Red;
+                    }
                 }
             }
-            catch (Exception ex)
+            catch
             {
                 _mcpAvailable = false;
-                System.Diagnostics.Debug.WriteLine($"[AI Agent] MCP initialization failed: {ex.Message}");
+                if (McpStatusText != null)
+                {
+                    McpStatusText.Text = "❌ Server not running";
+                    McpStatusText.Foreground = Brushes.Red;
+                }
+            }
+        }
+
+        private async void ReconnectMcpBtn_Click(object sender, RoutedEventArgs e)
+        {
+            string mcpUrl = McpServerUrlBox?.Text?.Trim() ?? DefaultMcpUrl;
+            if (string.IsNullOrWhiteSpace(mcpUrl))
+                mcpUrl = DefaultMcpUrl;
+
+            // Save to registry
+            try
+            {
+                using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+                key?.SetValue("McpServerUrl", mcpUrl);
+            }
+            catch { /* non-critical */ }
+
+            ReconnectMcpBtn.IsEnabled = false;
+            try
+            {
+                await ConnectMcpAsync(mcpUrl);
+            }
+            finally
+            {
+                ReconnectMcpBtn.IsEnabled = true;
             }
         }
 
@@ -169,9 +242,11 @@ namespace Cad_AI_Agent.UI
             string providerName = GetProviderName(providerTag);
 
             using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryPath);
-            return providerName.Equals("openai", StringComparison.OrdinalIgnoreCase)
-                ? key?.GetValue("OpenAIApiKey")?.ToString() ?? string.Empty
-                : key?.GetValue("GeminiApiKey")?.ToString() ?? string.Empty;
+            if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                return key?.GetValue("OpenAIApiKey")?.ToString() ?? string.Empty;
+            if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                return key?.GetValue("AnthropicApiKey")?.ToString() ?? string.Empty;
+            return key?.GetValue("GeminiApiKey")?.ToString() ?? string.Empty;
         }
 
         private void SaveProviderSettings(string providerTag, string apiKey)
@@ -182,13 +257,11 @@ namespace Cad_AI_Agent.UI
             key?.SetValue("SelectedProviderTag", providerTag);
 
             if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
-            {
                 key?.SetValue("OpenAIApiKey", apiKey ?? string.Empty);
-            }
+            else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                key?.SetValue("AnthropicApiKey", apiKey ?? string.Empty);
             else
-            {
                 key?.SetValue("GeminiApiKey", apiKey ?? string.Empty);
-            }
         }
 
         private string GetProviderName(string providerTag)
@@ -457,6 +530,19 @@ namespace Cad_AI_Agent.UI
                     var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
                     response = await client.PostAsync("https://api.openai.com/v1/responses", content);
                 }
+                else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                {
+                    client.DefaultRequestHeaders.Add("x-api-key", key);
+                    client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+                    var requestBody = new
+                    {
+                        model = modelName,
+                        max_tokens = 16,
+                        messages = new[] { new { role = "user", content = "Hello" } }
+                    };
+                    var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                    response = await client.PostAsync("https://api.anthropic.com/v1/messages", content);
+                }
                 else
                 {
                     string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
@@ -554,9 +640,13 @@ namespace Cad_AI_Agent.UI
                     }
                 }
 
-                string jsonPayload = providerName.Equals("openai", StringComparison.OrdinalIgnoreCase)
-                    ? await GetOpenAiResponse(message, apiKey, modelName, drawingContext)
-                    : await GetGeminiResponse(message, apiKey, modelName, drawingContext);
+                string jsonPayload;
+                if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                    jsonPayload = await GetOpenAiResponse(message, apiKey, modelName, drawingContext);
+                else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                    jsonPayload = await GetAnthropicResponse(message, apiKey, modelName, drawingContext);
+                else
+                    jsonPayload = await GetGeminiResponse(message, apiKey, modelName, drawingContext);
                 _thinkingTimer.Stop();
 
                 if (!string.IsNullOrEmpty(jsonPayload))
@@ -727,6 +817,53 @@ namespace Cad_AI_Agent.UI
             throw new Exception($"API Error ({modelName}): {errorRaw}");
         }
 
+        private async Task<string> GetAnthropicResponse(string prompt, string key, string modelName, string? drawingContext = null)
+        {
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("x-api-key", key);
+            client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
+
+            // Append JSON format instruction since Anthropic uses system prompt for output control
+            systemInstruction += "\n\nYou MUST respond with ONLY valid JSON matching this exact schema — no markdown, no code fences, no extra text:\n{\"Message\": \"<string>\", \"Commands\": [{\"Action\": \"<string>\", \"Params\": [<numbers>], \"Args\": {}}]}";
+
+            var requestBody = new JObject
+            {
+                ["model"] = modelName,
+                ["max_tokens"] = 4096,
+                ["system"] = systemInstruction,
+                ["messages"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = prompt
+                    }
+                }
+            };
+
+            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("https://api.anthropic.com/v1/messages", content);
+            string responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"API Error ({modelName}): {responseString}");
+            }
+
+            JObject jsonResponse = JObject.Parse(responseString);
+            string? aiText = jsonResponse["content"]?[0]?["text"]?.ToString();
+            if (string.IsNullOrWhiteSpace(aiText))
+            {
+                throw new Exception("Anthropic response did not contain any text output.");
+            }
+
+            return aiText.Replace("```json", "").Replace("```", "").Trim();
+        }
+
         private string ExtractOpenAiText(JObject jsonResponse)
         {
             string? directText = jsonResponse["output_text"]?.ToString();
@@ -799,7 +936,7 @@ namespace Cad_AI_Agent.UI
                 {
                     var command = commands[i];
                     
-                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync(async (obj) =>
+                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((obj) =>
                     {
                         try
                         {
@@ -815,6 +952,7 @@ namespace Cad_AI_Agent.UI
                         }
 
                         doc.Editor.UpdateScreen();
+                        return Task.CompletedTask;
                     }, null);
 
                     await Task.Delay(300);

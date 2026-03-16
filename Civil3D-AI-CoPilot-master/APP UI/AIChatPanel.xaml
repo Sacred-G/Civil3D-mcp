@@ -364,6 +364,35 @@
                             </StackPanel>
                         </Border>
 
+                        <Border Background="#101A2E" BorderBrush="#1F2A40" BorderThickness="1" CornerRadius="16" Padding="18" Margin="0,0,0,16">
+                            <StackPanel>
+                                <TextBlock Text="MCP Server" Style="{StaticResource SectionLabelStyle}"/>
+                                <TextBlock Text="Connects the AI to your live Civil 3D drawing. Start the Node.js server before use."
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="12" Margin="0,0,0,12" TextWrapping="Wrap"/>
+                                <TextBlock Text="Server URL" Style="{StaticResource SectionLabelStyle}"/>
+                                <TextBox x:Name="McpServerUrlBox"
+                                         Style="{StaticResource InputTextBoxStyle}"
+                                         Margin="0,0,0,12"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <Button x:Name="ReconnectMcpBtn"
+                                            Grid.Column="0"
+                                            Content="Reconnect"
+                                            Click="ReconnectMcpBtn_Click"
+                                            Style="{StaticResource SecondaryButtonStyle}"/>
+                                    <TextBlock x:Name="McpStatusText"
+                                               Grid.Column="1"
+                                               VerticalAlignment="Center"
+                                               Margin="12,0,0,0"
+                                               FontSize="13"
+                                               Foreground="{StaticResource TextSecondaryBrush}"/>
+                                </Grid>
+                            </StackPanel>
+                        </Border>
+
                         <Border Background="#101A2E" BorderBrush="#1F2A40" BorderThickness="1" CornerRadius="16" Padding="18">
                             <StackPanel>
                                 <TextBlock Text="AI Provider / Model" Style="{StaticResource SectionLabelStyle}"/>
@@ -379,6 +408,10 @@
                                     <ComboBoxItem Content="Google Gemini (3.1 Pro)" Tag="gemini:gemini-3.1-pro"/>
                                     <ComboBoxItem Content="OpenAI (GPT-4o Mini)" Tag="openai:gpt-4o-mini"/>
                                     <ComboBoxItem Content="OpenAI (GPT-4o)" Tag="openai:gpt-4o"/>
+                                    <ComboBoxItem Content="Anthropic Claude Sonnet 4.5" Tag="anthropic:claude-sonnet-4-5"/>
+                                    <ComboBoxItem Content="Anthropic Claude Sonnet 4.6" Tag="anthropic:claude-sonnet-4-6"/>
+                                    <ComboBoxItem Content="Anthropic Claude Opus 4.5" Tag="anthropic:claude-opus-4-5"/>
+                                    <ComboBoxItem Content="Anthropic Claude Opus 4.6" Tag="anthropic:claude-opus-4-6"/>
                                 </ComboBox>
 
                                 <TextBlock Text="API Key" Style="{StaticResource SectionLabelStyle}"/>
