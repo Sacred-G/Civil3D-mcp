@@ -1,7 +1,7 @@
 # Civil3D MCP Tool Coverage Audit
 
 **Last Updated**: 2026-03-17
-**Author**: Founding Engineer (Paperclip JFS-13)
+**Author**: Founding Engineer (Paperclip JFS-18)
 **V3 Plan**: `ULTIMATE-CIVIL3D-MCP-PLAN-V3.md`
 **Branch**: `main`
 
@@ -12,9 +12,16 @@
 | Metric | Value |
 |--------|-------|
 | V3 Planned Tools | 169+ across 8 microservices |
-| Actually Implemented | **150 MCP tools** in a single server |
-| Coverage | ~89% of planned tool count |
+| Actually Implemented | **162 MCP tools** in a single server |
+| Coverage | ~96% of planned tool count |
 | Architecture | Single MCP server (pragmatic, intentional) |
+
+### JFS-18 Additions (2026-03-17) — +12 tools (150 → 162)
+| Category | Tools Added |
+|----------|-------------|
+| Parcel Editing | `civil3d_parcel_create`, `civil3d_parcel_edit`, `civil3d_parcel_lot_line_adjust`, `civil3d_parcel_report` |
+| Survey Processing | `civil3d_survey_observation_list`, `civil3d_survey_network_adjust`, `civil3d_survey_figure_create`, `civil3d_survey_landxml_import` |
+| Data Shortcut Management | `civil3d_data_shortcut_create`, `civil3d_data_shortcut_promote`, `civil3d_data_shortcut_reference`, `civil3d_data_shortcut_sync` |
 
 ### JFS-13 Additions (2026-03-17) — +16 tools (134 → 150)
 | Category | Tools Added |
@@ -151,26 +158,35 @@ The V3 plan describes an 8-microservice ecosystem. What is actually built is a *
 | `civil3d_cogo_curve_solve` | ✅ Implemented (JFS-9) |
 | COGO lot fit, import survey data, figures from traverse | ❌ Missing (4 tools) |
 
-### Survey & Data — Survey Databases & Figures (4 / 8 planned) ✅ NEW JFS-9
+### Survey & Data — Survey Databases & Figures (8 / 8 planned) ✅ Complete (JFS-18)
 | Tool | Status |
 |------|--------|
 | `civil3d_survey_database_list` | ✅ Implemented (JFS-9) |
 | `civil3d_survey_database_create` | ✅ Implemented (JFS-9) |
 | `civil3d_survey_figure_list` | ✅ Implemented (JFS-9) |
 | `civil3d_survey_figure_get` | ✅ Implemented (JFS-9) |
-| Survey network processing, observation editing, LandXML import | ❌ Missing (4 tools) |
+| `civil3d_survey_observation_list` | ✅ Implemented (JFS-18) |
+| `civil3d_survey_network_adjust` | ✅ Implemented (JFS-18) |
+| `civil3d_survey_figure_create` | ✅ Implemented (JFS-18) |
+| `civil3d_survey_landxml_import` | ✅ Implemented (JFS-18) |
 
-### Survey & Data — Parcels (1 / 5 planned)
+### Survey & Data — Parcels (5 / 5 planned) ✅ Complete (JFS-18)
 | Tool | Status |
 |------|--------|
 | `civil3d_parcel` | ✅ Implemented |
-| Parcel create/edit, lot line adjust, report | ❌ Missing |
+| `civil3d_parcel_create` | ✅ Implemented (JFS-18) |
+| `civil3d_parcel_edit` | ✅ Implemented (JFS-18) |
+| `civil3d_parcel_lot_line_adjust` | ✅ Implemented (JFS-18) |
+| `civil3d_parcel_report` | ✅ Implemented (JFS-18) |
 
-### Survey & Data — Data Shortcuts (1 / 5 planned)
+### Survey & Data — Data Shortcuts (5 / 5 planned) ✅ Complete (JFS-18)
 | Tool | Status |
 |------|--------|
 | `civil3d_data_shortcut` | ✅ Implemented |
-| Create shortcut, promote shortcut, reference shortcut, sync | ❌ Missing |
+| `civil3d_data_shortcut_create` | ✅ Implemented (JFS-18) |
+| `civil3d_data_shortcut_promote` | ✅ Implemented (JFS-18) |
+| `civil3d_data_shortcut_reference` | ✅ Implemented (JFS-18) |
+| `civil3d_data_shortcut_sync` | ✅ Implemented (JFS-18) |
 
 ### Documentation & QC (3 / 35 planned)
 | Tool | Status |
@@ -239,7 +255,9 @@ The V3 plan describes an 8-microservice ecosystem. What is actually built is a *
 | Superelevation | 4 | 4 | 0 ✅ JFS-13 |
 | Corridor target editing | 4 | 4 | 0 ✅ JFS-13 |
 | Intersection design | 3 | 3 | 0 ✅ JFS-13 |
-| Survey processing (observations, networks) | 8 | 4 | 4 |
+| Survey processing (observations, networks) | 8 | 8 | 0 ✅ JFS-18 |
+| Parcels (create/edit/lot line/report) | 5 | 5 | 0 ✅ JFS-18 |
+| Data shortcuts (create/promote/reference/sync) | 5 | 5 | 0 ✅ JFS-18 |
 | Standards compliance labels | 7 | 1 | 6 |
 | 3D viewer / APS integration | 6 | 0 | 6 |
 | Gravity pipe analysis / sizing | 22 | 3 | 19 |
@@ -248,8 +266,10 @@ The V3 plan describes an 8-microservice ecosystem. What is actually built is a *
 
 ## Recommendation
 
-Target 150+ is achieved. Remaining high-ROI gaps:
+Target 162 tools achieved (JFS-18). Remaining gaps are intentionally deferred:
 
-1. **Gravity pipe analysis / sizing** — storm drain design, HGL computation (high complexity, deferred)
-2. **Survey observation/network processing** — raw survey import, network adjustment
-3. **3D viewer / APS integration** — deferred until operational need
+1. **Gravity pipe analysis / sizing** — storm drain design, HGL computation (very high complexity, deferred)
+2. **Standards compliance labels** — style-management automation (6 tools, medium value, low urgency)
+3. **3D viewer / APS integration** — deferred until operational need exists
+
+**Skip rationale (JFS-18)**: Gravity pipe HGL and APS/3D viewer integrations were skipped. Pipe HGL requires a full hydraulics solver (not a thin API wrapper). APS integration has zero current operational demand.

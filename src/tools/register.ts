@@ -48,6 +48,9 @@ import { registerCivil3DSectionViewTools } from "./civil3d_section_views.js";
 import { registerCivil3DSuperelevationTools } from "./civil3d_superelevation.js";
 import { registerCivil3DCorridorEditingTools } from "./civil3d_corridor_editing.js";
 import { registerCivil3DIntersectionTools } from "./civil3d_intersection.js";
+import { registerCivil3DParcelEditingTools } from "./civil3d_parcel_editing.js";
+import { registerCivil3DSurveyProcessingTools } from "./civil3d_survey_processing.js";
+import { registerCivil3DDataShortcutMgmtTools } from "./civil3d_data_shortcut_mgmt.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -99,4 +102,7 @@ export async function registerTools(server: McpServer) {
   registerCivil3DSuperelevationTools(server);
   registerCivil3DCorridorEditingTools(server);
   registerCivil3DIntersectionTools(server);
+  registerCivil3DParcelEditingTools(server);
+  registerCivil3DSurveyProcessingTools(server);
+  registerCivil3DDataShortcutMgmtTools(server);
 }
