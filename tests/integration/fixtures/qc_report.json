@@ -1,0 +1,92 @@
+{
+  "id": "qc_report_full_workflow",
+  "title": "QC Report: Check Alignment → Check Profile → Generate Report",
+  "description": "Quality control workflow that validates an alignment against design speed standards, validates the matching profile against grade limits, and produces a consolidated QC report.",
+  "prompt": "Run a full QC check on the 'Main Street' alignment designed for 50 mph. Check that all curves meet minimum radius requirements and tangent lengths are adequate. Then check the 'FG - Main Street' profile for maximum grade (8%) and minimum K-value (30). Generate a consolidated QC report and save it as 'MainStreet_QC.pdf'.",
+  "expectedCommandSequence": [
+    {
+      "step": 1,
+      "action": "civil3d_qc",
+      "description": "Check alignment geometry against design speed",
+      "params": {
+        "action": "check_alignment",
+        "name": "Main Street",
+        "designSpeed": 50,
+        "checkTangents": true,
+        "checkCurves": true,
+        "checkSpirals": false
+      }
+    },
+    {
+      "step": 2,
+      "action": "civil3d_qc",
+      "description": "Check profile grades and vertical curve K-values",
+      "params": {
+        "action": "check_profile",
+        "alignmentName": "Main Street",
+        "profileName": "FG - Main Street",
+        "maxGrade": 8.0,
+        "minKValue": 30
+      }
+    },
+    {
+      "step": 3,
+      "action": "civil3d_qc",
+      "description": "Generate consolidated QC report",
+      "params": {
+        "action": "generate_report",
+        "alignmentName": "Main Street",
+        "includeAlignment": true,
+        "includeProfile": true,
+        "includeCorridor": false,
+        "outputFormat": "pdf",
+        "outputPath": "MainStreet_QC.pdf"
+      }
+    }
+  ],
+  "expectedToolCalls": [
+    "civil3d_qc"
+  ],
+  "assertions": [
+    {
+      "type": "command_count",
+      "description": "Should produce exactly 3 commands",
+      "expected": 3
+    },
+    {
+      "type": "command_order",
+      "description": "Alignment check must precede report generation",
+      "rule": "check_alignment before generate_report"
+    },
+    {
+      "type": "command_order",
+      "description": "Profile check must precede report generation",
+      "rule": "check_profile before generate_report"
+    },
+    {
+      "type": "parameter_value",
+      "description": "Design speed matches prompt (50 mph)",
+      "field": "designSpeed",
+      "expectedValue": 50
+    },
+    {
+      "type": "parameter_value",
+      "description": "Max grade matches prompt (8%)",
+      "field": "maxGrade",
+      "expectedValue": 8.0
+    },
+    {
+      "type": "parameter_value",
+      "description": "Min K-value matches prompt (30)",
+      "field": "minKValue",
+      "expectedValue": 30
+    },
+    {
+      "type": "parameter_value",
+      "description": "Output filename matches prompt",
+      "field": "outputPath",
+      "expectedValue": "MainStreet_QC.pdf"
+    }
+  ],
+  "tags": ["qc", "alignment", "profile", "report", "validation"]
+}

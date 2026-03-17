@@ -1,0 +1,85 @@
+{
+  "id": "earthwork_estimate_workflow",
+  "title": "Earthwork Estimate: Compare Surfaces → Calculate Volume → Export CSV",
+  "description": "Earthwork estimation workflow that compares an existing ground surface against a proposed grading surface, calculates net cut and fill volumes, and exports a material summary spreadsheet.",
+  "prompt": "Calculate earthwork for the subdivision grading plan. Compare the 'Existing Ground' surface against the 'Proposed Grade' surface across the entire site boundary. Compute cut and fill volumes. I need the net volume and the swell/shrink-adjusted quantities. Export the results to 'EarthworkSummary.csv'.",
+  "expectedCommandSequence": [
+    {
+      "step": 1,
+      "action": "civil3d_surface",
+      "description": "Create a volume surface comparing existing vs proposed",
+      "params": {
+        "action": "create_volume_surface",
+        "name": "Cut-Fill Volume",
+        "baseSurface": "Existing Ground",
+        "comparisonSurface": "Proposed Grade",
+        "volumeSurfaceType": "TIN"
+      }
+    },
+    {
+      "step": 2,
+      "action": "civil3d_quantity_takeoff",
+      "description": "Calculate earthwork volumes from volume surface",
+      "params": {
+        "action": "earthwork_volumes",
+        "volumeSurface": "Cut-Fill Volume",
+        "applySwellShrink": true,
+        "cutFactor": 1.25,
+        "fillFactor": 0.90,
+        "boundaryType": "site_boundary"
+      }
+    },
+    {
+      "step": 3,
+      "action": "civil3d_quantity_takeoff",
+      "description": "Export earthwork summary to CSV",
+      "params": {
+        "action": "export_earthwork_csv",
+        "volumeSurface": "Cut-Fill Volume",
+        "includeSwellShrink": true,
+        "outputPath": "EarthworkSummary.csv",
+        "columns": ["station_range", "cut_volume", "fill_volume", "net_volume", "cumulative_net"]
+      }
+    }
+  ],
+  "expectedToolCalls": [
+    "civil3d_surface",
+    "civil3d_quantity_takeoff"
+  ],
+  "assertions": [
+    {
+      "type": "command_count",
+      "description": "Should produce exactly 3 commands",
+      "expected": 3
+    },
+    {
+      "type": "command_order",
+      "description": "Volume surface must be created before takeoff",
+      "rule": "create_volume_surface before earthwork_volumes"
+    },
+    {
+      "type": "command_order",
+      "description": "Volumes must be calculated before export",
+      "rule": "earthwork_volumes before export_earthwork_csv"
+    },
+    {
+      "type": "parameter_reference",
+      "description": "Takeoff must reference the volume surface created in step 1",
+      "field": "volumeSurface",
+      "expectedValue": "Cut-Fill Volume"
+    },
+    {
+      "type": "parameter_value",
+      "description": "Output filename matches prompt",
+      "field": "outputPath",
+      "expectedValue": "EarthworkSummary.csv"
+    },
+    {
+      "type": "parameter_value",
+      "description": "Swell/shrink flag enabled per prompt",
+      "field": "applySwellShrink",
+      "expectedValue": true
+    }
+  ],
+  "tags": ["earthwork", "surface", "volume", "quantity-takeoff", "export"]
+}

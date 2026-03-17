@@ -1,0 +1,107 @@
+{
+  "id": "water_main_pressure_network",
+  "title": "Water Main: Pressure Network → Add Pipes → QC Validate → Export",
+  "description": "Workflow for creating a water distribution main as a pressure network, adding pipes and fittings along the alignment, running QC validation, and exporting network data.",
+  "prompt": "Create a new water main pressure network called 'WM-12in' along the alignment 'Main Street'. Add a 12-inch ductile iron pipe from manhole MH-1 at (1000,2000,100) to MH-2 at (1200,2150,98), then add another 12-inch pipe from MH-2 to MH-3 at (1500,2300,96). Run a pressure check to validate the network, then export the pipe schedule to CSV.",
+  "expectedCommandSequence": [
+    {
+      "step": 1,
+      "action": "civil3d_pipe_network",
+      "description": "Create pressure network for water main",
+      "params": {
+        "action": "create_pressure_network",
+        "name": "WM-12in",
+        "description": "12-inch water main along Main Street",
+        "referenceAlignment": "Main Street",
+        "partsList": "PVC Pressure Pipe Catalog"
+      }
+    },
+    {
+      "step": 2,
+      "action": "civil3d_pipe_network",
+      "description": "Add first pipe segment MH-1 to MH-2",
+      "params": {
+        "action": "add_pressure_pipe",
+        "networkName": "WM-12in",
+        "startPoint": { "x": 1000, "y": 2000, "z": 100 },
+        "endPoint": { "x": 1200, "y": 2150, "z": 98 },
+        "diameter": 12,
+        "material": "Ductile Iron",
+        "pipeName": "WM-12in-P1"
+      }
+    },
+    {
+      "step": 3,
+      "action": "civil3d_pipe_network",
+      "description": "Add second pipe segment MH-2 to MH-3",
+      "params": {
+        "action": "add_pressure_pipe",
+        "networkName": "WM-12in",
+        "startPoint": { "x": 1200, "y": 2150, "z": 98 },
+        "endPoint": { "x": 1500, "y": 2300, "z": 96 },
+        "diameter": 12,
+        "material": "Ductile Iron",
+        "pipeName": "WM-12in-P2"
+      }
+    },
+    {
+      "step": 4,
+      "action": "civil3d_qc",
+      "description": "Run QC check on pressure pipe network",
+      "params": {
+        "action": "check_pipe_network",
+        "networkName": "WM-12in",
+        "checkCoverDepth": true,
+        "minCoverDepth": 3.0,
+        "checkSlope": false
+      }
+    },
+    {
+      "step": 5,
+      "action": "civil3d_quantity_takeoff",
+      "description": "Export pipe schedule / bill of materials",
+      "params": {
+        "action": "pipe_schedule",
+        "networkName": "WM-12in",
+        "includeStructures": false,
+        "outputFormat": "csv",
+        "outputPath": "WM-12in-schedule.csv"
+      }
+    }
+  ],
+  "expectedToolCalls": [
+    "civil3d_pipe_network",
+    "civil3d_qc",
+    "civil3d_quantity_takeoff"
+  ],
+  "assertions": [
+    {
+      "type": "command_count",
+      "description": "Should produce exactly 5 commands",
+      "expected": 5
+    },
+    {
+      "type": "command_order",
+      "description": "Network must be created before pipes are added",
+      "rule": "create_pressure_network before add_pressure_pipe"
+    },
+    {
+      "type": "command_order",
+      "description": "QC must run after pipes are added",
+      "rule": "add_pressure_pipe before check_pipe_network"
+    },
+    {
+      "type": "parameter_reference",
+      "description": "All operations must reference the same network name",
+      "field": "networkName",
+      "expectedValue": "WM-12in"
+    },
+    {
+      "type": "parameter_value",
+      "description": "Pipe diameter must be 12 inches per the prompt",
+      "field": "diameter",
+      "expectedValue": 12
+    }
+  ],
+  "tags": ["water-main", "pressure-network", "pipes", "qc", "export"]
+}

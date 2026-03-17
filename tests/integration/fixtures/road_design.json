@@ -1,0 +1,112 @@
+{
+  "id": "road_design_full_workflow",
+  "title": "Road Design: Alignment → Profile → Corridor → Volume Extraction",
+  "description": "End-to-end road design workflow starting from a raw surface, creating a centerline alignment, designing a profile, building a corridor, and extracting earthwork volumes.",
+  "prompt": "Design a new road called 'Main Street' from point (1000, 2000) to (1500, 2300) with a design speed of 50 mph. Create a finished grade profile 2.5 feet above the existing ground surface named 'Existing Ground'. Build a corridor using the standard 'Urban-2Lane-Undivided' assembly. Then extract earthwork volumes for the cut/fill report.",
+  "expectedCommandSequence": [
+    {
+      "step": 1,
+      "action": "civil3d_alignment",
+      "description": "Create centerline alignment",
+      "params": {
+        "action": "create",
+        "name": "Main Street",
+        "startX": 1000,
+        "startY": 2000,
+        "endX": 1500,
+        "endY": 2300,
+        "designSpeed": 50,
+        "alignmentType": "centerline"
+      }
+    },
+    {
+      "step": 2,
+      "action": "civil3d_surface",
+      "description": "Sample existing ground profile from surface",
+      "params": {
+        "action": "sample_profile",
+        "surfaceName": "Existing Ground",
+        "alignmentName": "Main Street",
+        "profileName": "EG - Main Street"
+      }
+    },
+    {
+      "step": 3,
+      "action": "civil3d_profile",
+      "description": "Create finished grade profile with fixed vertical offset",
+      "params": {
+        "action": "create_from_surface",
+        "alignmentName": "Main Street",
+        "sourceSurface": "Existing Ground",
+        "profileName": "FG - Main Street",
+        "verticalOffset": 2.5
+      }
+    },
+    {
+      "step": 4,
+      "action": "civil3d_assembly",
+      "description": "Insert assembly for corridor cross-section",
+      "params": {
+        "action": "create",
+        "name": "Main Street Assembly",
+        "assemblyType": "Urban-2Lane-Undivided",
+        "insertionPoint": { "x": 1000, "y": 1800 }
+      }
+    },
+    {
+      "step": 5,
+      "action": "civil3d_corridor",
+      "description": "Build corridor from alignment, profile, and assembly",
+      "params": {
+        "action": "create",
+        "name": "Main Street Corridor",
+        "alignmentName": "Main Street",
+        "profileName": "FG - Main Street",
+        "assemblyName": "Main Street Assembly",
+        "setName": "Corridor Set 1"
+      }
+    },
+    {
+      "step": 6,
+      "action": "civil3d_quantity_takeoff",
+      "description": "Extract earthwork cut/fill volumes from corridor",
+      "params": {
+        "action": "corridor_volumes",
+        "corridorName": "Main Street Corridor",
+        "surfaceName": "Existing Ground",
+        "reportFormat": "csv"
+      }
+    }
+  ],
+  "expectedToolCalls": [
+    "civil3d_alignment",
+    "civil3d_surface",
+    "civil3d_corridor",
+    "civil3d_quantity_takeoff"
+  ],
+  "assertions": [
+    {
+      "type": "command_count",
+      "description": "Should produce exactly 6 commands",
+      "expected": 6
+    },
+    {
+      "type": "command_order",
+      "description": "Alignment must precede profile which must precede corridor",
+      "rule": "civil3d_alignment before civil3d_corridor"
+    },
+    {
+      "type": "parameter_reference",
+      "description": "Corridor command must reference the alignment created in step 1",
+      "field": "alignmentName",
+      "expectedValue": "Main Street"
+    },
+    {
+      "type": "parameter_reference",
+      "description": "Quantity takeoff must reference the corridor",
+      "field": "corridorName",
+      "expectedValue": "Main Street Corridor"
+    }
+  ],
+  "tags": ["road", "corridor", "earthwork", "alignment", "profile"]
+}

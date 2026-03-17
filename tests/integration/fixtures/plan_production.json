@@ -1,0 +1,104 @@
+{
+  "id": "plan_production_workflow",
+  "title": "Plan Production: Create Sheet Set → Add Plan/Profile Sheets → Publish PDF",
+  "description": "Full plan production workflow for a road project that creates a sheet set, generates plan-and-profile sheets at a standard scale along the alignment, and publishes the final drawing set to PDF.",
+  "prompt": "Create plan and profile sheets for the 'Main Street' alignment. Use a 1:20 scale, start at station 0+00, and end at 12+50. Add a title sheet with project number 'PRJ-2024-001'. Each sheet should show 500 feet of alignment. When the sheets are built, publish the whole set to 'MainStreet_Plans.pdf'.",
+  "expectedCommandSequence": [
+    {
+      "step": 1,
+      "action": "civil3d_plan_production",
+      "description": "Create a new sheet set for the project",
+      "params": {
+        "action": "create_sheet_set",
+        "sheetSetName": "Main Street Plans",
+        "projectNumber": "PRJ-2024-001",
+        "templatePath": "Plan_Profile_Sheet.dwt"
+      }
+    },
+    {
+      "step": 2,
+      "action": "civil3d_plan_production",
+      "description": "Generate plan-and-profile sheets along alignment",
+      "params": {
+        "action": "create_plan_profile_sheets",
+        "sheetSetName": "Main Street Plans",
+        "alignmentName": "Main Street",
+        "profileName": "FG - Main Street",
+        "scale": 20,
+        "startStation": 0,
+        "endStation": 1250,
+        "sheetLength": 500,
+        "sheetType": "plan_and_profile"
+      }
+    },
+    {
+      "step": 3,
+      "action": "civil3d_plan_production",
+      "description": "Add title sheet to sheet set",
+      "params": {
+        "action": "add_title_sheet",
+        "sheetSetName": "Main Street Plans",
+        "projectNumber": "PRJ-2024-001",
+        "projectName": "Main Street Improvements",
+        "sheetIndex": 0
+      }
+    },
+    {
+      "step": 4,
+      "action": "civil3d_plan_production",
+      "description": "Publish complete sheet set to PDF",
+      "params": {
+        "action": "publish_to_pdf",
+        "sheetSetName": "Main Street Plans",
+        "outputPath": "MainStreet_Plans.pdf",
+        "includeAllSheets": true,
+        "pdfQuality": "high"
+      }
+    }
+  ],
+  "expectedToolCalls": [
+    "civil3d_plan_production"
+  ],
+  "assertions": [
+    {
+      "type": "command_count",
+      "description": "Should produce exactly 4 commands",
+      "expected": 4
+    },
+    {
+      "type": "command_order",
+      "description": "Sheet set must be created before sheets are added",
+      "rule": "create_sheet_set before create_plan_profile_sheets"
+    },
+    {
+      "type": "command_order",
+      "description": "Sheets must exist before publishing",
+      "rule": "create_plan_profile_sheets before publish_to_pdf"
+    },
+    {
+      "type": "parameter_reference",
+      "description": "All steps reference the same sheet set",
+      "field": "sheetSetName",
+      "expectedValue": "Main Street Plans"
+    },
+    {
+      "type": "parameter_value",
+      "description": "Scale matches prompt (1:20)",
+      "field": "scale",
+      "expectedValue": 20
+    },
+    {
+      "type": "parameter_value",
+      "description": "End station matches prompt (12+50 = station 1250)",
+      "field": "endStation",
+      "expectedValue": 1250
+    },
+    {
+      "type": "parameter_value",
+      "description": "Output filename matches prompt",
+      "field": "outputPath",
+      "expectedValue": "MainStreet_Plans.pdf"
+    }
+  ],
+  "tags": ["plan-production", "sheets", "pdf", "alignment", "profile"]
+}
