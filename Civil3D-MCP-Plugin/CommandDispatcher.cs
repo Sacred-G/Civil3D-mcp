@@ -96,6 +96,18 @@ public static class CommandDispatcher
       "addPressureFitting" => PressureNetworkCommands.AddPressureFittingAsync(parameters),
       "getPressureFittingProperties" => PressureNetworkCommands.GetPressureFittingPropertiesAsync(parameters),
       "addPressureAppurtenance" => PressureNetworkCommands.AddPressureAppurtenanceAsync(parameters),
+      "listSheetSets" => PlanProductionCommands.ListSheetSetsAsync(),
+      "getSheetSetInfo" => PlanProductionCommands.GetSheetSetInfoAsync(parameters),
+      "createSheetSet" => PlanProductionCommands.CreateSheetSetAsync(parameters),
+      "addSheet" => PlanProductionCommands.AddSheetAsync(parameters),
+      "getSheetProperties" => PlanProductionCommands.GetSheetPropertiesAsync(parameters),
+      "setSheetTitleBlock" => PlanProductionCommands.SetSheetTitleBlockAsync(parameters),
+      "createPlanProfileSheet" => PlanProductionCommands.CreatePlanProfileSheetAsync(parameters),
+      "updatePlanProfileSheetAlignment" => PlanProductionCommands.UpdatePlanProfileSheetAlignmentAsync(parameters),
+      "createSheetView" => PlanProductionCommands.CreateSheetViewAsync(parameters),
+      "setSheetViewScale" => PlanProductionCommands.SetSheetViewScaleAsync(parameters),
+      "publishSheetPdf" => PlanProductionCommands.PublishSheetPdfAsync(parameters),
+      "exportSheetSet" => PlanProductionCommands.ExportSheetSetAsync(parameters),
       _ => throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Plugin method '{method}' is not implemented yet."),
     };
   }
