@@ -242,6 +242,32 @@ public static class CivilObjectUtils
     try { prop?.SetValue(obj, name); } catch { /* ignore */ }
   }
 
+  public static object? InvokeStaticMethod(Type type, string methodName, params object?[] arguments)
+  {
+    var methods = type.GetMethods(BindingFlags.Public | BindingFlags.Static)
+      .Where(m => m.Name == methodName)
+      .ToArray();
+
+    foreach (var method in methods)
+    {
+      var parameters = method.GetParameters();
+      if (parameters.Length != arguments.Length)
+      {
+        continue;
+      }
+
+      try
+      {
+        return method.Invoke(null, arguments);
+      }
+      catch
+      {
+      }
+    }
+
+    return null;
+  }
+
   public static void TrySetLayer(DBObject obj, string layer, Database database, Transaction transaction)
   {
     try

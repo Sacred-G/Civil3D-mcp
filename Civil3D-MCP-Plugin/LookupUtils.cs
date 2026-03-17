@@ -67,6 +67,28 @@ public static class LookupUtils
     return GetStyleId(civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles, transaction, styleName);
   }
 
+  public static ObjectId GetProfileViewStyleId(CivilDocument civilDoc, Transaction transaction, string? styleName)
+  {
+    var styles = CivilObjectUtils.GetPropertyValue<object>(civilDoc.Styles, "ProfileViewStyles");
+    return styles != null
+      ? GetStyleId(styles, transaction, styleName)
+      : ObjectId.Null;
+  }
+
+  public static ObjectId GetProfileViewBandSetId(CivilDocument civilDoc, Transaction transaction, string? bandSetName)
+  {
+    if (string.IsNullOrWhiteSpace(bandSetName))
+    {
+      return ObjectId.Null;
+    }
+
+    var labelSetStyles = civilDoc.Styles.LabelSetStyles;
+    var bandSetStyles = CivilObjectUtils.GetPropertyValue<object>(labelSetStyles, "ProfileViewBandSetStyles");
+    return bandSetStyles != null
+      ? GetStyleId(bandSetStyles, transaction, bandSetName)
+      : ObjectId.Null;
+  }
+
   public static string? GetFirstStyleName(object? collection, Transaction transaction)
   {
     foreach (var objectId in EnumerateObjectIds(collection))
