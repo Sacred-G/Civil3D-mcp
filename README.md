@@ -68,6 +68,10 @@ Restart the Claude client. When you see the hammer icon, it means the connection
 
 ![claude](./assets/claude.png)
 
+## Deploy
+
+For full deployment instructions — npm publishing, Docker, Civil 3D plugin installation, environment variables, and connection verification — see **[docs/DEPLOYMENT.md](./docs/DEPLOYMENT.md)**.
+
 ## Framework
 
 ```mermaid
