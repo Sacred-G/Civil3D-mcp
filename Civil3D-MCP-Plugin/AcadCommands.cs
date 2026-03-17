@@ -171,6 +171,49 @@ public static class AcadCommands
     });
   }
 
+  public static Task<object?> CreateLineSegmentAsync(JsonObject? parameters)
+  {
+    var startX = PluginRuntime.GetRequiredDouble(parameters, "startX");
+    var startY = PluginRuntime.GetRequiredDouble(parameters, "startY");
+    var startZ = PluginRuntime.GetOptionalDouble(parameters, "startZ") ?? 0d;
+    var endX = PluginRuntime.GetRequiredDouble(parameters, "endX");
+    var endY = PluginRuntime.GetRequiredDouble(parameters, "endY");
+    var endZ = PluginRuntime.GetOptionalDouble(parameters, "endZ") ?? 0d;
+    var layerName = PluginRuntime.GetOptionalString(parameters, "layer");
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var blockTable = CivilObjectUtils.GetRequiredObject<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+      var modelSpace = CivilObjectUtils.GetRequiredObject<BlockTableRecord>(transaction, blockTable[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+
+      using var line = new Line(new Point3d(startX, startY, startZ), new Point3d(endX, endY, endZ));
+
+      if (!string.IsNullOrWhiteSpace(layerName))
+      {
+        var layerId = LookupUtils.GetLayerId(database, transaction, layerName);
+        line.LayerId = layerId;
+      }
+
+      var lineId = modelSpace.AppendEntity(line);
+      transaction.AddNewlyCreatedDBObject(line, true);
+
+      var created = CivilObjectUtils.GetRequiredObject<Line>(transaction, lineId, OpenMode.ForRead);
+
+      return new Dictionary<string, object?>
+      {
+        ["lineId"] = CivilObjectUtils.GetHandle(created),
+        ["startX"] = created.StartPoint.X,
+        ["startY"] = created.StartPoint.Y,
+        ["startZ"] = created.StartPoint.Z,
+        ["endX"] = created.EndPoint.X,
+        ["endY"] = created.EndPoint.Y,
+        ["endZ"] = created.EndPoint.Z,
+        ["length"] = created.Length,
+        ["layer"] = created.Layer,
+      };
+    });
+  }
+
   public static Task<object?> CreateMTextAsync(JsonObject? parameters)
   {
     var text = PluginRuntime.GetRequiredString(parameters, "text");

@@ -19,6 +19,7 @@ public static class CommandDispatcher
       "createText" => AcadCommands.CreateTextAsync(parameters),
       "create3dPolyline" => AcadCommands.Create3dPolylineAsync(parameters),
       "createMText" => AcadCommands.CreateMTextAsync(parameters),
+      "createLineSegment" => AcadCommands.CreateLineSegmentAsync(parameters),
       "listCivilObjectTypes" => DrawingCommands.ListCivilObjectTypesAsync(),
       "getSelectedCivilObjectsInfo" => DrawingCommands.GetSelectedCivilObjectsInfoAsync(parameters),
       "getJobStatus" => Task.FromResult<object?>(JobCommands.GetJobStatus(parameters)),
