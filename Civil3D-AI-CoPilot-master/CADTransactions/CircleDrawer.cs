@@ -6,7 +6,6 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public class CircleDrawer
     {
-        // იღებს ცენტრის X, Y კოორდინატებს და რადიუსს
         public static void Draw(Document doc, double centerX, double centerY, double radius)
         {
             using (DocumentLock docLock = doc.LockDocument())

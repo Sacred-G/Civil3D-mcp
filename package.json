@@ -10,7 +10,9 @@
   "scripts": {
     "clean": "rimraf build",
     "prebuild": "npm run clean",
-    "build": "tsc"
+    "build": "tsc",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "files": [
     "build"
@@ -35,6 +37,7 @@
     "@types/node": "^22.13.10",
     "@types/ws": "^8.18.0",
     "rimraf": "^5.0.10",
-    "typescript": "^5.8.2"
+    "typescript": "^5.8.2",
+    "vitest": "^4.1.0"
   }
 }

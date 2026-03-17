@@ -13,19 +13,15 @@ namespace Cad_AI_Agent.CADTransactions
         {
             Database db = doc.Database;
 
-            // ვიღებთ Civil 3D-ის აქტიურ დოკუმენტს
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
             if (civilDoc == null) return;
 
             using (Transaction trans = db.TransactionManager.StartTransaction())
             {
-                // ვიღებთ Cogo Point-ების კოლექციას ამ ნახაზიდან
                 CogoPointCollection cogoPoints = civilDoc.CogoPoints;
 
-                // ვქმნით წერტილს (X, Y და Z ნიშნული)
                 Point3d location = new Point3d(x, y, elevation);
 
-                // ვამატებთ წერტილს ნახაზში
                 ObjectId pointId = cogoPoints.Add(location, description, true);
 
                 trans.Commit();

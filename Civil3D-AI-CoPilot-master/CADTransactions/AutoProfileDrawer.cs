@@ -10,7 +10,7 @@ namespace Cad_AI_Agent.CADTransactions
 {
     public static class AutoProfileDrawer
     {
-        public static void Draw(Document doc)
+        public static void Draw(Document doc, double interval = 150.0, string? alignmentName = null, string? sourceProfileName = null, string? profileName = null)
         {
             Database db = doc.Database;
             CivilDocument civilDoc = CivilApplication.ActiveDocument;
@@ -20,21 +20,17 @@ namespace Cad_AI_Agent.CADTransactions
             {
                 doc.Editor.WriteMessage("\n[AI]: Running Best-Fit AutoProfile on existing EG...");
 
-                ObjectIdCollection alignIds = civilDoc.GetAlignmentIds();
-                if (alignIds.Count == 0) return;
-                Alignment align = trans.GetObject(alignIds[0], OpenMode.ForRead) as Alignment;
-
-                // 1. ვპოულობთ ProfileDrawer-ის მიერ წეღან შექმნილ EG პროფილს
-                Profile egProfile = null;
-                foreach (ObjectId profId in align.GetProfileIds())
+                ObjectId alignId = CivilLookup.GetAlignmentId(civilDoc, trans, alignmentName);
+                if (trans.GetObject(alignId, OpenMode.ForRead) is not Alignment align)
                 {
-                    Profile p = trans.GetObject(profId, OpenMode.ForRead) as Profile;
-                    if (p.ProfileType == ProfileType.EG)
-                    {
-                        egProfile = p;
-                        break;
-                    }
+                    doc.Editor.WriteMessage("\n[AI Error]: Alignment could not be resolved.");
+                    return;
                 }
+
+                ObjectId sourceProfileId = string.IsNullOrWhiteSpace(sourceProfileName)
+                    ? CivilLookup.GetProfileId(align, trans, null, ProfileType.EG)
+                    : CivilLookup.GetProfileId(align, trans, sourceProfileName);
+                Profile? egProfile = trans.GetObject(sourceProfileId, OpenMode.ForRead) as Profile;
 
                 if (egProfile == null)
                 {
@@ -42,26 +38,28 @@ namespace Cad_AI_Agent.CADTransactions
                     return;
                 }
 
-                // 2. ვქმნით საპროექტო (Layout) პროფილს
                 ObjectId layerId = db.LayerZero;
-                ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 1 ? civilDoc.Styles.ProfileStyles[1] : civilDoc.Styles.ProfileStyles[0]; // ვცდილობთ მეორე სტილი ავიღოთ საპროექტოსთვის
+                ObjectId styleId = civilDoc.Styles.ProfileStyles.Count > 1 ? civilDoc.Styles.ProfileStyles[1] : civilDoc.Styles.ProfileStyles[0];
                 ObjectId labelSetId = civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles.Count > 0 ? civilDoc.Styles.LabelSetStyles.ProfileLabelSetStyles[0] : ObjectId.Null;
 
-                string profileName = "AI_Layout_" + DateTime.Now.ToString("HHmmss");
-                ObjectId layoutProfId = Profile.CreateByLayout(profileName, align.ObjectId, layerId, styleId, labelSetId);
-                Profile layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
+                string resolvedProfileName = string.IsNullOrWhiteSpace(profileName)
+                    ? "AI_Layout_" + DateTime.Now.ToString("HHmmss")
+                    : profileName;
+
+                ObjectId layoutProfId = Profile.CreateByLayout(resolvedProfileName, align.ObjectId, layerId, styleId, labelSetId);
+                Profile? layoutProfile = trans.GetObject(layoutProfId, OpenMode.ForWrite) as Profile;
+                if (layoutProfile == null)
+                {
+                    doc.Editor.WriteMessage("\n[AI Error]: Layout profile could not be created.");
+                    return;
+                }
 
                 double startSta = egProfile.StartingStation;
                 double endSta = egProfile.EndingStation;
                 double totalLength = endSta - startSta;
 
-                // 3. შენი იდეალური დინამიური დაყოფის ალგორითმი
-                int segments = 4;
-                if (totalLength <= 500) segments = 4;
-                else if (totalLength <= 1000) segments = 8;
-                else if (totalLength <= 2000) segments = 12;
-                else segments = 12 + (int)Math.Ceiling((totalLength - 2000) / 500.0);
-
+                double sampleInterval = interval > 0 ? interval : 150.0;
+                int segments = Math.Max(2, (int)Math.Ceiling(totalLength / sampleInterval));
                 double step = totalLength / segments;
 
                 List<Point2d> pviPoints = new List<Point2d>();
@@ -70,12 +68,12 @@ namespace Cad_AI_Agent.CADTransactions
                 for (int i = 1; i < segments; i++)
                 {
                     double sta = startSta + (i * step);
-                    try { pviPoints.Add(new Point2d(sta, egProfile.ElevationAt(sta))); } catch { }
+                    try { pviPoints.Add(new Point2d(sta, egProfile.ElevationAt(sta))); }
+                    catch (Exception ex) { doc.Editor.WriteMessage($"\n[AI Warning]: Could not sample elevation at station {sta:F2}: {ex.Message}"); }
                 }
 
                 pviPoints.Add(new Point2d(endSta, egProfile.ElevationAt(endSta)));
 
-                // 4. ტანგენსები
                 List<ProfileEntity> tangents = new List<ProfileEntity>();
                 for (int i = 0; i < pviPoints.Count - 1; i++)
                 {
@@ -83,22 +81,24 @@ namespace Cad_AI_Agent.CADTransactions
                     tangents.Add(tan);
                 }
 
-                // 5. მრუდები (60%)
                 for (int i = 0; i < tangents.Count - 1; i++)
                 {
-                    ProfileTangent t1 = tangents[i] as ProfileTangent;
-                    ProfileTangent t2 = tangents[i + 1] as ProfileTangent;
+                    ProfileTangent? t1 = tangents[i] as ProfileTangent;
+                    ProfileTangent? t2 = tangents[i + 1] as ProfileTangent;
 
                     if (t1 != null && t2 != null && Math.Abs(t1.Grade - t2.Grade) > 0.001)
                     {
                         try
                         {
                             VerticalCurveType curveType = (t1.Grade < t2.Grade) ? VerticalCurveType.Sag : VerticalCurveType.Crest;
-                            double curveLen = Math.Min(100.0, step * 0.6); // მაქსიმუმ 100მ ან ბიჯის 60%
+                            double curveLen = Math.Min(100.0, step * 0.6);
 
                             layoutProfile.Entities.AddFreeSymmetricParabolaByLength(t1.EntityId, t2.EntityId, curveType, curveLen, false);
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            doc.Editor.WriteMessage($"\n[AI Warning]: Could not add vertical curve between tangents {i} and {i+1}: {ex.Message}");
+                        }
                     }
                 }
 

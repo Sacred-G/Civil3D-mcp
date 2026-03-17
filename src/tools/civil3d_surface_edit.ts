@@ -16,7 +16,7 @@ const Point3DSchema = z.object({
 const Civil3DSurfaceEditInputShape = {
   action: z.enum(["add_points", "add_breakline", "add_boundary", "extract_contours", "compute_volume"]),
   name: z.string().optional(),
-  points: z.array(z.union([Point2DSchema, Point3DSchema])).optional(),
+  points: z.array(z.union([Point3DSchema, Point2DSchema])).optional(),
   description: z.string().optional(),
   breaklineType: z.enum(["standard", "wall", "proximity"]).optional(),
   boundaryType: z.enum(["show", "hide", "outer", "data_clip"]).optional(),

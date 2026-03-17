@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading.Tasks;
 using System.Windows;
@@ -15,20 +16,20 @@ using Autodesk.AutoCAD.ApplicationServices;
 using CoreApp = Autodesk.AutoCAD.ApplicationServices.Application;
 using Cad_AI_Agent.Models;
 using Cad_AI_Agent.CADTransactions;
+using Cad_AI_Agent.Services;
 using Microsoft.Win32;
 
 namespace Cad_AI_Agent.UI
 {
-    // --- ახალი მოდელები ჩატის ისტორიისთვის ---
     public class AiResponse
     {
-        public string Message { get; set; }
-        public List<CadCommand> Commands { get; set; }
+        public string Message { get; set; } = string.Empty;
+        public List<CadCommand> Commands { get; set; } = new List<CadCommand>();
     }
 
     public class ChatMessageData
     {
-        public string Text { get; set; }
+        public string Text { get; set; } = string.Empty;
         public bool IsUser { get; set; }
     }
 
@@ -39,42 +40,259 @@ namespace Cad_AI_Agent.UI
         public List<ChatMessageData> Messages { get; set; } = new List<ChatMessageData>();
     }
 
-    // --- მთავარი ლოგიკა ---
     public partial class AIChatPanel : UserControl
     {
         private DispatcherTimer _thinkingTimer;
         private int _dotCount = 0;
-        private TextBlock _currentThinkingText;
+        private TextBlock? _currentThinkingText;
+        private const string RegistryPath = @"SOFTWARE\CadAiAgent";
+        private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
+        private const string DefaultMcpUrl = "http://localhost:3000";
+        private string _activeProviderTag = DefaultProviderTag;
+        private bool _isLoadingProviderSettings = false;
+        private McpClient _mcpClient = new McpClient(DefaultMcpUrl);
+        private bool _mcpAvailable = false;
 
-        // სესიების მართვა
         private List<ChatSession> _allSessions = new List<ChatSession>();
-        private ChatSession _currentSession;
+        private ChatSession _currentSession = new ChatSession();
 
         public AIChatPanel()
         {
-            InitializeComponent();
-            System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
-
-            _thinkingTimer = new DispatcherTimer();
-            _thinkingTimer.Interval = TimeSpan.FromMilliseconds(500);
-            _thinkingTimer.Tick += ThinkingTimer_Tick;
-
-            StartNewSession(); // პირველი ჩართვისას იწყებს ახალ ჩატს
-   
-            using (RegistryKey key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\CadAiAgent"))
+            try
             {
-                if (key != null)
+                InitializeComponent();
+                System.Net.ServicePointManager.SecurityProtocol = System.Net.SecurityProtocolType.Tls12;
+
+                _thinkingTimer = new DispatcherTimer();
+                _thinkingTimer.Interval = TimeSpan.FromMilliseconds(500);
+                _thinkingTimer.Tick += ThinkingTimer_Tick;
+
+                StartNewSession();
+
+                LoadProviderSettings();
+                InitializeMcpClient();
+            }
+            catch (Exception ex)
+            {
+                Exception baseException = ex.GetBaseException();
+                throw new InvalidOperationException($"AIChatPanel initialization failed. ExceptionType={ex.GetType().FullName}; BaseExceptionType={baseException.GetType().FullName}; Message={ex.Message}; BaseMessage={baseException.Message}", ex);
+            }
+        }
+
+        private async void InitializeMcpClient()
+        {
+            string mcpUrl = DefaultMcpUrl;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                mcpUrl = key?.GetValue("McpServerUrl") as string ?? DefaultMcpUrl;
+            }
+            catch { /* Registry read failure is non-critical */ }
+
+            // Populate Settings URL field
+            if (McpServerUrlBox != null)
+                McpServerUrlBox.Text = mcpUrl;
+
+            await ConnectMcpAsync(mcpUrl);
+        }
+
+        private async Task ConnectMcpAsync(string mcpUrl)
+        {
+            if (McpStatusText != null)
+            {
+                McpStatusText.Text = "Connecting...";
+                McpStatusText.Foreground = Brushes.Yellow;
+            }
+
+            try
+            {
+                using var httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+                var response = await httpClient.GetAsync($"{mcpUrl}/health");
+
+                _mcpClient = new McpClient(mcpUrl);
+
+                if (response.IsSuccessStatusCode)
                 {
-                    ApiKeyBox.Text = key.GetValue("ApiKey")?.ToString() ?? "";
+                    // Civil 3D is open and connected
+                    _mcpAvailable = true;
+                    AddMessageToChat("✅ MCP server connected — AI can query drawing context", false, false);
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = "✅ Civil 3D connected";
+                        McpStatusText.Foreground = Brushes.LightGreen;
+                    }
+                }
+                else if (response.StatusCode == System.Net.HttpStatusCode.ServiceUnavailable)
+                {
+                    // Server is running but Civil 3D isn't open yet — queries will still be attempted
+                    _mcpAvailable = true;
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = "⚠️ Server up — open Civil 3D";
+                        McpStatusText.Foreground = Brushes.Orange;
+                    }
+                }
+                else
+                {
+                    _mcpAvailable = false;
+                    if (McpStatusText != null)
+                    {
+                        McpStatusText.Text = $"❌ HTTP {(int)response.StatusCode}";
+                        McpStatusText.Foreground = Brushes.Red;
+                    }
+                }
+            }
+            catch
+            {
+                _mcpAvailable = false;
+                if (McpStatusText != null)
+                {
+                    McpStatusText.Text = "❌ Server not running";
+                    McpStatusText.Foreground = Brushes.Red;
                 }
             }
         }
 
-        // ================= ისტორიის მართვის ლოგიკა =================
+        private async void ReconnectMcpBtn_Click(object sender, RoutedEventArgs e)
+        {
+            string mcpUrl = McpServerUrlBox?.Text?.Trim() ?? DefaultMcpUrl;
+            if (string.IsNullOrWhiteSpace(mcpUrl))
+                mcpUrl = DefaultMcpUrl;
+
+            // Save to registry
+            try
+            {
+                using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+                key?.SetValue("McpServerUrl", mcpUrl);
+            }
+            catch { /* non-critical */ }
+
+            ReconnectMcpBtn.IsEnabled = false;
+            try
+            {
+                await ConnectMcpAsync(mcpUrl);
+            }
+            finally
+            {
+                ReconnectMcpBtn.IsEnabled = true;
+            }
+        }
+
+        private void LoadProviderSettings()
+        {
+            _isLoadingProviderSettings = true;
+            try
+            {
+                using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                string selectedProviderTag = key?.GetValue("SelectedProviderTag")?.ToString() ?? DefaultProviderTag;
+                SelectProviderTag(selectedProviderTag);
+                _activeProviderTag = GetSelectedProviderTag();
+                ApiKeyBox.Text = ReadApiKeyForProvider(_activeProviderTag);
+                VectorStoreIdBox.Text = key?.GetValue("OpenAIVectorStoreId")?.ToString() ?? string.Empty;
+            }
+            finally
+            {
+                _isLoadingProviderSettings = false;
+            }
+        }
+
+        private void ProviderCombo_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingProviderSettings || ApiKeyBox == null || ConnectionStatusText == null)
+            {
+                return;
+            }
+
+            string providerTag = GetSelectedProviderTag();
+            _activeProviderTag = providerTag;
+            ApiKeyBox.Text = ReadApiKeyForProvider(providerTag);
+            ConnectionStatusText.Text = string.Empty;
+        }
+
+        private void SelectProviderTag(string providerTag)
+        {
+            string resolvedProviderTag = string.IsNullOrWhiteSpace(providerTag) ? DefaultProviderTag : providerTag;
+
+            foreach (var item in ProviderCombo.Items)
+            {
+                if (item is ComboBoxItem comboBoxItem && string.Equals(comboBoxItem.Tag?.ToString(), resolvedProviderTag, StringComparison.OrdinalIgnoreCase))
+                {
+                    ProviderCombo.SelectedItem = comboBoxItem;
+                    return;
+                }
+            }
+
+            if (ProviderCombo.Items.Count > 0)
+            {
+                ProviderCombo.SelectedIndex = 0;
+            }
+        }
+
+        private string GetSelectedProviderTag()
+        {
+            if (ProviderCombo.SelectedItem is ComboBoxItem comboBoxItem)
+            {
+                return comboBoxItem.Tag?.ToString() ?? DefaultProviderTag;
+            }
+
+            return DefaultProviderTag;
+        }
+
+        private string ReadApiKeyForProvider(string providerTag)
+        {
+            string providerName = GetProviderName(providerTag);
+
+            using RegistryKey? key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+            if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                return key?.GetValue("OpenAIApiKey")?.ToString() ?? string.Empty;
+            if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                return key?.GetValue("AnthropicApiKey")?.ToString() ?? string.Empty;
+            return key?.GetValue("GeminiApiKey")?.ToString() ?? string.Empty;
+        }
+
+        private void SaveProviderSettings(string providerTag, string apiKey)
+        {
+            string providerName = GetProviderName(providerTag);
+
+            using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+            key?.SetValue("SelectedProviderTag", providerTag);
+
+            if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                key?.SetValue("OpenAIApiKey", apiKey ?? string.Empty);
+            else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                key?.SetValue("AnthropicApiKey", apiKey ?? string.Empty);
+            else
+                key?.SetValue("GeminiApiKey", apiKey ?? string.Empty);
+
+            key?.SetValue("OpenAIVectorStoreId", VectorStoreIdBox?.Text?.Trim() ?? string.Empty);
+        }
+
+        private string GetProviderName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag))
+            {
+                return "gemini";
+            }
+
+            string[] parts = providerTag.Split(':');
+            return parts.Length > 0 && !string.IsNullOrWhiteSpace(parts[0]) ? parts[0] : "gemini";
+        }
+
+        private string GetModelName(string providerTag)
+        {
+            if (string.IsNullOrWhiteSpace(providerTag))
+            {
+                return "gemini-2.5-flash";
+            }
+
+            string[] parts = providerTag.Split(':');
+            return parts.Length > 1 && !string.IsNullOrWhiteSpace(parts[1]) ? parts[1] : "gemini-2.5-flash";
+        }
+
         private void StartNewSession()
         {
             _currentSession = new ChatSession();
-            _allSessions.Insert(0, _currentSession); // ვამატებთ სიის თავში
+            _allSessions.Insert(0, _currentSession);
             LoadSessionToUI(_currentSession);
             RefreshSidebarUI();
         }
@@ -102,59 +320,55 @@ namespace Cad_AI_Agent.UI
             HistoryListPanel.Children.Clear();
             foreach (var session in _allSessions)
             {
-                // ვქმნით Grid-ს სათაურისთვის და წაშლის ღილაკისთვის
                 Grid sessionGrid = new Grid { Margin = new Thickness(0, 0, 0, 5) };
                 sessionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 sessionGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
 
-                // ჩატის ჩამრთველი ღილაკი
                 Button loadBtn = new Button
                 {
                     Content = session.Title,
-                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#333333")) : Brushes.Transparent,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#D4D4D4")),
-                    BorderThickness = new Thickness(0),
+
+                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")) : Brushes.Transparent,
+                    BorderBrush = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A3A55")) : Brushes.Transparent,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                    BorderThickness = session == _currentSession ? new Thickness(1) : new Thickness(0),
                     Padding = new Thickness(10, 8, 10, 8),
                     HorizontalContentAlignment = HorizontalAlignment.Left,
                     Cursor = Cursors.Hand,
                     ToolTip = session.Title
                 };
-                
+
                 loadBtn.Click += (s, e) => { LoadSessionToUI(session); RefreshSidebarUI(); };
                 Grid.SetColumn(loadBtn, 0);
                 loadBtn.Style = (Style)FindResource("SidebarButtonStyle");
 
-                // === დაამატე ეს ახალი ბლოკი RENAME (Right-Click) ფუნქციისთვის ===
                 ContextMenu ctxMenu = new ContextMenu();
                 MenuItem renameItem = new MenuItem { Header = "✏️ Rename" };
                 renameItem.Click += (s, ev) =>
                 {
-                    // ვქმნით დროებით TextBox-ს ტექსტის ჩასასწორებლად
                     TextBox renameBox = new TextBox
                     {
                         Text = session.Title,
-                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E1E1E")),
-                        Foreground = Brushes.White,
-                        Padding = new Thickness(5),
+
+                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
+                        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                        CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                        Padding = new Thickness(10, 8, 10, 8),
                         BorderThickness = new Thickness(1),
-                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"))
+                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
                     };
 
-                    // ვინახავთ სახელს Enter-ზე დაჭერისას
                     renameBox.KeyDown += (senderBox, args) => {
                         if (args.Key == Key.Enter) { session.Title = renameBox.Text; RefreshSidebarUI(); }
                         else if (args.Key == Key.Escape) { RefreshSidebarUI(); }
                     };
 
-                    // ვინახავთ სახელს ფოკუსის დაკარგვისას (სხვაგან დაკლიკებისას)
                     renameBox.LostFocus += (senderBox, args) => { session.Title = renameBox.Text; RefreshSidebarUI(); };
 
-                    // ვცვლით ღილაკს ამ TextBox-ით
                     Grid.SetColumn(renameBox, 0);
                     sessionGrid.Children.Remove(loadBtn);
                     sessionGrid.Children.Insert(0, renameBox);
 
-                    // ფოკუსი ავტომატურად გადაგვაქვს ტექსტზე
                     Dispatcher.BeginInvoke(new Action(() => {
                         renameBox.Focus();
                         renameBox.SelectAll();
@@ -162,17 +376,17 @@ namespace Cad_AI_Agent.UI
                 };
                 ctxMenu.Items.Add(renameItem);
                 loadBtn.ContextMenu = ctxMenu;
-                // ==========================================================
 
-                // წაშლის ღილაკი
                 Button delBtn = new Button
                 {
-                    Content = "🗑️",
+                    Content = "✕",
+
                     Background = Brushes.Transparent,
-                    Foreground = Brushes.Gray,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
                     BorderThickness = new Thickness(0),
+
                     Cursor = Cursors.Hand,
-                    Padding = new Thickness(5),
+                    Padding = new Thickness(8, 8, 8, 8),
                     ToolTip = "Delete Chat"
                 };
                 delBtn.Click += (s, e) =>
@@ -181,7 +395,7 @@ namespace Cad_AI_Agent.UI
                     if (_currentSession == session) StartNewSession();
                     else RefreshSidebarUI();
                 };
-                
+
                 Grid.SetColumn(delBtn, 1);
                 delBtn.Style = (Style)FindResource("SidebarButtonStyle");
 
@@ -196,7 +410,6 @@ namespace Cad_AI_Agent.UI
             StartNewSession();
         }
 
-        // ================= ჩატის ვიზუალიზაცია =================
         private TextBlock AddMessageToChat(string text, bool isUser, bool saveToHistory = true)
         {
             if (saveToHistory && _currentSession != null)
@@ -209,51 +422,71 @@ namespace Cad_AI_Agent.UI
                 }
             }
 
-            Border bubble = new Border
+            StackPanel messageContainer = new StackPanel
             {
-                CornerRadius = new CornerRadius(8),
-                Padding = new Thickness(12),
-                Margin = isUser ? new Thickness(40, 0, 0, 10) : new Thickness(0, 0, 40, 10),
                 HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"))
-                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#333333"))
+                Margin = isUser ? new Thickness(48, 0, 0, 12) : new Thickness(0, 0, 48, 12),
+                MaxWidth = 460
             };
 
-            // TextBlock-ის მაგივრად ვიყენებთ TextBox-ს, რათა ტექსტის მონიშვნა შეგეძლოს
+            TextBlock messageMeta = new TextBlock
+            {
+                Text = isUser ? "You" : "AI Agent",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(isUser ? "#7DD3FC" : "#94A3B8")),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(4, 0, 4, 6),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left
+            };
+
+            Border bubble = new Border
+            {
+                CornerRadius = new CornerRadius(14),
+                Padding = new Thickness(14, 12, 14, 12),
+                HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
+                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0284C7"))
+                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")),
+                BorderBrush = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
+                                     : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                BorderThickness = new Thickness(1)
+            };
+
             TextBox txtBox = new TextBox
             {
                 Text = text,
-                Foreground = new SolidColorBrush(Colors.White),
-                Background = Brushes.Transparent, // ფონი გამჭვირვალეა, რომ Border-ის ფერი გამოჩნდეს
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC")),
+                Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
-                IsReadOnly = true, // აკრძალულია ჩასწორება, შესაძლებელია მხოლოდ მონიშვნა
+                IsReadOnly = true,
                 TextWrapping = TextWrapping.Wrap,
-                FontSize = 13,
-                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"))
+                FontSize = 13.5,
+                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7C93B7")),
+                FontFamily = new FontFamily("Segoe UI"),
+                MinWidth = 80
             };
 
             bubble.Child = txtBox;
-            ChatHistoryPanel.Children.Add(bubble);
+            messageContainer.Children.Add(messageMeta);
+            messageContainer.Children.Add(bubble);
+            ChatHistoryPanel.Children.Add(messageContainer);
             ChatScrollViewer.ScrollToEnd();
 
-            // ვაბრუნებთ TextBlock-ს ანიმაციისთვის (დროებითი ხრიკი, რადგან დანარჩენი კოდი TextBlock-ს ელოდება)
             TextBlock hiddenTextBlockForThinking = new TextBlock();
             txtBox.Tag = hiddenTextBlockForThinking;
             txtBox.TextChanged += (s, e) => { hiddenTextBlockForThinking.Text = txtBox.Text; };
             hiddenTextBlockForThinking.TargetUpdated += (s, e) => { txtBox.Text = hiddenTextBlockForThinking.Text; };
 
-            // ეს ფუნქცია მხოლოდ ანიმაციისთვის გვიბრუნებს ობიექტს
             TextBlock proxyText = new TextBlock();
             proxyText.DataContext = txtBox;
             proxyText.SetBinding(TextBlock.TextProperty, new System.Windows.Data.Binding("Text") { Mode = System.Windows.Data.BindingMode.TwoWay });
             return proxyText;
         }
 
-        // ================= ტაბები & API =================
         private void TabChatButton_Click(object sender, RoutedEventArgs e)
         {
             ChatTab.Visibility = Visibility.Visible;
             SettingsTab.Visibility = Visibility.Collapsed;
+
             TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
             TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
         }
@@ -269,6 +502,10 @@ namespace Cad_AI_Agent.UI
         private async void TestConnectionBtn_Click(object sender, RoutedEventArgs e)
         {
             string key = ApiKeyBox.Text.Trim();
+            string providerTag = GetSelectedProviderTag();
+            string providerName = GetProviderName(providerTag);
+            string modelName = GetModelName(providerTag);
+
             if (string.IsNullOrEmpty(key))
             {
                 ConnectionStatusText.Text = "❌ Please enter a key";
@@ -276,31 +513,59 @@ namespace Cad_AI_Agent.UI
                 return;
             }
             ConnectionStatusText.Text = "Testing...";
+
             ConnectionStatusText.Foreground = Brushes.Yellow;
             TestConnectionBtn.IsEnabled = false;
 
             try
             {
-                string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={key}";
                 using var client = new HttpClient();
-                var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
-                var response = await client.PostAsync(testUrl, content);
+                HttpResponseMessage response;
+
+                if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                {
+                    client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+                    var requestBody = new
+                    {
+                        model = modelName,
+                        input = "Hello"
+                    };
+                    var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                    response = await client.PostAsync("https://api.openai.com/v1/responses", content);
+                }
+                else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                {
+                    client.DefaultRequestHeaders.Add("x-api-key", key);
+                    client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+                    var requestBody = new
+                    {
+                        model = modelName,
+                        max_tokens = 16,
+                        messages = new[] { new { role = "user", content = "Hello" } }
+                    };
+                    var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
+                    response = await client.PostAsync("https://api.anthropic.com/v1/messages", content);
+                }
+                else
+                {
+                    string testUrl = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
+                    var content = new StringContent("{\"contents\":[{\"parts\":[{\"text\":\"Hello\"}]}]}", Encoding.UTF8, "application/json");
+                    response = await client.PostAsync(testUrl, content);
+                }
+
                 if (response.IsSuccessStatusCode)
                 {
                     ConnectionStatusText.Text = "✅ Connected!";
-                    using (RegistryKey regKey = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\CadAiAgent"))
-                    {
-                        regKey.SetValue("ApiKey", key);
-                    }
+                    SaveProviderSettings(providerTag, key);
+                    _activeProviderTag = providerTag;
                     ConnectionStatusText.Foreground = Brushes.LightGreen;
                 }
                 else
                 {
-                    // === აქ ვიჭერთ Google-ის რეალურ პასუხს და ვაგდებთ ეკრანზე ===
                     string errorDetails = await response.Content.ReadAsStringAsync();
                     ConnectionStatusText.Text = "❌ Connection Failed";
                     ConnectionStatusText.Foreground = Brushes.Red;
-                    MessageBox.Show($"Google API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show($"{providerName} API Error:\n\n{errorDetails}", "API Error Details", MessageBoxButton.OK, MessageBoxImage.Error);
                 }
             }
             catch
@@ -311,7 +576,6 @@ namespace Cad_AI_Agent.UI
             finally { TestConnectionBtn.IsEnabled = true; }
         }
 
-        // ================= GEMINI COMMUNICATION =================
         private void UserInputBox_KeyDown(object sender, KeyEventArgs e)
         {
             if (e.Key == Key.Enter && !Keyboard.Modifiers.HasFlag(ModifierKeys.Shift))
@@ -326,7 +590,7 @@ namespace Cad_AI_Agent.UI
             _ = SendMessageAsync();
         }
 
-        private void ThinkingTimer_Tick(object sender, EventArgs e)
+        private void ThinkingTimer_Tick(object? sender, EventArgs e)
         {
             if (_currentThinkingText != null)
             {
@@ -339,6 +603,9 @@ namespace Cad_AI_Agent.UI
         {
             string message = UserInputBox.Text.Trim();
             string apiKey = ApiKeyBox.Text.Trim();
+            string providerTag = GetSelectedProviderTag();
+            string providerName = GetProviderName(providerTag);
+            string modelName = GetModelName(providerTag);
 
             if (string.IsNullOrEmpty(message)) return;
             if (string.IsNullOrEmpty(apiKey))
@@ -347,17 +614,12 @@ namespace Cad_AI_Agent.UI
                 return;
             }
 
-            // 1. აქ ვკითხულობთ, რომელი მოდელი აირჩია მომხმარებელმა Settings ტაბში
-            string selectedModel = "gemini-2.5-flash"; // Default მნიშვნელობა
-            if (ProviderCombo.SelectedItem is ComboBoxItem selectedItem && selectedItem.Tag != null)
-            {
-                selectedModel = selectedItem.Tag.ToString();
-            }
-
             AddMessageToChat(message, true);
             UserInputBox.Clear();
             UserInputBox.IsEnabled = false;
             SendButton.IsEnabled = false;
+            SaveProviderSettings(providerTag, apiKey);
+            _activeProviderTag = providerTag;
 
             _currentThinkingText = AddMessageToChat("Thinking", false, false);
             _dotCount = 0;
@@ -365,13 +627,41 @@ namespace Cad_AI_Agent.UI
 
             try
             {
-                // 2. აქ ვაწვდით არჩეულ მოდელს GetGeminiResponse ფუნქციას
-                string jsonPayload = await GetGeminiResponse(message, apiKey, selectedModel);
+                // Query MCP server for drawing context if available
+                string? drawingContext = null;
+                if (_mcpAvailable)
+                {
+                    try
+                    {
+                        var context = await _mcpClient.GetDrawingContextAsync();
+                        drawingContext = context.ToSummary();
+                    }
+                    catch
+                    {
+                        // MCP query failed, continue without context
+                        drawingContext = null;
+                    }
+                }
+
+                string jsonPayload;
+                if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
+                {
+                    string vectorStoreId = VectorStoreIdBox?.Text?.Trim() ?? string.Empty;
+                    jsonPayload = await GetOpenAiResponse(message, apiKey, modelName, drawingContext, vectorStoreId);
+                }
+                else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
+                    jsonPayload = await GetAnthropicResponse(message, apiKey, modelName, drawingContext);
+                else
+                    jsonPayload = await GetGeminiResponse(message, apiKey, modelName, drawingContext);
                 _thinkingTimer.Stop();
 
                 if (!string.IsNullOrEmpty(jsonPayload))
                 {
                     var responseObj = JsonConvert.DeserializeObject<AiResponse>(jsonPayload);
+                    if (responseObj == null)
+                    {
+                        throw new InvalidOperationException("AI response could not be deserialized.");
+                    }
 
                     _currentThinkingText.Text = responseObj.Message ?? "Drawing initiated...";
                     _currentSession.Messages.Add(new ChatMessageData { Text = _currentThinkingText.Text, IsUser = false });
@@ -395,14 +685,130 @@ namespace Cad_AI_Agent.UI
             }
         }
 
-        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName)
+        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string? drawingContext = null, string? vectorStoreId = null)
         {
-            // 3. URL დინამიურად იწყობა არჩეული მოდელის მიხედვით
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
+
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
+
+            var requestBody = new JObject
+            {
+                ["model"] = modelName,
+                ["input"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["role"] = "system",
+                        ["content"] = systemInstruction
+                    },
+                    new JObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = prompt
+                    }
+                },
+                ["temperature"] = 0.0,
+                ["text"] = new JObject
+                {
+                    ["format"] = new JObject
+                    {
+                        ["type"] = "json_schema",
+                        ["name"] = "civil3d_ai_response",
+                        ["strict"] = true,
+                        ["schema"] = new JObject
+                        {
+                            ["type"] = "object",
+                            ["properties"] = new JObject
+                            {
+                                ["Message"] = new JObject
+                                {
+                                    ["type"] = "string"
+                                },
+                                ["Commands"] = new JObject
+                                {
+                                    ["type"] = "array",
+                                    ["items"] = new JObject
+                                    {
+                                        ["type"] = "object",
+                                        ["properties"] = new JObject
+                                        {
+                                            ["Action"] = new JObject
+                                            {
+                                                ["type"] = "string"
+                                            },
+                                            ["Params"] = new JObject
+                                            {
+                                                ["type"] = "array",
+                                                ["items"] = new JObject
+                                                {
+                                                    ["type"] = "number"
+                                                }
+                                            },
+                                            ["Args"] = new JObject
+                                            {
+                                                ["type"] = "object",
+                                                ["additionalProperties"] = new JObject
+                                                {
+                                                    ["anyOf"] = new JArray
+                                                    {
+                                                        new JObject { ["type"] = "string" },
+                                                        new JObject { ["type"] = "number" },
+                                                        new JObject { ["type"] = "integer" },
+                                                        new JObject { ["type"] = "boolean" },
+                                                        new JObject { ["type"] = "null" }
+                                                    }
+                                                }
+                                            }
+                                        },
+                                        ["required"] = new JArray("Action", "Params"),
+                                        ["additionalProperties"] = false
+                                    }
+                                }
+                            },
+                            ["required"] = new JArray("Message", "Commands"),
+                            ["additionalProperties"] = false
+                        }
+                    }
+                }
+            };
+
+            if (!string.IsNullOrEmpty(vectorStoreId))
+            {
+                requestBody["tools"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["type"] = "file_search",
+                        ["vector_store_ids"] = new JArray(vectorStoreId)
+                    }
+                };
+            }
+
+            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("https://api.openai.com/v1/responses", content);
+            string responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"API Error ({modelName}): {responseString}");
+            }
+
+            JObject jsonResponse = JObject.Parse(responseString);
+            string aiText = ExtractOpenAiText(jsonResponse);
+            return aiText.Replace("```json", "").Replace("```", "").Trim();
+        }
+
+        private async Task<string> GetGeminiResponse(string prompt, string key, string modelName, string? drawingContext = null)
+        {
             string url = $"https://generativelanguage.googleapis.com/v1beta/models/{modelName}:generateContent?key={key}";
             using var client = new HttpClient();
 
-            // მოგვაქვს პრომპტი ცალკე კლასიდან!
-            string systemInstruction = Core.AgentPromptManager.GetSystemInstruction();
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
 
             var requestBody = new
             {
@@ -418,12 +824,104 @@ namespace Cad_AI_Agent.UI
             {
                 string responseString = await response.Content.ReadAsStringAsync();
                 JObject jsonResponse = JObject.Parse(responseString);
-                string aiText = jsonResponse["candidates"][0]["content"]["parts"][0]["text"].ToString();
+                string? aiText = jsonResponse["candidates"]?[0]?["content"]?["parts"]?[0]?["text"]?.ToString();
+                if (string.IsNullOrWhiteSpace(aiText))
+                {
+                    throw new Exception("Gemini response did not contain any text output.");
+                }
                 return aiText.Replace("```json", "").Replace("```", "").Trim();
             }
-            // თუ ერორია, ვისვრით Google-ის რეალურ ტექსტს
             string errorRaw = await response.Content.ReadAsStringAsync();
             throw new Exception($"API Error ({modelName}): {errorRaw}");
+        }
+
+        private async Task<string> GetAnthropicResponse(string prompt, string key, string modelName, string? drawingContext = null)
+        {
+            using var client = new HttpClient();
+            client.DefaultRequestHeaders.Add("x-api-key", key);
+            client.DefaultRequestHeaders.Add("anthropic-version", "2023-06-01");
+
+            string systemInstruction = string.IsNullOrEmpty(drawingContext)
+                ? Core.AgentPromptManager.GetSystemInstruction()
+                : Core.AgentPromptManager.GetContextAwareInstruction(drawingContext);
+
+            // Append JSON format instruction since Anthropic uses system prompt for output control
+            systemInstruction += "\n\nYou MUST respond with ONLY valid JSON matching this exact schema — no markdown, no code fences, no extra text:\n{\"Message\": \"<string>\", \"Commands\": [{\"Action\": \"<string>\", \"Params\": [<numbers>], \"Args\": {}}]}";
+
+            var requestBody = new JObject
+            {
+                ["model"] = modelName,
+                ["max_tokens"] = 4096,
+                ["system"] = systemInstruction,
+                ["messages"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["role"] = "user",
+                        ["content"] = prompt
+                    }
+                }
+            };
+
+            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var response = await client.PostAsync("https://api.anthropic.com/v1/messages", content);
+            string responseString = await response.Content.ReadAsStringAsync();
+
+            if (!response.IsSuccessStatusCode)
+            {
+                throw new Exception($"API Error ({modelName}): {responseString}");
+            }
+
+            JObject jsonResponse = JObject.Parse(responseString);
+            string? aiText = jsonResponse["content"]?[0]?["text"]?.ToString();
+            if (string.IsNullOrWhiteSpace(aiText))
+            {
+                throw new Exception("Anthropic response did not contain any text output.");
+            }
+
+            return aiText.Replace("```json", "").Replace("```", "").Trim();
+        }
+
+        private string ExtractOpenAiText(JObject jsonResponse)
+        {
+            string? directText = jsonResponse["output_text"]?.ToString();
+            if (!string.IsNullOrWhiteSpace(directText))
+            {
+                return directText;
+            }
+
+            JArray? outputItems = jsonResponse["output"] as JArray;
+            if (outputItems != null)
+            {
+                foreach (JObject outputItem in outputItems.OfType<JObject>())
+                {
+                    JArray? contentItems = outputItem["content"] as JArray;
+                    if (contentItems == null) continue;
+
+                    foreach (JObject contentItem in contentItems.OfType<JObject>())
+                    {
+                        JToken? parsedValue = contentItem["parsed"] ?? contentItem["json"] ?? contentItem["value"];
+                        if (parsedValue is JObject || parsedValue is JArray)
+                        {
+                            return parsedValue.ToString(Formatting.None);
+                        }
+
+                        string? textValue = contentItem["text"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(textValue))
+                        {
+                            return textValue;
+                        }
+
+                        string? textObjectValue = contentItem["text"]?["value"]?.ToString();
+                        if (!string.IsNullOrWhiteSpace(textObjectValue))
+                        {
+                            return textObjectValue;
+                        }
+                    }
+                }
+            }
+
+            throw new Exception("OpenAI response did not contain any text output.");
         }
 
         private async Task ExecuteCadCommandsLive(List<CadCommand> commands)
@@ -433,23 +931,327 @@ namespace Cad_AI_Agent.UI
                 Document doc = CoreApp.DocumentManager.MdiActiveDocument;
                 if (doc == null) return;
 
-                foreach (var command in commands)
+                // Create execution progress UI
+                var executionPanel = CreateExecutionLogPanel(commands.Count);
+                AddMessageContainerToChat(executionPanel);
+
+                // Create progress reporter that updates the UI
+                var progress = new Progress<ExecutionStep>(step =>
                 {
-                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync(async (obj) =>
+                    Dispatcher.Invoke(() =>
                     {
-                        // ახლა პირდაპირ როუტერს გადავცემთ ბრძანებას!
-                        CommandRouter.Execute(doc, command);
+                        UpdateExecutionLog(executionPanel, step);
+                    });
+                });
+
+                var reporter = new ExecutionProgressReporter(progress);
+                reporter.Initialize(commands.Count);
+
+                int completedCount = 0;
+                int errorCount = 0;
+
+                for (int i = 0; i < commands.Count; i++)
+                {
+                    var command = commands[i];
+                    
+                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((obj) =>
+                    {
+                        try
+                        {
+                            // Pass the command to the router with live progress reporting
+                            CommandRouter.Execute(doc, command, reporter);
+                            completedCount++;
+                        }
+                        catch (Exception cmdEx)
+                        {
+                            errorCount++;
+                            // Error is already reported via progress reporter
+                            doc.Editor.WriteMessage($"\n[AI Agent] Command error: {cmdEx.Message}");
+                        }
 
                         doc.Editor.UpdateScreen();
+                        return Task.CompletedTask;
                     }, null);
 
                     await Task.Delay(300);
                 }
+
+                // Final summary
+                Dispatcher.Invoke(() =>
+                {
+                    AddExecutionSummary(executionPanel, completedCount, errorCount, commands.Count);
+                });
             }
             catch (Exception ex)
             {
-                AddMessageToChat($"[Draw Error]: {ex.Message}", false);
+                AddMessageToChat($"[Execution Error]: {ex.Message}", false);
             }
+        }
+
+        private StackPanel CreateExecutionLogPanel(int totalSteps)
+        {
+            var container = new StackPanel
+            {
+                HorizontalAlignment = HorizontalAlignment.Stretch,
+                Margin = new Thickness(0, 8, 0, 12),
+                MaxWidth = 520
+            };
+
+            // Header
+            var headerBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(8, 8, 0, 0),
+                Padding = new Thickness(12, 10, 12, 10)
+            };
+
+            var headerGrid = new Grid();
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            headerGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+
+            var statusIcon = new TextBlock
+            {
+                Text = "▶️",
+                FontSize = 16,
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(statusIcon, 0);
+
+            var headerText = new TextBlock
+            {
+                Text = $"Executing {totalSteps} CAD Commands...",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                FontSize = 13,
+                FontWeight = FontWeights.SemiBold,
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(headerText, 1);
+
+            headerGrid.Children.Add(statusIcon);
+            headerGrid.Children.Add(headerText);
+            headerBorder.Child = headerGrid;
+            container.Children.Add(headerBorder);
+
+            // Execution log content
+            var logBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                BorderThickness = new Thickness(1, 0, 1, 1),
+                CornerRadius = new CornerRadius(0, 0, 8, 8),
+                Padding = new Thickness(8),
+                MaxHeight = 400
+            };
+
+            var scrollViewer = new ScrollViewer
+            {
+                VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled
+            };
+
+            var logPanel = new StackPanel
+            {
+                Name = "ExecutionLogPanel"
+            };
+            scrollViewer.Content = logPanel;
+            logBorder.Child = scrollViewer;
+            container.Children.Add(logBorder);
+
+            // Store reference for updates
+            container.Tag = new ExecutionLogState
+            {
+                LogPanel = logPanel,
+                HeaderIcon = statusIcon,
+                HeaderText = headerText,
+                ScrollViewer = scrollViewer
+            };
+
+            return container;
+        }
+
+        private void UpdateExecutionLog(StackPanel container, ExecutionStep step)
+        {
+            if (container.Tag is not ExecutionLogState state) return;
+
+            // Create step entry
+            var stepBorder = new Border
+            {
+                Background = GetStatusBackground(step.Status),
+                BorderBrush = GetStatusBorderBrush(step.Status),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(10, 8, 10, 8),
+                Margin = new Thickness(0, 0, 0, 6)
+            };
+
+            var stepGrid = new Grid();
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Step #
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) }); // Message
+            stepGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto }); // Status icon
+
+            // Step number with timestamp
+            var stepNumber = new TextBlock
+            {
+                Text = $"[{step.StepNumber}/{step.TotalSteps}] {step.GetFormattedTime()}",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                FontSize = 10,
+                FontFamily = new FontFamily("Consolas"),
+                Margin = new Thickness(0, 0, 8, 0),
+                VerticalAlignment = VerticalAlignment.Top
+            };
+            Grid.SetColumn(stepNumber, 0);
+
+            // Message area
+            var messageStack = new StackPanel();
+
+            var commandName = new TextBlock
+            {
+                Text = step.CommandName,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                FontSize = 11,
+                FontWeight = FontWeights.SemiBold,
+                Margin = new Thickness(0, 0, 0, 2)
+            };
+
+            var messageText = new TextBlock
+            {
+                Text = step.Message,
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                FontSize = 12,
+                TextWrapping = TextWrapping.Wrap,
+                Margin = new Thickness(0, 0, 0, step.Details != null ? 4 : 0)
+            };
+
+            messageStack.Children.Add(commandName);
+            messageStack.Children.Add(messageText);
+
+            if (!string.IsNullOrEmpty(step.Details))
+            {
+                var detailsText = new TextBlock
+                {
+                    Text = step.Details,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                    FontSize = 10,
+                    FontStyle = FontStyles.Italic,
+                    TextWrapping = TextWrapping.Wrap
+                };
+                messageStack.Children.Add(detailsText);
+            }
+
+            Grid.SetColumn(messageStack, 1);
+
+            // Status icon
+            var statusIcon = new TextBlock
+            {
+                Text = GetStatusIcon(step.Status),
+                FontSize = 14,
+                Margin = new Thickness(8, 0, 0, 0),
+                VerticalAlignment = VerticalAlignment.Center
+            };
+            Grid.SetColumn(statusIcon, 2);
+
+            stepGrid.Children.Add(stepNumber);
+            stepGrid.Children.Add(messageStack);
+            stepGrid.Children.Add(statusIcon);
+            stepBorder.Child = stepGrid;
+
+            state.LogPanel.Children.Add(stepBorder);
+            state.ScrollViewer.ScrollToEnd();
+
+            // Update header based on status
+            if (step.Status == "Error")
+            {
+                state.HeaderIcon.Text = "⚠️";
+                state.HeaderText.Text = $"Executing {step.TotalSteps} CAD Commands... (Error on step {step.StepNumber})";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F87171"));
+            }
+        }
+
+        private void AddExecutionSummary(StackPanel container, int completed, int errors, int total)
+        {
+            if (container.Tag is not ExecutionLogState state) return;
+
+            // Update header
+            if (errors > 0)
+            {
+                state.HeaderIcon.Text = "⚠️";
+                state.HeaderText.Text = $"Completed with {errors} error(s)";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F87171"));
+            }
+            else
+            {
+                state.HeaderIcon.Text = "✅";
+                state.HeaderText.Text = $"All {total} commands executed successfully";
+                state.HeaderText.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4ADE80"));
+            }
+
+            // Add summary footer
+            var summaryBorder = new Border
+            {
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                BorderThickness = new Thickness(1),
+                CornerRadius = new CornerRadius(6),
+                Padding = new Thickness(12, 10, 12, 10),
+                Margin = new Thickness(0, 8, 0, 0)
+            };
+
+            var summaryText = new TextBlock
+            {
+                Text = $"✓ {completed} successful  •  ✗ {errors} failed  •  ⏱️ {DateTime.Now:HH:mm:ss}",
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                FontSize = 11,
+                FontFamily = new FontFamily("Consolas"),
+                HorizontalAlignment = HorizontalAlignment.Center
+            };
+            summaryBorder.Child = summaryText;
+
+            state.LogPanel.Children.Add(summaryBorder);
+            state.ScrollViewer.ScrollToEnd();
+        }
+
+        private string GetStatusIcon(string status) => status switch
+        {
+            "Running" => "⏳",
+            "Success" => "✓",
+            "Error" => "✗",
+            "Skipped" => "⊘",
+            _ => "•"
+        };
+
+        private Brush GetStatusBackground(string status) => status switch
+        {
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A5F")),
+            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#064E3B")),
+            "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#450A0A")),
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033"))
+        };
+
+        private Brush GetStatusBorderBrush(string status) => status switch
+        {
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22C55E")),
+            "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D"))
+        };
+
+        private void AddMessageContainerToChat(StackPanel container)
+        {
+            ChatHistoryPanel.Children.Add(container);
+            ChatScrollViewer.ScrollToEnd();
+        }
+
+        private class ExecutionLogState
+        {
+            public required StackPanel LogPanel { get; set; }
+            public required TextBlock HeaderIcon { get; set; }
+            public required TextBlock HeaderText { get; set; }
+            public required ScrollViewer ScrollViewer { get; set; }
         }
     }
 }
