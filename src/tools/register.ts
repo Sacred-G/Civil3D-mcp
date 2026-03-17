@@ -44,6 +44,10 @@ import { registerCivil3DAlignmentEditingTools } from "./civil3d_alignment_editin
 import { registerCivil3DProfileEditingTools } from "./civil3d_profile_editing.js";
 import { registerCivil3DQcTools } from "./civil3d_qc.js";
 import { registerCivil3DQuantityTakeoffTools } from "./civil3d_quantity_takeoff.js";
+import { registerCivil3DSectionViewTools } from "./civil3d_section_views.js";
+import { registerCivil3DSuperelevationTools } from "./civil3d_superelevation.js";
+import { registerCivil3DCorridorEditingTools } from "./civil3d_corridor_editing.js";
+import { registerCivil3DIntersectionTools } from "./civil3d_intersection.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -91,4 +95,8 @@ export async function registerTools(server: McpServer) {
   registerCivil3DProfileEditingTools(server);
   registerCivil3DQcTools(server);
   registerCivil3DQuantityTakeoffTools(server);
+  registerCivil3DSectionViewTools(server);
+  registerCivil3DSuperelevationTools(server);
+  registerCivil3DCorridorEditingTools(server);
+  registerCivil3DIntersectionTools(server);
 }

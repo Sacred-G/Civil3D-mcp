@@ -1,7 +1,7 @@
 # Civil3D MCP Tool Coverage Audit
 
 **Last Updated**: 2026-03-17
-**Author**: Founding Engineer (Paperclip JFS-9)
+**Author**: Founding Engineer (Paperclip JFS-13)
 **V3 Plan**: `ULTIMATE-CIVIL3D-MCP-PLAN-V3.md`
 **Branch**: `main`
 
@@ -12,9 +12,17 @@
 | Metric | Value |
 |--------|-------|
 | V3 Planned Tools | 169+ across 8 microservices |
-| Actually Implemented | **100 MCP tools** in a single server |
-| Coverage | ~59% of planned tool count |
+| Actually Implemented | **150 MCP tools** in a single server |
+| Coverage | ~89% of planned tool count |
 | Architecture | Single MCP server (pragmatic, intentional) |
+
+### JFS-13 Additions (2026-03-17) — +16 tools (134 → 150)
+| Category | Tools Added |
+|----------|-------------|
+| Section Views | `civil3d_section_view_create`, `civil3d_section_view_list`, `civil3d_section_view_update_style`, `civil3d_section_view_group_create`, `civil3d_section_view_export` |
+| Superelevation | `civil3d_superelevation_get`, `civil3d_superelevation_set`, `civil3d_superelevation_design_check`, `civil3d_superelevation_report` |
+| Corridor Editing | `civil3d_corridor_target_mapping_get`, `civil3d_corridor_target_mapping_set`, `civil3d_corridor_region_add`, `civil3d_corridor_region_delete` |
+| Intersection Design | `civil3d_intersection_list`, `civil3d_intersection_create`, `civil3d_intersection_get` |
 
 ---
 
@@ -223,22 +231,25 @@ The V3 plan describes an 8-microservice ecosystem. What is actually built is a *
 
 | Domain | V3 Count | Implemented | Remaining |
 |--------|----------|-------------|-----------|
-| Alignment (edit/label/design check) | 10 | 2 | 8 |
-| Profile (edit/label/design check) | 10 | 2 | 8 |
-| QC checks | 8 | 0 | 8 |
-| Standards compliance | 7 | 0 | 7 |
-| Quantity takeoff / reporting | 10+ | 0 | 10+ |
+| Alignment (edit/label/design check) | 10 | 10 | 0 ✅ JFS-10 |
+| Profile (edit/label/design check) | 10 | 10 | 0 ✅ JFS-10 |
+| QC checks | 8 | 8 | 0 ✅ JFS-11 |
+| Quantity takeoff / reporting | 10+ | 10 | 0 ✅ JFS-11 |
+| Section views / sample lines | 5 | 5 | 0 ✅ JFS-13 |
+| Superelevation | 4 | 4 | 0 ✅ JFS-13 |
+| Corridor target editing | 4 | 4 | 0 ✅ JFS-13 |
+| Intersection design | 3 | 3 | 0 ✅ JFS-13 |
 | Survey processing (observations, networks) | 8 | 4 | 4 |
-| COGO tools (lot fit, LandXML) | 8 | 4 | 4 |
-| Section views / sample lines | 5 | 0 | 5 |
+| Standards compliance labels | 7 | 1 | 6 |
 | 3D viewer / APS integration | 6 | 0 | 6 |
+| Gravity pipe analysis / sizing | 22 | 3 | 19 |
 
 ---
 
 ## Recommendation
 
-Continue filling tool gaps in the existing single-server architecture. Next highest-ROI targets:
+Target 150+ is achieved. Remaining high-ROI gaps:
 
-1. **Alignment & Profile editing** (8+8 = 16 tools) — unlocks full road design workflow automation
-2. **QC checks** (8 tools) — highest per-tool time savings for project delivery
-3. **Quantity takeoff** (10+ tools) — critical for project financials and deliverables
+1. **Gravity pipe analysis / sizing** — storm drain design, HGL computation (high complexity, deferred)
+2. **Survey observation/network processing** — raw survey import, network adjustment
+3. **3D viewer / APS integration** — deferred until operational need
