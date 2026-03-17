@@ -408,6 +408,7 @@
                                     <ComboBoxItem Content="Google Gemini (3.1 Pro)" Tag="gemini:gemini-3.1-pro"/>
                                     <ComboBoxItem Content="OpenAI (GPT-4o Mini)" Tag="openai:gpt-4o-mini"/>
                                     <ComboBoxItem Content="OpenAI (GPT-4o)" Tag="openai:gpt-4o"/>
+                                    <ComboBoxItem Content="OpenAI (GPT-5.4)" Tag="openai:gpt-5.4"/>
                                     <ComboBoxItem Content="Anthropic Claude Sonnet 4.5" Tag="anthropic:claude-sonnet-4-5"/>
                                     <ComboBoxItem Content="Anthropic Claude Sonnet 4.6" Tag="anthropic:claude-sonnet-4-6"/>
                                     <ComboBoxItem Content="Anthropic Claude Opus 4.5" Tag="anthropic:claude-opus-4-5"/>
@@ -416,6 +417,13 @@
 
                                 <TextBlock Text="API Key" Style="{StaticResource SectionLabelStyle}"/>
                                 <TextBox x:Name="ApiKeyBox"
+                                         Style="{StaticResource InputTextBoxStyle}"
+                                         Margin="0,0,0,18"/>
+
+                                <TextBlock Text="OpenAI Vector Store ID (optional)" Style="{StaticResource SectionLabelStyle}"/>
+                                <TextBlock Text="Paste your vector store ID to enable file search against uploaded Autodesk API documentation. Applies to OpenAI models only."
+                                           Foreground="{StaticResource TextSecondaryBrush}" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                                <TextBox x:Name="VectorStoreIdBox"
                                          Style="{StaticResource InputTextBoxStyle}"
                                          Margin="0,0,0,18"/>
 

@@ -188,6 +188,7 @@ namespace Cad_AI_Agent.UI
                 SelectProviderTag(selectedProviderTag);
                 _activeProviderTag = GetSelectedProviderTag();
                 ApiKeyBox.Text = ReadApiKeyForProvider(_activeProviderTag);
+                VectorStoreIdBox.Text = key?.GetValue("OpenAIVectorStoreId")?.ToString() ?? string.Empty;
             }
             finally
             {
@@ -262,6 +263,8 @@ namespace Cad_AI_Agent.UI
                 key?.SetValue("AnthropicApiKey", apiKey ?? string.Empty);
             else
                 key?.SetValue("GeminiApiKey", apiKey ?? string.Empty);
+
+            key?.SetValue("OpenAIVectorStoreId", VectorStoreIdBox?.Text?.Trim() ?? string.Empty);
         }
 
         private string GetProviderName(string providerTag)
@@ -642,7 +645,10 @@ namespace Cad_AI_Agent.UI
 
                 string jsonPayload;
                 if (providerName.Equals("openai", StringComparison.OrdinalIgnoreCase))
-                    jsonPayload = await GetOpenAiResponse(message, apiKey, modelName, drawingContext);
+                {
+                    string vectorStoreId = VectorStoreIdBox?.Text?.Trim() ?? string.Empty;
+                    jsonPayload = await GetOpenAiResponse(message, apiKey, modelName, drawingContext, vectorStoreId);
+                }
                 else if (providerName.Equals("anthropic", StringComparison.OrdinalIgnoreCase))
                     jsonPayload = await GetAnthropicResponse(message, apiKey, modelName, drawingContext);
                 else
@@ -679,7 +685,7 @@ namespace Cad_AI_Agent.UI
             }
         }
 
-        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string? drawingContext = null)
+        private async Task<string> GetOpenAiResponse(string prompt, string key, string modelName, string? drawingContext = null, string? vectorStoreId = null)
         {
             using var client = new HttpClient();
             client.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", key);
@@ -768,6 +774,18 @@ namespace Cad_AI_Agent.UI
                     }
                 }
             };
+
+            if (!string.IsNullOrEmpty(vectorStoreId))
+            {
+                requestBody["tools"] = new JArray
+                {
+                    new JObject
+                    {
+                        ["type"] = "file_search",
+                        ["vector_store_ids"] = new JArray(vectorStoreId)
+                    }
+                };
+            }
 
             var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
             var response = await client.PostAsync("https://api.openai.com/v1/responses", content);
