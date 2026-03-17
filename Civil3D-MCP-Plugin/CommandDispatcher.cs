@@ -155,6 +155,26 @@ public static class CommandDispatcher
       "setSheetViewScale" => PlanProductionCommands.SetSheetViewScaleAsync(parameters),
       "publishSheetPdf" => PlanProductionCommands.PublishSheetPdfAsync(parameters),
       "exportSheetSet" => PlanProductionCommands.ExportSheetSetAsync(parameters),
+      // QC checks
+      "qcCheckAlignment" => QcCommands.QcCheckAlignmentAsync(parameters),
+      "qcCheckProfile" => QcCommands.QcCheckProfileAsync(parameters),
+      "qcCheckCorridor" => QcCommands.QcCheckCorridorAsync(parameters),
+      "qcCheckPipeNetwork" => QcCommands.QcCheckPipeNetworkAsync(parameters),
+      "qcCheckSurface" => QcCommands.QcCheckSurfaceAsync(parameters),
+      "qcCheckLabels" => QcCommands.QcCheckLabelsAsync(parameters),
+      "qcReportGenerate" => QcCommands.QcReportGenerateAsync(parameters),
+      "qcCheckDrawingStandards" => QcCommands.QcCheckDrawingStandardsAsync(parameters),
+      // Quantity takeoff
+      "qtyCorridorVolumes" => QuantityCommands.QtyCorridorVolumesAsync(parameters),
+      "qtySurfaceVolume" => QuantityCommands.QtySurfaceVolumeAsync(parameters),
+      "qtyPipeNetworkLengths" => QuantityCommands.QtyPipeNetworkLengthsAsync(parameters),
+      "qtyPressureNetworkLengths" => QuantityCommands.QtyPressureNetworkLengthsAsync(parameters),
+      "qtyParcelAreas" => QuantityCommands.QtyParcelAreasAsync(parameters),
+      "qtyAlignmentLengths" => QuantityCommands.QtyAlignmentLengthsAsync(parameters),
+      "qtyPointCountByGroup" => QuantityCommands.QtyPointCountByGroupAsync(parameters),
+      "qtyExportToCsv" => QuantityCommands.QtyExportToCsvAsync(parameters),
+      "qtyMaterialListGet" => QuantityCommands.QtyMaterialListGetAsync(parameters),
+      "qtyEarthworkSummary" => QuantityCommands.QtyEarthworkSummaryAsync(parameters),
       _ => throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Plugin method '{method}' is not implemented yet."),
     };
   }

@@ -42,6 +42,8 @@ import { registerCivil3DPointGroupTools } from "./civil3d_point_group.js";
 import { registerCivil3DCogoTools } from "./civil3d_cogo.js";
 import { registerCivil3DAlignmentEditingTools } from "./civil3d_alignment_editing.js";
 import { registerCivil3DProfileEditingTools } from "./civil3d_profile_editing.js";
+import { registerCivil3DQcTools } from "./civil3d_qc.js";
+import { registerCivil3DQuantityTakeoffTools } from "./civil3d_quantity_takeoff.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -87,4 +89,6 @@ export async function registerTools(server: McpServer) {
   registerCivil3DCogoTools(server);
   registerCivil3DAlignmentEditingTools(server);
   registerCivil3DProfileEditingTools(server);
+  registerCivil3DQcTools(server);
+  registerCivil3DQuantityTakeoffTools(server);
 }
