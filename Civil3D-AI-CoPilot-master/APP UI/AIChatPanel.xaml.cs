@@ -13,7 +13,12 @@ using System.Windows.Threading;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Autodesk.AutoCAD.ApplicationServices;
+using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.Civil.ApplicationServices;
+using Autodesk.Civil.DatabaseServices;
 using CoreApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
+using WpfVisibility = System.Windows.Visibility;
 using Cad_AI_Agent.Models;
 using Cad_AI_Agent.CADTransactions;
 using Cad_AI_Agent.Services;
@@ -484,8 +489,8 @@ namespace Cad_AI_Agent.UI
 
         private void TabChatButton_Click(object sender, RoutedEventArgs e)
         {
-            ChatTab.Visibility = Visibility.Visible;
-            SettingsTab.Visibility = Visibility.Collapsed;
+            ChatTab.Visibility = WpfVisibility.Visible;
+            SettingsTab.Visibility = WpfVisibility.Collapsed;
 
             TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
             TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
@@ -493,8 +498,8 @@ namespace Cad_AI_Agent.UI
 
         private void TabSettingsButton_Click(object sender, RoutedEventArgs e)
         {
-            ChatTab.Visibility = Visibility.Collapsed;
-            SettingsTab.Visibility = Visibility.Visible;
+            ChatTab.Visibility = WpfVisibility.Collapsed;
+            SettingsTab.Visibility = WpfVisibility.Visible;
             TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
             TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
         }
@@ -627,9 +632,10 @@ namespace Cad_AI_Agent.UI
 
             try
             {
-                // Query MCP server for drawing context if available
-                string? drawingContext = null;
-                if (_mcpAvailable)
+                // Query drawing context — direct C# first (always works inside Civil 3D),
+                // fall back to MCP server if direct query returns nothing.
+                string? drawingContext = GetDirectDrawingContext();
+                if (drawingContext == null && _mcpAvailable)
                 {
                     try
                     {
@@ -638,7 +644,6 @@ namespace Cad_AI_Agent.UI
                     }
                     catch
                     {
-                        // MCP query failed, continue without context
                         drawingContext = null;
                     }
                 }
@@ -682,6 +687,76 @@ namespace Cad_AI_Agent.UI
                 UserInputBox.IsEnabled = true;
                 SendButton.IsEnabled = true;
                 UserInputBox.Focus();
+            }
+        }
+
+        private string? GetDirectDrawingContext()
+        {
+            try
+            {
+                var doc = CoreApp.DocumentManager.MdiActiveDocument;
+                if (doc == null) return null;
+
+                var civilDoc = CivilDocument.GetCivilDocument(doc.Database);
+                var sb = new StringBuilder();
+                sb.AppendLine("Drawing Context:");
+
+                using var trans = doc.Database.TransactionManager.StartTransaction();
+
+                try
+                {
+                    var alignmentIds = civilDoc.GetAlignmentIds();
+                    sb.AppendLine($"- Alignments: {alignmentIds.Count}");
+                    foreach (ObjectId id in alignmentIds)
+                    {
+                        if (trans.GetObject(id, OpenMode.ForRead) is Alignment a)
+                            sb.AppendLine($"  • {a.Name} (Length: {a.Length:F2}, {a.StartingStation:F2}–{a.EndingStation:F2})");
+                    }
+                }
+                catch { sb.AppendLine("- Alignments: none"); }
+
+                try
+                {
+                    var surfaceIds = civilDoc.GetSurfaceIds();
+                    sb.AppendLine($"- Surfaces: {surfaceIds.Count}");
+                    foreach (ObjectId id in surfaceIds)
+                    {
+                        if (trans.GetObject(id, OpenMode.ForRead) is CivilSurface s)
+                            sb.AppendLine($"  • {s.Name} ({s.GetType().Name})");
+                    }
+                }
+                catch { sb.AppendLine("- Surfaces: none"); }
+
+                try
+                {
+                    var assemblyIds = civilDoc.AssemblyCollection;
+                    sb.AppendLine($"- Assemblies: {assemblyIds.Count}");
+                    foreach (ObjectId id in assemblyIds)
+                    {
+                        if (trans.GetObject(id, OpenMode.ForRead) is Autodesk.Civil.DatabaseServices.Assembly asm)
+                            sb.AppendLine($"  • {asm.Name}");
+                    }
+                }
+                catch { sb.AppendLine("- Assemblies: none"); }
+
+                try
+                {
+                    var corridorIds = civilDoc.CorridorCollection;
+                    sb.AppendLine($"- Corridors: {corridorIds.Count}");
+                    foreach (ObjectId id in corridorIds)
+                    {
+                        if (trans.GetObject(id, OpenMode.ForRead) is Corridor c)
+                            sb.AppendLine($"  • {c.Name}");
+                    }
+                }
+                catch { sb.AppendLine("- Corridors: none"); }
+
+                trans.Commit();
+                return sb.ToString();
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -787,7 +862,7 @@ namespace Cad_AI_Agent.UI
                 };
             }
 
-            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
             var response = await client.PostAsync("https://api.openai.com/v1/responses", content);
             string responseString = await response.Content.ReadAsStringAsync();
 
@@ -863,7 +938,7 @@ namespace Cad_AI_Agent.UI
                 }
             };
 
-            var content = new StringContent(requestBody.ToString(Formatting.None), Encoding.UTF8, "application/json");
+            var content = new StringContent(JsonConvert.SerializeObject(requestBody), Encoding.UTF8, "application/json");
             var response = await client.PostAsync("https://api.anthropic.com/v1/messages", content);
             string responseString = await response.Content.ReadAsStringAsync();
 
@@ -903,7 +978,7 @@ namespace Cad_AI_Agent.UI
                         JToken? parsedValue = contentItem["parsed"] ?? contentItem["json"] ?? contentItem["value"];
                         if (parsedValue is JObject || parsedValue is JArray)
                         {
-                            return parsedValue.ToString(Formatting.None);
+                            return JsonConvert.SerializeObject(parsedValue);
                         }
 
                         string? textValue = contentItem["text"]?.ToString();
@@ -922,6 +997,232 @@ namespace Cad_AI_Agent.UI
             }
 
             throw new Exception("OpenAI response did not contain any text output.");
+        }
+
+        private static bool IsHydrologyCommand(string action) =>
+            action == "HydrologyTraceFlowPath"
+            || action == "HydrologyFindLowPoint"
+            || action == "HydrologyDelineateWatershed"
+            || action == "HydrologyCalculateCatchment"
+            || action == "HydrologyEstimateRunoff";
+
+        // Any action using the raw MCP tool name (civil3d_* prefix) is routed directly
+        // to the MCP server as an analytical/data command with no CAD drawing required.
+        private static bool IsMcpDirectCommand(string action) =>
+            action.StartsWith("civil3d_") || action == "create_cogo_point";
+
+        // Returns updated lastOutlet (or null if this command does not produce one)
+        private async Task<(double X, double Y, double Elev)?> HandleHydrologyCommandAsync(
+            Document doc,
+            CadCommand command,
+            ExecutionProgressReporter reporter,
+            (double X, double Y, double Elev)? lastOutlet)
+        {
+            if (!_mcpAvailable)
+            {
+                reporter.ReportSkipped(command.Action, "MCP server not connected", "Connect the MCP server to use hydrology analysis tools.");
+                return null;
+            }
+
+            switch (command.Action)
+            {
+                case "HydrologyTraceFlowPath":
+                {
+                    string surfaceName = command.Args?["surfaceName"]?.ToString() ?? string.Empty;
+                    double x = command.Args?["x"]?.Value<double>() ?? 0;
+                    double y = command.Args?["y"]?.Value<double>() ?? 0;
+                    double? stepDist = command.Args?["stepDistance"]?.Value<double>();
+                    int? maxSteps = command.Args?["maxSteps"]?.Value<int>();
+
+                    reporter.ReportRunning(command.Action, $"Tracing flow path on '{surfaceName}'...",
+                        $"Start: ({x:F2}, {y:F2})");
+
+                    var result = await _mcpClient.TraceFlowPathAsync(surfaceName, x, y, stepDist, maxSteps);
+
+                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((_) =>
+                    {
+                        CADTransactions.HydrologyDrawer.DrawFlowPath(doc, result.Points,
+                            $"Drop: {result.DropElevation:F2} | Dist: {result.TotalDistance:F2}");
+                        doc.Editor.UpdateScreen();
+                        return Task.CompletedTask;
+                    }, null);
+
+                    reporter.ReportSuccess(command.Action,
+                        $"Flow path drawn — {result.StepCount} steps, {result.TotalDistance:F1} units, drop {result.DropElevation:F2}",
+                        $"Status: {result.Status}");
+                    return lastOutlet; // flow path doesn't change the outlet
+                }
+
+                case "HydrologyFindLowPoint":
+                {
+                    string surfaceName = command.Args?["surfaceName"]?.ToString() ?? string.Empty;
+                    double? spacing = command.Args?["sampleSpacing"]?.Value<double>();
+
+                    reporter.ReportRunning(command.Action, $"Finding low point on '{surfaceName}'...", "Sampling surface grid");
+
+                    var result = await _mcpClient.FindLowPointAsync(surfaceName, spacing);
+
+                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((_) =>
+                    {
+                        CADTransactions.HydrologyDrawer.MarkOutletPoint(doc, result.X, result.Y, result.Elevation, "HYDRO_LOW");
+                        doc.Editor.UpdateScreen();
+                        return Task.CompletedTask;
+                    }, null);
+
+                    reporter.ReportSuccess(command.Action,
+                        $"Low point found at ({result.X:F2}, {result.Y:F2}), elev {result.Elevation:F3}",
+                        $"Sampled {result.SampledPointCount} points");
+                    return (result.X, result.Y, result.Elevation); // save for chained commands
+                }
+
+                case "HydrologyDelineateWatershed":
+                {
+                    string surfaceName = command.Args?["surfaceName"]?.ToString() ?? string.Empty;
+                    double outletX = command.Args?["outletX"]?.Value<double>() ?? lastOutlet?.X ?? 0;
+                    double outletY = command.Args?["outletY"]?.Value<double>() ?? lastOutlet?.Y ?? 0;
+                    double? gridSpacing = command.Args?["gridSpacing"]?.Value<double>();
+                    double? searchRadius = command.Args?["searchRadius"]?.Value<double>();
+
+                    reporter.ReportRunning(command.Action, $"Delineating watershed on '{surfaceName}'...",
+                        $"Outlet: ({outletX:F2}, {outletY:F2})");
+
+                    var result = await _mcpClient.DelineateWatershedAsync(surfaceName, outletX, outletY, gridSpacing, searchRadius);
+
+                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((_) =>
+                    {
+                        CADTransactions.HydrologyDrawer.DrawWatershedBoundary(doc, result.BoundaryPoints, result.ApproximateArea);
+                        CADTransactions.HydrologyDrawer.MarkOutletPoint(doc, result.OutletX, result.OutletY, result.OutletElevation, "WATERSHED_OUTLET");
+                        doc.Editor.UpdateScreen();
+                        return Task.CompletedTask;
+                    }, null);
+
+                    reporter.ReportSuccess(command.Action,
+                        $"Watershed drawn — {result.ContributingPointCount} contributing points, area ≈ {result.ApproximateArea:F0} sq units",
+                        $"{result.BoundaryPoints.Count} boundary vertices");
+                    return (result.OutletX, result.OutletY, result.OutletElevation);
+                }
+
+                case "HydrologyCalculateCatchment":
+                {
+                    string surfaceName = command.Args?["surfaceName"]?.ToString() ?? string.Empty;
+                    double outletX = command.Args?["outletX"]?.Value<double>() ?? lastOutlet?.X ?? 0;
+                    double outletY = command.Args?["outletY"]?.Value<double>() ?? lastOutlet?.Y ?? 0;
+                    double? sampleSpacing = command.Args?["sampleSpacing"]?.Value<double>();
+                    double? maxDist = command.Args?["maxDistance"]?.Value<double>();
+
+                    reporter.ReportRunning(command.Action, $"Calculating catchment area on '{surfaceName}'...",
+                        $"Outlet: ({outletX:F2}, {outletY:F2})");
+
+                    var result = await _mcpClient.CalculateCatchmentAreaAsync(surfaceName, outletX, outletY, sampleSpacing, maxDist);
+
+                    reporter.ReportSuccess(command.Action,
+                        $"Catchment area = {result.CatchmentArea:F0} sq units ({result.ContributingCellCount} cells)",
+                        $"Elev range: {result.ElevMin:F2} – {result.ElevMax:F2}, relief {result.Relief:F2}");
+
+                    // Surface a chat message with the area for easy reading
+                    Dispatcher.Invoke(() =>
+                    {
+                        AddMessageToChat(
+                            $"Catchment area: {result.CatchmentArea:F0} sq units\n" +
+                            $"Elevation: min {result.ElevMin:F2} / max {result.ElevMax:F2} / avg {result.ElevAverage:F2}\n" +
+                            $"Relief: {result.Relief:F2} units",
+                            false);
+                    });
+                    break;
+                }
+
+                case "HydrologyEstimateRunoff":
+                {
+                    double area = command.Args?["drainageArea"]?.Value<double>() ?? 0;
+                    double coeff = command.Args?["runoffCoefficient"]?.Value<double>() ?? 0;
+                    double intensity = command.Args?["rainfallIntensity"]?.Value<double>() ?? 0;
+                    string areaUnits = command.Args?["areaUnits"]?.ToString() ?? "acres";
+                    string intensityUnits = command.Args?["intensityUnits"]?.ToString() ?? "in_per_hr";
+
+                    reporter.ReportRunning(command.Action, "Estimating peak runoff (Rational Method)...",
+                        $"A={area} {areaUnits}, C={coeff}, i={intensity} {intensityUnits}");
+
+                    var result = await _mcpClient.EstimateRunoffAsync(area, coeff, intensity, areaUnits, intensityUnits);
+
+                    reporter.ReportSuccess(command.Action,
+                        $"Q = {result.RunoffCfs:F2} CFS  ({result.RunoffCubicMetersPerSecond:F4} m³/s)",
+                        $"Rational Method: Q = C × i × A");
+
+                    Dispatcher.Invoke(() =>
+                    {
+                        AddMessageToChat(
+                            $"Peak Runoff (Rational Method Q = CiA):\n" +
+                            $"  Area: {result.DrainageArea:F2} {result.AreaUnits}\n" +
+                            $"  C: {result.RunoffCoefficient:F2}\n" +
+                            $"  Intensity: {result.RainfallIntensity:F2} {result.IntensityUnits}\n" +
+                            $"  Q = {result.RunoffCfs:F2} CFS  ({result.RunoffCubicMetersPerSecond:F4} m³/s)",
+                            false);
+                    });
+                    return lastOutlet; // runoff doesn't produce outlet coords
+                }
+            }
+
+            return lastOutlet;
+        }
+
+        /// <summary>
+        /// Route a civil3d_* MCP tool command: call MCP server, display result in chat.
+        /// No CAD drawing occurs here — this is purely for analytical/data tools.
+        /// </summary>
+        private async Task HandleMcpDirectCommandAsync(
+            Document doc,
+            CadCommand command,
+            ExecutionProgressReporter reporter)
+        {
+            if (!_mcpAvailable)
+            {
+                reporter.ReportSkipped(command.Action, "MCP server not connected", "Connect the MCP server to use this tool.");
+                return;
+            }
+
+            reporter.ReportRunning(command.Action, $"Calling MCP tool '{command.Action}'...", "Sending request to Civil 3D MCP server");
+
+            var result = await _mcpClient.ExecuteMcpToolAsync(command.Action, command.Args);
+
+            // Format result for display — extract a summary string if available, else use JSON
+            string summary = FormatMcpResult(result);
+
+            reporter.ReportSuccess(command.Action, $"Tool '{command.Action}' completed", summary.Length > 120 ? summary.Substring(0, 120) + "…" : summary);
+
+            Dispatcher.Invoke(() =>
+            {
+                AddMessageToChat(
+                    $"**{command.Action}**\n{summary}",
+                    false);
+            });
+        }
+
+        /// <summary>
+        /// Produce a readable one-or-two-line summary from a MCP tool JObject result.
+        /// </summary>
+        private static string FormatMcpResult(JObject result)
+        {
+            if (result == null) return "(no result)";
+
+            // Common patterns across Civil 3D MCP tools
+            if (result["message"] is JToken msg && msg.Type == JTokenType.String)
+                return msg.ToString();
+            if (result["summary"] is JToken summ && summ.Type == JTokenType.String)
+                return summ.ToString();
+            if (result["result"] is JToken res && res.Type == JTokenType.String)
+                return res.ToString();
+            if (result["error"] is JToken err && err.Type == JTokenType.String)
+                return $"Error: {err}";
+
+            // For array results, count items
+            var firstArray = result.Properties()
+                .FirstOrDefault(p => p.Value.Type == JTokenType.Array);
+            if (firstArray != null)
+                return $"{firstArray.Name}: {((JArray)firstArray.Value).Count} items — {result.ToString(Newtonsoft.Json.Formatting.None).Substring(0, Math.Min(200, result.ToString().Length))}";
+
+            // Fallback: compact JSON
+            string json = result.ToString(Newtonsoft.Json.Formatting.None);
+            return json.Length > 400 ? json.Substring(0, 400) + "…" : json;
         }
 
         private async Task ExecuteCadCommandsLive(List<CadCommand> commands)
@@ -950,28 +1251,61 @@ namespace Cad_AI_Agent.UI
                 int completedCount = 0;
                 int errorCount = 0;
 
+                // Track last known low-point outlet for chained hydrology commands
+                (double X, double Y, double Elev)? lastHydroOutlet = null;
+
                 for (int i = 0; i < commands.Count; i++)
                 {
                     var command = commands[i];
-                    
-                    await CoreApp.DocumentManager.ExecuteInCommandContextAsync((obj) =>
+
+                    if (IsHydrologyCommand(command.Action))
                     {
                         try
                         {
-                            // Pass the command to the router with live progress reporting
-                            CommandRouter.Execute(doc, command, reporter);
+                            lastHydroOutlet = await HandleHydrologyCommandAsync(doc, command, reporter, lastHydroOutlet);
                             completedCount++;
                         }
-                        catch (Exception cmdEx)
+                        catch (Exception hydEx)
                         {
                             errorCount++;
-                            // Error is already reported via progress reporter
-                            doc.Editor.WriteMessage($"\n[AI Agent] Command error: {cmdEx.Message}");
+                            reporter.ReportError(command.Action, $"Hydrology error: {hydEx.Message}", hydEx.Message);
                         }
+                    }
+                    else if (IsMcpDirectCommand(command.Action))
+                    {
+                        // Route civil3d_* and create_cogo_point directly to MCP server (async, no CAD context lock)
+                        try
+                        {
+                            await HandleMcpDirectCommandAsync(doc, command, reporter);
+                            completedCount++;
+                        }
+                        catch (Exception mcpEx)
+                        {
+                            errorCount++;
+                            reporter.ReportError(command.Action, $"MCP error: {mcpEx.Message}", mcpEx.Message);
+                        }
+                    }
+                    else
+                    {
+                        await CoreApp.DocumentManager.ExecuteInCommandContextAsync((obj) =>
+                        {
+                            try
+                            {
+                                // Pass the command to the router with live progress reporting
+                                CommandRouter.Execute(doc, command, reporter);
+                                completedCount++;
+                            }
+                            catch (Exception cmdEx)
+                            {
+                                errorCount++;
+                                // Error is already reported via progress reporter
+                                doc.Editor.WriteMessage($"\n[AI Agent] Command error: {cmdEx.Message}");
+                            }
 
-                        doc.Editor.UpdateScreen();
-                        return Task.CompletedTask;
-                    }, null);
+                            doc.Editor.UpdateScreen();
+                            return Task.CompletedTask;
+                        }, null);
+                    }
 
                     await Task.Delay(300);
                 }
