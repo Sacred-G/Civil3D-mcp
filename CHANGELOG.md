@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.1.0 — 2026-03-17
+
+### Summary
+
+Adds 12 new tools across 3 categories (parcel editing, survey processing, data shortcut management) to bring the total MCP tool count to 162.
+
+---
+
+### MCP Server (TypeScript)
+
+**New tools (+12):**
+
+| Category | New Tools | Actions |
+|---|---|---|
+| Parcel Editing | 4 | create, edit, lot-line-adjust, report |
+| Survey Processing | 4 | observation-list, network-adjust, figure-create, landxml-import |
+| Data Shortcut Management | 4 | create, promote, reference, sync |
+
+**New files:**
+- `src/tools/civil3d_parcel_editing.ts` — parcel CRUD and lot-line adjustment
+- `src/tools/civil3d_survey_processing.ts` — survey observation, network adjustment, LandXML import
+- `src/tools/civil3d_data_shortcut_mgmt.ts` — data shortcut lifecycle management
+- `tests/parcel_survey_shortcuts.test.ts` — 34 schema-level tests
+
+**Deferred:** gravity pipe HGL solver and APS 3D viewer (high complexity, no operational demand).
+
+---
+
 ## v1.0.0 — 2026-03-17
 
 ### Summary
