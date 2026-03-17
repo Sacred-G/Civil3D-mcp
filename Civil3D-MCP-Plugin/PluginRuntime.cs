@@ -188,6 +188,12 @@ public static class PluginRuntime
     return value == null ? null : value.GetValue<int>();
   }
 
+  public static bool? GetOptionalBool(JsonObject? parameters, string name)
+  {
+    var value = GetParameter(parameters, name) as JsonNode;
+    return value == null ? null : value.GetValue<bool>();
+  }
+
   private static string SerializeResult(JsonNode? id, object? result)
   {
     var response = new JsonObject

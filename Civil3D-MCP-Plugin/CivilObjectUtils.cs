@@ -207,6 +207,60 @@ public static class CivilObjectUtils
     throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Corridor '{name}' was not found.");
   }
 
+  public static double? GetDoubleProperty(object? value, string propertyName)
+  {
+    if (value == null) return null;
+    var prop = value.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+    var raw = prop?.GetValue(value);
+    if (raw == null) return null;
+    try { return Convert.ToDouble(raw); } catch { return null; }
+  }
+
+  public static bool? GetBoolProperty(object? value, string propertyName)
+  {
+    if (value == null) return null;
+    var prop = value.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+    var raw = prop?.GetValue(value);
+    if (raw == null) return null;
+    try { return Convert.ToBoolean(raw); } catch { return null; }
+  }
+
+  public static string VolumeUnits(Database database)
+  {
+    return database.Insunits switch
+    {
+      UnitsValue.Meters => "cubic meters",
+      UnitsValue.Feet => "cubic feet",
+      UnitsValue.UsSurveyFeet => "cubic feet",
+      _ => "cubic units",
+    };
+  }
+
+  public static void TrySetName(DBObject obj, string name)
+  {
+    var prop = obj.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance);
+    try { prop?.SetValue(obj, name); } catch { /* ignore */ }
+  }
+
+  public static void TrySetLayer(DBObject obj, string layer, Database database, Transaction transaction)
+  {
+    try
+    {
+      var layerTable = transaction.GetObject(database.LayerTableId, OpenMode.ForRead) as LayerTable;
+      if (layerTable == null) return;
+      if (!layerTable.Has(layer))
+      {
+        var lt = transaction.GetObject(database.LayerTableId, OpenMode.ForWrite) as LayerTable;
+        var ltr = new LayerTableRecord { Name = layer };
+        lt!.Add(ltr);
+        transaction.AddNewlyCreatedDBObject(ltr, true);
+      }
+      var prop = obj.GetType().GetProperty("Layer", BindingFlags.Public | BindingFlags.Instance);
+      prop?.SetValue(obj, layer);
+    }
+    catch { /* ignore layer errors */ }
+  }
+
   public static Dictionary<string, object?> ToPointData(CogoPoint point)
   {
     return new Dictionary<string, object?>

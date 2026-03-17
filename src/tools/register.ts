@@ -37,6 +37,9 @@ import { registerAcadCreateMTextTool } from "./acad_create_mtext.js";
 import { registerCivil3DPressureNetworkTools } from "./civil3d_pressure_networks.js";
 import { registerCivil3DSurfaceAnalysisTools } from "./civil3d_surface_analysis.js";
 import { registerCivil3DPlanProductionTools } from "./civil3d_plan_production.js";
+import { registerCivil3DGradingTools } from "./civil3d_grading.js";
+import { registerCivil3DPointGroupTools } from "./civil3d_point_group.js";
+import { registerCivil3DCogoTools } from "./civil3d_cogo.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -77,4 +80,7 @@ export async function registerTools(server: McpServer) {
   registerCivil3DPressureNetworkTools(server);
   registerCivil3DSurfaceAnalysisTools(server);
   registerCivil3DPlanProductionTools(server);
+  registerCivil3DGradingTools(server);
+  registerCivil3DPointGroupTools(server);
+  registerCivil3DCogoTools(server);
 }
