@@ -35,6 +35,7 @@ import { registerAcadCreateTextTool } from "./acad_create_text.js";
 import { registerAcadCreate3dPolylineTool } from "./acad_create_3dpolyline.js";
 import { registerAcadCreateMTextTool } from "./acad_create_mtext.js";
 import { registerCivil3DPressureNetworkTools } from "./civil3d_pressure_networks.js";
+import { registerCivil3DSurfaceAnalysisTools } from "./civil3d_surface_analysis.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -73,4 +74,5 @@ export async function registerTools(server: McpServer) {
   registerAcadCreate3dPolylineTool(server);
   registerAcadCreateMTextTool(server);
   registerCivil3DPressureNetworkTools(server);
+  registerCivil3DSurfaceAnalysisTools(server);
 }

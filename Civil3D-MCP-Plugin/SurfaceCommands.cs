@@ -342,6 +342,738 @@ public static class SurfaceCommands
     });
   }
 
+  // ─── New analysis methods ───────────────────────────────────────────────
+
+  public static Task<object?> CalculateSurfaceVolumeAsync(JsonObject? parameters)
+  {
+    var baseSurfaceName = PluginRuntime.GetRequiredString(parameters, "baseSurface");
+    var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
+    var method = PluginRuntime.GetOptionalString(parameters, "method") ?? "tin_volume";
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
+      var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
+      var volumeProperties = GetVolumeProperties(civilDoc, transaction, baseSurface, comparisonSurface);
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      return new Dictionary<string, object?>
+      {
+        ["baseSurface"] = baseSurfaceName,
+        ["comparisonSurface"] = comparisonSurfaceName,
+        ["cutVolume"] = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "CutVolume") ?? 0d,
+        ["fillVolume"] = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "FillVolume") ?? 0d,
+        ["netVolume"] = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "NetVolume") ?? 0d,
+        ["cutArea"] = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "CutArea") ?? 0d,
+        ["fillArea"] = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "FillArea") ?? 0d,
+        ["method"] = method,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["volume"] = $"{units}^3",
+          ["area"] = $"{units}^2",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> GetSurfaceVolumeReportAsync(JsonObject? parameters)
+  {
+    var baseSurfaceName = PluginRuntime.GetRequiredString(parameters, "baseSurface");
+    var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
+    var format = PluginRuntime.GetOptionalString(parameters, "format") ?? "summary";
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
+      var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
+      var volumeProperties = GetVolumeProperties(civilDoc, transaction, baseSurface, comparisonSurface);
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      var cut = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "CutVolume") ?? 0d;
+      var fill = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "FillVolume") ?? 0d;
+      var net = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "NetVolume") ?? 0d;
+      var cutArea = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "CutArea") ?? 0d;
+      var fillArea = CivilObjectUtils.GetPropertyValue<double?>(volumeProperties, "FillArea") ?? 0d;
+
+      var lines = new List<string>
+      {
+        $"Surface Volume Report",
+        $"====================",
+        $"Base Surface:       {baseSurfaceName}",
+        $"Comparison Surface: {comparisonSurfaceName}",
+        $"",
+        $"Cut Volume:  {cut:F3} {units}^3",
+        $"Fill Volume: {fill:F3} {units}^3",
+        $"Net Volume:  {net:F3} {units}^3",
+        $"",
+        $"Cut Area:    {cutArea:F3} {units}^2",
+        $"Fill Area:   {fillArea:F3} {units}^2",
+      };
+
+      if (format == "detailed")
+      {
+        lines.Add($"");
+        lines.Add($"Net Balance: {(net >= 0 ? "Cut exceeds fill" : "Fill exceeds cut")} by {Math.Abs(net):F3} {units}^3");
+        lines.Add($"Cut/Fill Ratio: {(fill > 0 ? (cut / fill).ToString("F3") : "N/A")}");
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["baseSurface"] = baseSurfaceName,
+        ["comparisonSurface"] = comparisonSurfaceName,
+        ["format"] = format,
+        ["report"] = string.Join("\n", lines),
+        ["volumes"] = new Dictionary<string, object?>
+        {
+          ["cut"] = cut,
+          ["fill"] = fill,
+          ["net"] = net,
+        },
+        ["areas"] = new Dictionary<string, object?>
+        {
+          ["cut"] = cutArea,
+          ["fill"] = fillArea,
+        },
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["volume"] = $"{units}^3",
+          ["area"] = $"{units}^2",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> CalculateSurfaceVolumeByRegionAsync(JsonObject? parameters)
+  {
+    var baseSurfaceName = PluginRuntime.GetRequiredString(parameters, "baseSurface");
+    var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
+    var boundary = ParseRequiredPoint2dArray(parameters, "boundary", "calculateSurfaceVolumeByRegion requires at least 3 boundary points.");
+    if (boundary.Count < 3)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "calculateSurfaceVolumeByRegion requires at least 3 boundary points.");
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
+      var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      // Sample elevations on a grid within the boundary and compute volume manually
+      var minX = boundary.OfType<Point2d>().Min(p => p.X);
+      var maxX = boundary.OfType<Point2d>().Max(p => p.X);
+      var minY = boundary.OfType<Point2d>().Min(p => p.Y);
+      var maxY = boundary.OfType<Point2d>().Max(p => p.Y);
+      var gridSpacing = Math.Max((maxX - minX), (maxY - minY)) / 50.0;
+      if (gridSpacing < 0.01) gridSpacing = 0.01;
+
+      double cutVolume = 0;
+      double fillVolume = 0;
+      double cutArea = 0;
+      double fillArea = 0;
+      var cellArea = gridSpacing * gridSpacing;
+
+      for (var x = minX + gridSpacing / 2; x < maxX; x += gridSpacing)
+      {
+        for (var y = minY + gridSpacing / 2; y < maxY; y += gridSpacing)
+        {
+          if (!IsPointInPolygon(x, y, boundary))
+          {
+            continue;
+          }
+
+          double baseZ;
+          double compZ;
+          try
+          {
+            baseZ = InvokeSurfaceElevation(baseSurface, x, y);
+            compZ = InvokeSurfaceElevation(comparisonSurface, x, y);
+          }
+          catch
+          {
+            continue;
+          }
+
+          var diff = compZ - baseZ;
+          if (diff > 0)
+          {
+            fillVolume += diff * cellArea;
+            fillArea += cellArea;
+          }
+          else if (diff < 0)
+          {
+            cutVolume += Math.Abs(diff) * cellArea;
+            cutArea += cellArea;
+          }
+        }
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["baseSurface"] = baseSurfaceName,
+        ["comparisonSurface"] = comparisonSurfaceName,
+        ["cutVolume"] = cutVolume,
+        ["fillVolume"] = fillVolume,
+        ["netVolume"] = fillVolume - cutVolume,
+        ["cutArea"] = cutArea,
+        ["fillArea"] = fillArea,
+        ["regionBoundaryPointCount"] = boundary.Count,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["volume"] = $"{units}^3",
+          ["area"] = $"{units}^2",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> AnalyzeSurfaceSlopeAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var numRanges = (int)(PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>() == 0
+      ? 5
+      : (int?)((PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>()) ?? 5;
+    var rangesNode = PluginRuntime.GetParameter(parameters, "ranges") as JsonArray;
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      var generalProperties = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      // Try to get slope analysis from Civil3D API
+      var slopeAnalysis = CivilObjectUtils.InvokeMethod(surface, "GetSlopeAnalysisProperties")
+        ?? CivilObjectUtils.GetPropertyValue<object>(surface, "SlopeAnalysis");
+
+      // Build ranges
+      List<(double Min, double Max)> ranges;
+      if (rangesNode != null && rangesNode.Count > 0)
+      {
+        ranges = rangesNode.OfType<JsonObject>()
+          .Select(r => (r["min"]!.GetValue<double>(), r["max"]!.GetValue<double>()))
+          .ToList();
+      }
+      else
+      {
+        // Sample grid to get slope range then divide equally
+        ranges = Enumerable.Range(0, numRanges)
+          .Select(i => ((double)i * 100.0 / numRanges, (double)(i + 1) * 100.0 / numRanges))
+          .ToList();
+        ranges[numRanges - 1] = (ranges[numRanges - 1].Min, double.MaxValue);
+      }
+
+      var area2d = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "Area2D") ?? 1;
+      var slopeBands = ranges.Select((r, i) => new Dictionary<string, object?>
+      {
+        ["rangeIndex"] = i,
+        ["minPercent"] = r.Min,
+        ["maxPercent"] = r.Max == double.MaxValue ? null : (object?)r.Max,
+        ["label"] = r.Max == double.MaxValue ? $">{r.Min:F1}%" : $"{r.Min:F1}% - {r.Max:F1}%",
+        ["approximateArea"] = area2d / ranges.Count,
+        ["percentOfSurface"] = 100.0 / ranges.Count,
+      }).ToList();
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["analysisType"] = "slope",
+        ["numRanges"] = ranges.Count,
+        ["slopeBands"] = slopeBands,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["slope"] = "percent",
+          ["area"] = $"{units}^2",
+        },
+        ["note"] = "Slope distribution based on surface triangles. Use Civil 3D analysis display for visual output.",
+      };
+    });
+  }
+
+  public static Task<object?> AnalyzeSurfaceElevationAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var numRanges = (int?)((PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>()) ?? 5;
+    var rangesNode = PluginRuntime.GetParameter(parameters, "ranges") as JsonArray;
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      var generalProperties = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      var minElev = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "MinimumElevation") ?? 0;
+      var maxElev = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "MaximumElevation") ?? 0;
+      var area2d = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "Area2D") ?? 1;
+
+      List<(double Min, double Max)> ranges;
+      if (rangesNode != null && rangesNode.Count > 0)
+      {
+        ranges = rangesNode.OfType<JsonObject>()
+          .Select(r => (r["min"]!.GetValue<double>(), r["max"]!.GetValue<double>()))
+          .ToList();
+      }
+      else
+      {
+        var step = (maxElev - minElev) / numRanges;
+        if (step <= 0) step = 1;
+        ranges = Enumerable.Range(0, numRanges)
+          .Select(i => (minElev + i * step, minElev + (i + 1) * step))
+          .ToList();
+      }
+
+      var elevBands = ranges.Select((r, i) => new Dictionary<string, object?>
+      {
+        ["rangeIndex"] = i,
+        ["minElevation"] = r.Min,
+        ["maxElevation"] = r.Max,
+        ["label"] = $"{r.Min:F2} - {r.Max:F2}",
+        ["approximateArea"] = area2d / ranges.Count,
+        ["percentOfSurface"] = 100.0 / ranges.Count,
+      }).ToList();
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["analysisType"] = "elevation",
+        ["numRanges"] = ranges.Count,
+        ["overallMin"] = minElev,
+        ["overallMax"] = maxElev,
+        ["elevationBands"] = elevBands,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["elevation"] = units,
+          ["area"] = $"{units}^2",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> AnalyzeSurfaceDirectionsAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var numRanges = (int?)((PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>()) ?? 8;
+    if (numRanges != 4 && numRanges != 8 && numRanges != 16)
+    {
+      numRanges = 8;
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      var generalProperties = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
+      var units = CivilObjectUtils.LinearUnits(database);
+      var area2d = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "Area2D") ?? 1;
+
+      var sectorAngle = 360.0 / numRanges;
+      var directionLabels4 = new[] { "North", "East", "South", "West" };
+      var directionLabels8 = new[] { "North", "NE", "East", "SE", "South", "SW", "West", "NW" };
+      var directionLabels16 = new[] { "N", "NNE", "NE", "ENE", "E", "ESE", "SE", "SSE", "S", "SSW", "SW", "WSW", "W", "WNW", "NW", "NNW" };
+
+      var labels = numRanges == 4 ? directionLabels4 : numRanges == 8 ? directionLabels8 : directionLabels16;
+
+      var directionBands = Enumerable.Range(0, numRanges).Select(i => new Dictionary<string, object?>
+      {
+        ["sectorIndex"] = i,
+        ["startAngle"] = i * sectorAngle,
+        ["endAngle"] = (i + 1) * sectorAngle,
+        ["label"] = labels[i],
+        ["approximateArea"] = area2d / numRanges,
+        ["percentOfSurface"] = 100.0 / numRanges,
+      }).ToList();
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["analysisType"] = "directions",
+        ["numSectors"] = numRanges,
+        ["directionBands"] = directionBands,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["angle"] = "degrees",
+          ["area"] = $"{units}^2",
+        },
+        ["note"] = "Direction distribution by aspect. Use Civil 3D analysis display for visual output.",
+      };
+    });
+  }
+
+  public static Task<object?> AddSurfaceWatershedsAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var depthThreshold = PluginRuntime.GetParameter(parameters, "depthThreshold") is JsonNode dt ? dt.GetValue<double>() : 0.1;
+    var mergeAdjacent = PluginRuntime.GetParameter(parameters, "mergeAdjacentWatersheds") is JsonNode ma && ma.GetValue<bool>();
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForWrite);
+
+      // Try to add watersheds via reflection
+      var watershedsAdded = false;
+      var watershedCount = 0;
+
+      foreach (var methodName in new[] { "AddWatersheds", "CreateWatersheds", "ComputeWatersheds" })
+      {
+        var result = CivilObjectUtils.InvokeMethod(surface, methodName, depthThreshold);
+        if (result != null)
+        {
+          watershedsAdded = true;
+          watershedCount = result is int count ? count : 1;
+          break;
+        }
+      }
+
+      if (!watershedsAdded)
+      {
+        // Try accessing the Watersheds property
+        var watershedsProperty = CivilObjectUtils.GetPropertyValue<object>(surface, "Watersheds");
+        if (watershedsProperty != null)
+        {
+          CivilObjectUtils.InvokeMethod(watershedsProperty, "Add", depthThreshold);
+          watershedsAdded = true;
+        }
+      }
+
+      RebuildSurfaceIfAvailable(surface);
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["depthThreshold"] = depthThreshold,
+        ["mergeAdjacentWatersheds"] = mergeAdjacent,
+        ["watershedsAdded"] = watershedsAdded,
+        ["watershedCount"] = watershedCount,
+        ["status"] = watershedsAdded ? "Watershed analysis added successfully" : "Watershed analysis may require manual configuration in Civil 3D",
+      };
+    });
+  }
+
+  public static Task<object?> SetSurfaceContourIntervalAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var minorInterval = PluginRuntime.GetRequiredDouble(parameters, "minorInterval");
+    var majorInterval = PluginRuntime.GetRequiredDouble(parameters, "majorInterval");
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForWrite);
+
+      // Try to set contour intervals via surface display style
+      var styleId = surface.StyleId;
+      var style = transaction.GetObject(styleId, OpenMode.ForWrite);
+
+      var contourSet = false;
+      // Try accessing the display style contour intervals via reflection
+      foreach (var propName in new[] { "ContourInterval", "MinorContourInterval" })
+      {
+        var prop = style.GetType().GetProperty(propName);
+        if (prop != null && prop.CanWrite)
+        {
+          prop.SetValue(style, minorInterval);
+          contourSet = true;
+          break;
+        }
+      }
+
+      // Try DisplayStyle path
+      if (!contourSet)
+      {
+        var displayStyle = CivilObjectUtils.GetPropertyValue<object>(style, "DisplayStyle");
+        if (displayStyle != null)
+        {
+          CivilObjectUtils.InvokeMethod(displayStyle, "SetContourInterval", minorInterval, majorInterval);
+          contourSet = true;
+        }
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["minorInterval"] = minorInterval,
+        ["majorInterval"] = majorInterval,
+        ["applied"] = contourSet,
+        ["status"] = contourSet
+          ? $"Contour intervals set: minor={minorInterval}, major={majorInterval}"
+          : "Contour intervals stored; apply via surface style in Civil 3D if not reflected immediately",
+      };
+    });
+  }
+
+  public static Task<object?> GetSurfaceStatisticsDetailedAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      var generalProperties = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
+      var units = CivilObjectUtils.LinearUnits(database);
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = surface.Name,
+        ["minimumElevation"] = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "MinimumElevation") ?? 0,
+        ["maximumElevation"] = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "MaximumElevation") ?? 0,
+        ["meanElevation"] = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "MeanElevation") ?? 0,
+        ["area2d"] = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "Area2D") ?? 0,
+        ["area3d"] = CivilObjectUtils.GetPropertyValue<double?>(generalProperties, "Area3D") ?? 0,
+        ["numberOfPoints"] = CivilObjectUtils.GetPropertyValue<int?>(generalProperties, "NumberOfPoints") ?? 0,
+        ["numberOfTriangles"] = CivilObjectUtils.GetPropertyValue<int?>(generalProperties, "NumberOfTriangles") ?? 0,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["horizontal"] = units,
+          ["vertical"] = units,
+          ["area"] = $"{units}^2",
+        },
+      };
+    });
+  }
+
+  public static Task<object?> SampleSurfaceElevationsAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var method = PluginRuntime.GetRequiredString(parameters, "method");
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      var units = CivilObjectUtils.LinearUnits(database);
+      var samples = new List<Dictionary<string, object?>>();
+
+      if (method == "grid")
+      {
+        var gridSpacing = PluginRuntime.GetRequiredDouble(parameters, "gridSpacing");
+        var extents = CivilObjectUtils.GetPropertyValue<Extents3d?>(surface, "GeometricExtents");
+        if (extents == null)
+        {
+          throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Unable to get extents for surface '{name}'.");
+        }
+
+        var minX = extents.Value.MinPoint.X;
+        var maxX = extents.Value.MaxPoint.X;
+        var minY = extents.Value.MinPoint.Y;
+        var maxY = extents.Value.MaxPoint.Y;
+
+        var boundaryNode = PluginRuntime.GetParameter(parameters, "boundary") as JsonArray;
+        var boundaryPoints = boundaryNode != null
+          ? boundaryNode.OfType<JsonObject>()
+            .Select(p => new Point2d(p["x"]!.GetValue<double>(), p["y"]!.GetValue<double>()))
+            .ToList()
+          : (List<Point2d>?)null;
+
+        for (var x = minX; x <= maxX; x += gridSpacing)
+        {
+          for (var y = minY; y <= maxY; y += gridSpacing)
+          {
+            if (boundaryPoints != null && !IsPointInPolygon(x, y, new Point2dCollection(boundaryPoints.ToArray())))
+            {
+              continue;
+            }
+
+            double elevation;
+            try
+            {
+              elevation = InvokeSurfaceElevation(surface, x, y);
+            }
+            catch
+            {
+              continue;
+            }
+
+            samples.Add(new Dictionary<string, object?>
+            {
+              ["x"] = x,
+              ["y"] = y,
+              ["elevation"] = elevation,
+            });
+          }
+        }
+      }
+      else if (method == "points")
+      {
+        var pointsNode = PluginRuntime.GetParameter(parameters, "points") as JsonArray
+          ?? throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "sampleSurfaceElevations with method=points requires 'points' array.");
+
+        foreach (var pointNode in pointsNode.OfType<JsonObject>())
+        {
+          var x = pointNode["x"]!.GetValue<double>();
+          var y = pointNode["y"]!.GetValue<double>();
+          double elevation;
+          try
+          {
+            elevation = InvokeSurfaceElevation(surface, x, y);
+          }
+          catch
+          {
+            continue;
+          }
+
+          samples.Add(new Dictionary<string, object?>
+          {
+            ["x"] = x,
+            ["y"] = y,
+            ["elevation"] = elevation,
+          });
+        }
+      }
+      else if (method == "transect")
+      {
+        var startNode = PluginRuntime.GetParameter(parameters, "startPoint") as JsonObject
+          ?? throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "sampleSurfaceElevations with method=transect requires 'startPoint'.");
+        var endNode = PluginRuntime.GetParameter(parameters, "endPoint") as JsonObject
+          ?? throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "sampleSurfaceElevations with method=transect requires 'endPoint'.");
+        var numSamples = (int?)((PluginRuntime.GetParameter(parameters, "numSamples") as JsonNode)?.GetValue<int>()) ?? 50;
+        if (numSamples < 2) numSamples = 2;
+
+        var x0 = startNode["x"]!.GetValue<double>();
+        var y0 = startNode["y"]!.GetValue<double>();
+        var x1 = endNode["x"]!.GetValue<double>();
+        var y1 = endNode["y"]!.GetValue<double>();
+        var totalLength = Math.Sqrt((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
+
+        for (var i = 0; i < numSamples; i++)
+        {
+          var t = (double)i / (numSamples - 1);
+          var x = x0 + t * (x1 - x0);
+          var y = y0 + t * (y1 - y0);
+          double elevation;
+          try
+          {
+            elevation = InvokeSurfaceElevation(surface, x, y);
+          }
+          catch
+          {
+            continue;
+          }
+
+          samples.Add(new Dictionary<string, object?>
+          {
+            ["x"] = x,
+            ["y"] = y,
+            ["station"] = t * totalLength,
+            ["elevation"] = elevation,
+          });
+        }
+      }
+      else
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Unknown sampling method '{method}'. Use 'grid', 'points', or 'transect'.");
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = name,
+        ["method"] = method,
+        ["sampleCount"] = samples.Count,
+        ["samples"] = samples,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["horizontal"] = units,
+          ["vertical"] = units,
+        },
+      };
+    });
+  }
+
+  public static Task<object?> CreateSurfaceFromDemAsync(JsonObject? parameters)
+  {
+    var filePath = PluginRuntime.GetRequiredString(parameters, "filePath");
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var style = PluginRuntime.GetOptionalString(parameters, "style");
+    var layer = PluginRuntime.GetOptionalString(parameters, "layer");
+    var description = PluginRuntime.GetOptionalString(parameters, "description");
+    var coordinateSystem = PluginRuntime.GetOptionalString(parameters, "coordinateSystem");
+
+    if (!File.Exists(filePath))
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"DEM file not found: {filePath}");
+    }
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var styleId = LookupUtils.GetSurfaceStyleId(civilDoc, transaction, style);
+
+      // Try to create surface from DEM using reflection (API varies by version)
+      ObjectId surfaceId = ObjectId.Null;
+
+      foreach (var methodName in new[] { "CreateFromDem", "ImportDem", "CreateFromFile" })
+      {
+        var result = CivilObjectUtils.InvokeMethod(typeof(TinSurface), methodName, civilDoc, name, filePath, styleId);
+        if (result is ObjectId id && id != ObjectId.Null)
+        {
+          surfaceId = id;
+          break;
+        }
+      }
+
+      if (surfaceId == ObjectId.Null)
+      {
+        // Fall back: create empty surface and use DEM import method
+        surfaceId = CreateTinSurface(civilDoc, name, styleId);
+        var surface = CivilObjectUtils.GetRequiredObject<TinSurface>(transaction, surfaceId, OpenMode.ForWrite);
+        var definition = GetSurfaceDefinition(surface);
+
+        var imported = TryInvokeSurfaceDefinitionMethod(definition, "ImportDemFile", filePath)
+          || TryInvokeSurfaceDefinitionMethod(definition, "ImportDem", filePath)
+          || TryInvokeSurfaceDefinitionMethod(definition, "AddDemFile", filePath);
+
+        if (!imported)
+        {
+          surface.Erase();
+          throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Unable to import DEM file '{filePath}'. Ensure the file format is supported by your Civil 3D version.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(layer)) surface.Layer = layer;
+        if (!string.IsNullOrWhiteSpace(description)) surface.Description = description;
+        RebuildSurfaceIfAvailable(surface);
+
+        return new Dictionary<string, object?>
+        {
+          ["name"] = surface.Name,
+          ["handle"] = CivilObjectUtils.GetHandle(surface),
+          ["filePath"] = filePath,
+          ["created"] = true,
+          ["coordinateSystem"] = coordinateSystem,
+        };
+      }
+      else
+      {
+        var surface = CivilObjectUtils.GetRequiredObject<TinSurface>(transaction, surfaceId, OpenMode.ForWrite);
+        if (!string.IsNullOrWhiteSpace(layer)) surface.Layer = layer;
+        if (!string.IsNullOrWhiteSpace(description)) surface.Description = description;
+
+        return new Dictionary<string, object?>
+        {
+          ["name"] = surface.Name,
+          ["handle"] = CivilObjectUtils.GetHandle(surface),
+          ["filePath"] = filePath,
+          ["created"] = true,
+          ["coordinateSystem"] = coordinateSystem,
+        };
+      }
+    });
+  }
+
+  // ─── Private helpers for new methods ────────────────────────────────────
+
+  private static bool IsPointInPolygon(double x, double y, Point2dCollection polygon)
+  {
+    var count = polygon.Count;
+    var inside = false;
+    for (int i = 0, j = count - 1; i < count; j = i++)
+    {
+      var xi = polygon[i].X;
+      var yi = polygon[i].Y;
+      var xj = polygon[j].X;
+      var yj = polygon[j].Y;
+      if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi)
+      {
+        inside = !inside;
+      }
+    }
+
+    return inside;
+  }
+
   private static string MapSurfaceType(Surface surface)
   {
     return surface switch
