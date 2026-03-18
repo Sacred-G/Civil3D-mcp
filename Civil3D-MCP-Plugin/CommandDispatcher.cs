@@ -81,6 +81,16 @@ public static class CommandDispatcher
       "getCorridorSurfaces" => CorridorCommands.GetCorridorSurfacesAsync(parameters),
       "getCorridorFeatureLines" => CorridorCommands.GetCorridorFeatureLinesAsync(parameters),
       "computeCorridorVolumes" => CorridorCommands.ComputeCorridorVolumesAsync(parameters),
+      // Pipe networks (gravity)
+      "listPipeNetworks" => PipeNetworkCommands.ListPipeNetworksAsync(),
+      "getPipeNetwork" => PipeNetworkCommands.GetPipeNetworkAsync(parameters),
+      "getPipe" => PipeNetworkCommands.GetPipeAsync(parameters),
+      "getStructure" => PipeNetworkCommands.GetStructureAsync(parameters),
+      "checkPipeNetworkInterference" => PipeNetworkCommands.CheckPipeNetworkInterferenceAsync(parameters),
+      "createPipeNetwork" => PipeNetworkCommands.CreatePipeNetworkAsync(parameters),
+      "addPipeToNetwork" => PipeNetworkCommands.AddPipeToNetworkAsync(parameters),
+      "addStructureToNetwork" => PipeNetworkCommands.AddStructureToNetworkAsync(parameters),
+      "listPipePartsCatalog" => PipeNetworkCommands.ListPipePartsCatalogAsync(parameters),
       "listPressureNetworks" => PressureNetworkCommands.ListPressureNetworksAsync(),
       "getPressureNetworkInfo" => PressureNetworkCommands.GetPressureNetworkInfoAsync(parameters),
       "createPressureNetwork" => PressureNetworkCommands.CreatePressureNetworkAsync(parameters),
@@ -175,6 +185,30 @@ public static class CommandDispatcher
       "qtyExportToCsv" => QuantityCommands.QtyExportToCsvAsync(parameters),
       "qtyMaterialListGet" => QuantityCommands.QtyMaterialListGetAsync(parameters),
       "qtyEarthworkSummary" => QuantityCommands.QtyEarthworkSummaryAsync(parameters),
+      // Pipe hydraulics
+      "calculatePipeNetworkHgl" => PipeHydraulicsCommands.CalculatePipeNetworkHglAsync(parameters),
+      "analyzePipeNetworkHydraulics" => PipeHydraulicsCommands.AnalyzePipeNetworkHydraulicsAsync(parameters),
+      "getPipeStructureProperties" => PipeHydraulicsCommands.GetPipeStructurePropertiesAsync(parameters),
+      // Assembly creation
+      "createAssembly" => AssemblyCreationCommands.CreateAssemblyAsync(parameters),
+      "createSubassembly" => AssemblyCreationCommands.CreateSubassemblyAsync(parameters),
+      "editAssembly" => AssemblyCreationCommands.EditAssemblyAsync(parameters),
+      // Sight distance
+      "calculateSightDistance" => SightDistanceCommands.CalculateSightDistanceAsync(parameters),
+      "checkStoppingDistance" => SightDistanceCommands.CheckStoppingDistanceAsync(parameters),
+      // Detention basin
+      "calculateDetentionBasinSize" => DetentionCommands.CalculateDetentionBasinSizeAsync(parameters),
+      "calculateDetentionStageStorage" => DetentionCommands.CalculateDetentionStageStorageAsync(parameters),
+      // Slope analysis
+      "calculateSlopeGeometry" => SlopeAnalysisCommands.CalculateSlopeGeometryAsync(parameters),
+      "checkSlopeStability" => SlopeAnalysisCommands.CheckSlopeStabilityAsync(parameters),
+      // Cost estimation
+      "exportPayItems" => CostEstimationCommands.ExportPayItemsAsync(parameters),
+      "calculateMaterialCostEstimate" => CostEstimationCommands.CalculateMaterialCostEstimateAsync(parameters),
+      // Labels
+      "listLabelStyles" => LabelCommands.ListLabelStylesAsync(parameters),
+      "listLabels" => LabelCommands.ListLabelsAsync(parameters),
+      "addLabel" => LabelCommands.AddLabelAsync(parameters),
       _ => throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Plugin method '{method}' is not implemented yet."),
     };
   }

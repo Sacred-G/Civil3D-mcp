@@ -53,10 +53,13 @@ namespace Cad_AI_Agent.UI
         private const string RegistryPath = @"SOFTWARE\CadAiAgent";
         private const string DefaultProviderTag = "gemini:gemini-2.5-flash";
         private const string DefaultMcpUrl = "http://localhost:3000";
+        private const string DefaultPlaywrightUrl = "http://localhost:3001";
         private string _activeProviderTag = DefaultProviderTag;
         private bool _isLoadingProviderSettings = false;
         private McpClient _mcpClient = new McpClient(DefaultMcpUrl);
         private bool _mcpAvailable = false;
+        private PlaywrightMcpClient _playwrightClient = new PlaywrightMcpClient(DefaultPlaywrightUrl);
+        private bool _playwrightAvailable = false;
 
         private List<ChatSession> _allSessions = new List<ChatSession>();
         private ChatSession _currentSession = new ChatSession();
@@ -76,6 +79,7 @@ namespace Cad_AI_Agent.UI
 
                 LoadProviderSettings();
                 InitializeMcpClient();
+                InitializePlaywrightClient();
             }
             catch (Exception ex)
             {
@@ -182,6 +186,88 @@ namespace Cad_AI_Agent.UI
                 ReconnectMcpBtn.IsEnabled = true;
             }
         }
+
+        // ─── Playwright MCP ────────────────────────────────────────────────────
+
+        private async void InitializePlaywrightClient()
+        {
+            string url = DefaultPlaywrightUrl;
+            try
+            {
+                using var key = Registry.CurrentUser.OpenSubKey(RegistryPath);
+                url = key?.GetValue("PlaywrightMcpUrl") as string ?? DefaultPlaywrightUrl;
+            }
+            catch { /* non-critical */ }
+
+            if (PlaywrightUrlBox != null)
+                PlaywrightUrlBox.Text = url;
+
+            await ConnectPlaywrightAsync(url);
+        }
+
+        private async Task ConnectPlaywrightAsync(string url)
+        {
+            if (PlaywrightStatusText != null)
+            {
+                PlaywrightStatusText.Text = "Connecting…";
+                PlaywrightStatusText.Foreground = Brushes.Gray;
+            }
+
+            try
+            {
+                _playwrightClient.UpdateBaseUrl(url);
+                _playwrightAvailable = await _playwrightClient.CheckAvailabilityAsync();
+
+                if (PlaywrightStatusText != null)
+                {
+                    if (_playwrightAvailable)
+                    {
+                        PlaywrightStatusText.Text = "● Connected";
+                        PlaywrightStatusText.Foreground = Brushes.LimeGreen;
+                    }
+                    else
+                    {
+                        PlaywrightStatusText.Text = "● Not connected";
+                        PlaywrightStatusText.Foreground = Brushes.OrangeRed;
+                    }
+                }
+            }
+            catch
+            {
+                _playwrightAvailable = false;
+                if (PlaywrightStatusText != null)
+                {
+                    PlaywrightStatusText.Text = "● Error";
+                    PlaywrightStatusText.Foreground = Brushes.Red;
+                }
+            }
+        }
+
+        private async void ReconnectPlaywrightBtn_Click(object sender, RoutedEventArgs e)
+        {
+            string url = PlaywrightUrlBox?.Text?.Trim() ?? DefaultPlaywrightUrl;
+            if (string.IsNullOrWhiteSpace(url))
+                url = DefaultPlaywrightUrl;
+
+            try
+            {
+                using RegistryKey key = Registry.CurrentUser.CreateSubKey(RegistryPath);
+                key?.SetValue("PlaywrightMcpUrl", url);
+            }
+            catch { /* non-critical */ }
+
+            ReconnectPlaywrightBtn.IsEnabled = false;
+            try
+            {
+                await ConnectPlaywrightAsync(url);
+            }
+            finally
+            {
+                ReconnectPlaywrightBtn.IsEnabled = true;
+            }
+        }
+
+        // ───────────────────────────────────────────────────────────────────────
 
         private void LoadProviderSettings()
         {
@@ -333,9 +419,9 @@ namespace Cad_AI_Agent.UI
                 {
                     Content = session.Title,
 
-                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")) : Brushes.Transparent,
-                    BorderBrush = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A3A55")) : Brushes.Transparent,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                    Background = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2E2E2E")) : Brushes.Transparent,
+                    BorderBrush = session == _currentSession ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4A4A4A")) : Brushes.Transparent,
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0E0E0")),
                     BorderThickness = session == _currentSession ? new Thickness(1) : new Thickness(0),
                     Padding = new Thickness(10, 8, 10, 8),
                     HorizontalContentAlignment = HorizontalAlignment.Left,
@@ -355,12 +441,12 @@ namespace Cad_AI_Agent.UI
                     {
                         Text = session.Title,
 
-                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
-                        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
-                        CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                        Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E1E1E")),
+                        Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0E0E0")),
+                        CaretBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000")),
                         Padding = new Thickness(10, 8, 10, 8),
                         BorderThickness = new Thickness(1),
-                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
+                        BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000"))
                     };
 
                     renameBox.KeyDown += (senderBox, args) => {
@@ -387,7 +473,7 @@ namespace Cad_AI_Agent.UI
                     Content = "✕",
 
                     Background = Brushes.Transparent,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#888888")),
                     BorderThickness = new Thickness(0),
 
                     Cursor = Cursors.Hand,
@@ -437,7 +523,7 @@ namespace Cad_AI_Agent.UI
             TextBlock messageMeta = new TextBlock
             {
                 Text = isUser ? "You" : "AI Agent",
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(isUser ? "#7DD3FC" : "#94A3B8")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString(isUser ? "#E8A000" : "#888888")),
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(4, 0, 4, 6),
@@ -446,26 +532,26 @@ namespace Cad_AI_Agent.UI
 
             Border bubble = new Border
             {
-                CornerRadius = new CornerRadius(14),
-                Padding = new Thickness(14, 12, 14, 12),
+                CornerRadius = new CornerRadius(8),
+                Padding = new Thickness(14, 10, 14, 10),
                 HorizontalAlignment = isUser ? HorizontalAlignment.Right : HorizontalAlignment.Left,
-                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0284C7"))
-                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033")),
-                BorderBrush = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8"))
-                                     : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                Background = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2E2000"))
+                                    : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#272727")),
+                BorderBrush = isUser ? new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000"))
+                                     : new SolidColorBrush((Color)ColorConverter.ConvertFromString("#383838")),
                 BorderThickness = new Thickness(1)
             };
 
             TextBox txtBox = new TextBox
             {
                 Text = text,
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#F8FAFC")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0E0E0")),
                 Background = Brushes.Transparent,
                 BorderThickness = new Thickness(0),
                 IsReadOnly = true,
                 TextWrapping = TextWrapping.Wrap,
-                FontSize = 13.5,
-                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#7C93B7")),
+                FontSize = 13,
+                SelectionBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#4A3800")),
                 FontFamily = new FontFamily("Segoe UI"),
                 MinWidth = 80
             };
@@ -492,16 +578,16 @@ namespace Cad_AI_Agent.UI
             ChatTab.Visibility = WpfVisibility.Visible;
             SettingsTab.Visibility = WpfVisibility.Collapsed;
 
-            TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
-            TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
+            TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000"));
+            TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#888888"));
         }
 
         private void TabSettingsButton_Click(object sender, RoutedEventArgs e)
         {
             ChatTab.Visibility = WpfVisibility.Collapsed;
             SettingsTab.Visibility = WpfVisibility.Visible;
-            TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0696D7"));
-            TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#A0A0A0"));
+            TabSettingsButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000"));
+            TabChatButton.Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#888888"));
         }
 
         private async void TestConnectionBtn_Click(object sender, RoutedEventArgs e)
@@ -1197,6 +1283,53 @@ namespace Cad_AI_Agent.UI
             });
         }
 
+        // ─── Playwright Command Routing ────────────────────────────────────────
+
+        /// <summary>
+        /// Returns true for any browser_* or playwright_* action — routed to the Playwright MCP server.
+        /// </summary>
+        private static bool IsPlaywrightCommand(string action) =>
+            action.StartsWith("browser_") || action.StartsWith("playwright_");
+
+        /// <summary>
+        /// Route a browser_* command to the Playwright MCP server and display the result in chat.
+        /// No CAD drawing occurs — this is purely for web research and browser automation.
+        /// </summary>
+        private async Task HandlePlaywrightCommandAsync(
+            Document doc,
+            CadCommand command,
+            ExecutionProgressReporter reporter)
+        {
+            if (!_playwrightAvailable)
+            {
+                reporter.ReportSkipped(command.Action, "Playwright MCP server not connected",
+                    "Configure and connect the Playwright MCP server in Settings to use browser tools.");
+                return;
+            }
+
+            string toolLabel = command.Args?["url"]?.ToString()
+                ?? command.Args?["selector"]?.ToString()
+                ?? command.Action;
+
+            reporter.ReportRunning(command.Action, $"Browser: {command.Action}…", toolLabel);
+
+            var result = await _playwrightClient.ExecuteToolAsync(command.Action, command.Args);
+
+            string summary = FormatMcpResult(result);
+            string displaySummary = summary.Length > 200 ? summary.Substring(0, 200) + "…" : summary;
+
+            reporter.ReportSuccess(command.Action, $"{command.Action} completed", displaySummary);
+
+            Dispatcher.Invoke(() =>
+            {
+                AddMessageToChat(
+                    $"**{command.Action}**\n{summary}",
+                    false);
+            });
+        }
+
+        // ───────────────────────────────────────────────────────────────────────
+
         /// <summary>
         /// Produce a readable one-or-two-line summary from a MCP tool JObject result.
         /// </summary>
@@ -1285,6 +1418,20 @@ namespace Cad_AI_Agent.UI
                             reporter.ReportError(command.Action, $"MCP error: {mcpEx.Message}", mcpEx.Message);
                         }
                     }
+                    else if (IsPlaywrightCommand(command.Action))
+                    {
+                        // Route browser_* commands to the Playwright MCP server
+                        try
+                        {
+                            await HandlePlaywrightCommandAsync(doc, command, reporter);
+                            completedCount++;
+                        }
+                        catch (Exception pwEx)
+                        {
+                            errorCount++;
+                            reporter.ReportError(command.Action, $"Playwright error: {pwEx.Message}", pwEx.Message);
+                        }
+                    }
                     else
                     {
                         await CoreApp.DocumentManager.ExecuteInCommandContextAsync((obj) =>
@@ -1334,10 +1481,10 @@ namespace Cad_AI_Agent.UI
             // Header
             var headerBorder = new Border
             {
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
-                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#252525")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000")),
                 BorderThickness = new Thickness(1),
-                CornerRadius = new CornerRadius(8, 8, 0, 0),
+                CornerRadius = new CornerRadius(6, 6, 0, 0),
                 Padding = new Thickness(12, 10, 12, 10)
             };
 
@@ -1357,7 +1504,7 @@ namespace Cad_AI_Agent.UI
             var headerText = new TextBlock
             {
                 Text = $"Executing {totalSteps} CAD Commands...",
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0E0E0")),
                 FontSize = 13,
                 FontWeight = FontWeights.SemiBold,
                 VerticalAlignment = VerticalAlignment.Center
@@ -1372,10 +1519,10 @@ namespace Cad_AI_Agent.UI
             // Execution log content
             var logBorder = new Border
             {
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#0F1A2E")),
-                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D")),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1A1A1A")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2E2E2E")),
                 BorderThickness = new Thickness(1, 0, 1, 1),
-                CornerRadius = new CornerRadius(0, 0, 8, 8),
+                CornerRadius = new CornerRadius(0, 0, 6, 6),
                 Padding = new Thickness(8),
                 MaxHeight = 400
             };
@@ -1430,7 +1577,7 @@ namespace Cad_AI_Agent.UI
             var stepNumber = new TextBlock
             {
                 Text = $"[{step.StepNumber}/{step.TotalSteps}] {step.GetFormattedTime()}",
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#666666")),
                 FontSize = 10,
                 FontFamily = new FontFamily("Consolas"),
                 Margin = new Thickness(0, 0, 8, 0),
@@ -1444,7 +1591,7 @@ namespace Cad_AI_Agent.UI
             var commandName = new TextBlock
             {
                 Text = step.CommandName,
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#888888")),
                 FontSize = 11,
                 FontWeight = FontWeights.SemiBold,
                 Margin = new Thickness(0, 0, 0, 2)
@@ -1453,7 +1600,7 @@ namespace Cad_AI_Agent.UI
             var messageText = new TextBlock
             {
                 Text = step.Message,
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E5EEF9")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E0E0E0")),
                 FontSize = 12,
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, step.Details != null ? 4 : 0)
@@ -1467,7 +1614,7 @@ namespace Cad_AI_Agent.UI
                 var detailsText = new TextBlock
                 {
                     Text = step.Details,
-                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
+                    Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#666666")),
                     FontSize = 10,
                     FontStyle = FontStyles.Italic,
                     TextWrapping = TextWrapping.Wrap
@@ -1525,8 +1672,8 @@ namespace Cad_AI_Agent.UI
             // Add summary footer
             var summaryBorder = new Border
             {
-                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
-                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+                Background = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#252525")),
+                BorderBrush = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000")),
                 BorderThickness = new Thickness(1),
                 CornerRadius = new CornerRadius(6),
                 Padding = new Thickness(12, 10, 12, 10),
@@ -1536,7 +1683,7 @@ namespace Cad_AI_Agent.UI
             var summaryText = new TextBlock
             {
                 Text = $"✓ {completed} successful  •  ✗ {errors} failed  •  ⏱️ {DateTime.Now:HH:mm:ss}",
-                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#94A3B8")),
+                Foreground = new SolidColorBrush((Color)ColorConverter.ConvertFromString("#888888")),
                 FontSize = 11,
                 FontFamily = new FontFamily("Consolas"),
                 HorizontalAlignment = HorizontalAlignment.Center
@@ -1558,20 +1705,20 @@ namespace Cad_AI_Agent.UI
 
         private Brush GetStatusBackground(string status) => status switch
         {
-            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E3A5F")),
-            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#064E3B")),
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#2A2000")),
+            "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#063B1F")),
             "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#450A0A")),
-            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E293B")),
-            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#162033"))
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#252525")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#1E1E1E"))
         };
 
         private Brush GetStatusBorderBrush(string status) => status switch
         {
-            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#38BDF8")),
+            "Running" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#E8A000")),
             "Success" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#22C55E")),
             "Error" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#EF4444")),
-            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#64748B")),
-            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#26354D"))
+            "Skipped" => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#555555")),
+            _ => new SolidColorBrush((Color)ColorConverter.ConvertFromString("#333333"))
         };
 
         private void AddMessageContainerToChat(StackPanel container)

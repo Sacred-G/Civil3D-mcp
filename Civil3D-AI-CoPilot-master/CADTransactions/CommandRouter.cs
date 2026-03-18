@@ -259,6 +259,71 @@ namespace Cad_AI_Agent.CADTransactions
                         progress?.ReportSuccess(command.Action, "Contours extracted", $"Major {command.Params[0]:F1}' / Minor {command.Params[1]:F1}' contour polylines created");
                         break;
 
+                    case "DrawRectangle":
+                        if (command.Params.Length < 4)
+                        {
+                            progress?.ReportSkipped(command.Action, "Insufficient parameters for rectangle", "Expected: X1, Y1, X2, Y2");
+                            break;
+                        }
+                        string? rectLayer = GetStringArg(command, "layer");
+                        double rectW = Math.Abs(command.Params[2] - command.Params[0]);
+                        double rectH = Math.Abs(command.Params[3] - command.Params[1]);
+                        progress?.ReportRunning(command.Action, "Drawing rectangle...", $"({command.Params[0]:F2},{command.Params[1]:F2}) to ({command.Params[2]:F2},{command.Params[3]:F2}) — {rectW:F2} x {rectH:F2}");
+                        RectangleDrawer.Draw(doc, command.Params[0], command.Params[1], command.Params[2], command.Params[3], rectLayer);
+                        progress?.ReportSuccess(command.Action, "Rectangle created", $"{rectW:F2} x {rectH:F2} units");
+                        break;
+
+                    case "DrawArc":
+                        if (command.Params.Length < 6)
+                        {
+                            progress?.ReportSkipped(command.Action, "Insufficient parameters for arc", "Expected: StartX, StartY, CenterX, CenterY, EndX, EndY");
+                            break;
+                        }
+                        progress?.ReportRunning(command.Action, "Drawing arc...", $"Center ({command.Params[2]:F2}, {command.Params[3]:F2})");
+                        ArcDrawer.Draw(doc, command.Params[0], command.Params[1], command.Params[2], command.Params[3], command.Params[4], command.Params[5]);
+                        progress?.ReportSuccess(command.Action, "Arc created", "Arc added to model space");
+                        break;
+
+                    case "DrawBoundary":
+                        if (command.Params.Length < 6)
+                        {
+                            progress?.ReportSkipped(command.Action, "Insufficient boundary points", "Minimum 3 points (6 values: X1,Y1,X2,Y2,X3,Y3) required");
+                            break;
+                        }
+                        string? boundaryLayer = GetStringArg(command, "layer");
+                        int bndPtCount = command.Params.Length / 2;
+                        progress?.ReportRunning(command.Action, "Drawing boundary polygon...", $"{bndPtCount} vertices");
+                        BoundaryDrawer.Draw(doc, command.Params, boundaryLayer);
+                        progress?.ReportSuccess(command.Action, "Boundary drawn", $"Closed polygon with {bndPtCount} vertices");
+                        break;
+
+                    case "DrawElevationLabel":
+                        if (command.Params.Length < 3)
+                        {
+                            progress?.ReportSkipped(command.Action, "Insufficient parameters for elevation label", "Expected: X, Y, Elevation");
+                            break;
+                        }
+                        string elevPrefix = GetStringArg(command, "prefix") ?? "ELEV=";
+                        double elevTextHeight = GetDoubleArg(command, "textHeight", 2.5);
+                        progress?.ReportRunning(command.Action, "Placing elevation label...", $"({command.Params[0]:F2}, {command.Params[1]:F2}) Elev={command.Params[2]:F2}");
+                        ElevationLabelDrawer.Draw(doc, command.Params[0], command.Params[1], command.Params[2], elevPrefix, elevTextHeight);
+                        progress?.ReportSuccess(command.Action, "Elevation label placed", $"{elevPrefix}{command.Params[2]:F2}");
+                        break;
+
+                    case "DrawSlopeArrow":
+                        if (command.Params.Length < 6)
+                        {
+                            progress?.ReportSkipped(command.Action, "Insufficient parameters for slope arrow", "Expected: X1, Y1, Z1, X2, Y2, Z2");
+                            break;
+                        }
+                        double slopeTextHeight = GetDoubleArg(command, "textHeight", 2.5);
+                        double slopeHoriz = Math.Sqrt(Math.Pow(command.Params[3] - command.Params[0], 2) + Math.Pow(command.Params[4] - command.Params[1], 2));
+                        double slopePct = slopeHoriz > 1e-9 ? (command.Params[5] - command.Params[2]) / slopeHoriz * 100.0 : 0.0;
+                        progress?.ReportRunning(command.Action, "Drawing slope arrow...", $"From ({command.Params[0]:F2},{command.Params[1]:F2}) to ({command.Params[3]:F2},{command.Params[4]:F2})");
+                        SlopeArrowDrawer.Draw(doc, command.Params[0], command.Params[1], command.Params[2], command.Params[3], command.Params[4], command.Params[5], slopeTextHeight);
+                        progress?.ReportSuccess(command.Action, "Slope arrow drawn", $"Grade: {slopePct:+0.00;-0.00;0.00}%");
+                        break;
+
                     case "ClearModel":
                         progress?.ReportRunning(command.Action, "Clearing model...", "Removing corridors, alignments, and dependent objects");
                         ModelCleanser.Clear(doc);

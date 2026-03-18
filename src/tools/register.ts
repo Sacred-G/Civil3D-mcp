@@ -51,6 +51,12 @@ import { registerCivil3DIntersectionTools } from "./civil3d_intersection.js";
 import { registerCivil3DParcelEditingTools } from "./civil3d_parcel_editing.js";
 import { registerCivil3DSurveyProcessingTools } from "./civil3d_survey_processing.js";
 import { registerCivil3DDataShortcutMgmtTools } from "./civil3d_data_shortcut_mgmt.js";
+import { registerCivil3DPipeHydraulicsTools } from "./civil3d_pipe_hydraulics.js";
+import { registerCivil3DAssemblyCreationTools } from "./civil3d_assembly_creation.js";
+import { registerCivil3DSightDistanceTools } from "./civil3d_sight_distance.js";
+import { registerCivil3DDetentionTools } from "./civil3d_detention.js";
+import { registerCivil3DSlopeAnalysisTools } from "./civil3d_slope_analysis.js";
+import { registerCivil3DCostEstimationTools } from "./civil3d_cost_estimation.js";
 
 export async function registerTools(server: McpServer) {
   registerCivil3DAssemblyTool(server);
@@ -105,4 +111,10 @@ export async function registerTools(server: McpServer) {
   registerCivil3DParcelEditingTools(server);
   registerCivil3DSurveyProcessingTools(server);
   registerCivil3DDataShortcutMgmtTools(server);
+  registerCivil3DPipeHydraulicsTools(server);
+  registerCivil3DAssemblyCreationTools(server);
+  registerCivil3DSightDistanceTools(server);
+  registerCivil3DDetentionTools(server);
+  registerCivil3DSlopeAnalysisTools(server);
+  registerCivil3DCostEstimationTools(server);
 }
