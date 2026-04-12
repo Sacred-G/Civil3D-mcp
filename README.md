@@ -1,119 +1,219 @@
-# civil3d-mcp
+# Civil3D MCP Server
 
-English
+An AI-powered Model Context Protocol (MCP) server for Autodesk Civil 3D 2026, enabling natural language interaction with Civil 3D projects through any MCP-compatible client.
 
-## Description
+Built by [Steven Bouldin](https://linkedin.com/in/steven-bouldin)
 
-civil3d-mcp allows you to interact with Autodesk Civil 3D using the MCP protocol through MCP-supported clients (such as Claude, Cline, etc.).
+---
 
-This project is the server side (providing Tools to AI), and you need to use a Civil 3D MCP plugin (driving Civil 3D) in conjunction.
+## Overview
 
-Join [Discord](https://discord.gg/cGzUGurq) | [QQ Group](http://qm.qq.com/cgi-bin/qm/qr?_wv=1027&k=kLnQiFVtYBytHm7R58KFoocd3mzU_9DR&authKey=fyXDOBmXP7FMkXAWjddWZumblxKJH7ZycYyLp40At3t9%2FOfSZyVO7zyYgIROgSHF&noverify=0&group_code=792379482)
+Civil3D MCP bridges the gap between AI assistants and Autodesk Civil 3D by exposing 55+ command tools via the [Model Context Protocol](https://modelcontextprotocol.io). Engineers and designers can query project data, create and modify civil engineering elements, and automate repetitive tasks—all through conversational AI.
+
+### Architecture
+
+The system uses a **two-layer architecture**:
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    MCP Client                           │
+│          (Claude Desktop, Cline, etc.)                  │
+└──────────────┬──────────────────────────────────────────┘
+               │
+┌──────────────▼──────────────────────────────────────────┐
+│              civil3d-mcp (Node.js)                      │
+│         MCP Server — 55+ Tool Definitions               │
+│         Exposes Civil 3D operations as AI tools          │
+└──────────────┬──────────────────────────────────────────┘
+               │ Socket
+┌──────────────▼──────────────────────────────────────────┐
+│         Civil 3D + MCP Plugin (C#)                      │
+│    ┌──────────────────────────────────────────┐         │
+│    │  civil3d-mcp-plugin                      │         │
+│    │  SocketService ↔ CommandSet ↔ Execute     │         │
+│    │  CommandManager ← Command Projects       │         │
+│    └──────────────────────────────────────────┘         │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Layer 1 — MCP Server (this repo):** A Node.js/TypeScript server that implements the MCP protocol, defining tools that map to Civil 3D operations. Communicates with the Civil 3D plugin over a local socket connection.
+
+**Layer 2 — Civil 3D Plugin:** A C# plugin loaded inside Civil 3D that receives commands from the MCP server, executes them against the Civil 3D API, and returns results.
+
+---
 
 ## Features
 
-- Allow AI to get data from the Civil 3D project
-- Allow AI to drive Civil 3D to create, modify, and delete elements
-- Send AI-generated code to Civil 3D to execute (may not be successful, successful rate is higher in some simple scenarios with clear requirements)
+- **Query project data** — Retrieve drawing info, surface data, alignments, profiles, corridors, parcels, pipe networks, and more
+- **Create & modify elements** — Points, alignments, profiles, surfaces, feature lines, pipe networks, polylines, text, and labels
+- **Surface editing** — Add points, breaklines, boundaries; extract contours; compute volumes
+- **Style & label management** — List, inspect, and apply Civil 3D styles and labels
+- **Coordinate systems** — Query coordinate system info and perform transformations
+- **Data shortcuts** — List, sync, and create data shortcut references
+- **Drawing management** — Save, undo/redo, create from template
+- **Async job tracking** — Monitor long-running operations with status checks and cancellation
 
-## Requirements
-
-- nodejs 18+
-
-> Complete installation environment still needs to consider the needs of the Civil 3D MCP plugin, please refer to its documentation.
-
-## Installation
-
-### 1. Build local MCP service
-
-Install dependencies
-
-```bash
-npm install
-```
-
-Build
-
-```bash
-npm run build
-```
-
-### 2. Client configuration
-
-**Claude client**
-
-Claude client -> Settings > Developer > Edit Config > claude_desktop_config.json
-
-```json
-{
-    "mcpServers": {
-        "civil3d-mcp": {
-            "command": "node",
-            "args": ["<path to the built file>\\build\\index.js"]
-        }
-    }
-}
-```
-
-Restart the Claude client. When you see the hammer icon, it means the connection to the MCP service is normal. (example shows Civil 3D, will be Civil 3D)
-
-![claude](./assets/claude.png)
-
-## Framework
-
-```mermaid
-flowchart LR
-	CladueDesktop --> civil3d-mcp --> SocketService--commandName-->CommandlSet--command-->CommandExecute
-	CommandManager --> CommandlSet
-	CommandExecute --executeResult--> SocketService
-	CommandProject1 --> CommandManager
-	CommandProject2 --> CommandManager
-	CommandProject... --> CommandManager
-	subgraph ide1 [MCPClient]
-	CladueDesktop
-	end
-	subgraph ide2 [MCPServer]
-	civil3d-mcp
-	end
-	subgraph ide3 [Civil 3D]
-			subgraph ide3.1 [civil3d-mcp-plugin]
-				SocketService
-				CommandlSet
-				CommandManager
-				CommandExecute
-			end
-	end
-```
+---
 
 ## Supported Tools
 
-| Name                               | Description                                                                                                |
-| ---------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `get_drawing_info`                 | Retrieves basic information about the active Civil 3D drawing.                                             |
-| `list_civil_object_types`          | Lists major Civil 3D object types available or present in the current drawing (e.g., Alignments, Surfaces). |
-| `get_selected_civil_objects_info`  | Gets basic properties of currently selected Civil 3D objects. Can limit the number of returned objects.    |
-| `civil3d_health`                   | Reports the status of the Civil 3D connection and plugin.                                                  |
-| `civil3d_drawing`                  | Manages the active drawing (info/settings/save/undo/redo) and supports creating a new drawing from a template. |
-| `civil3d_job`                      | Checks the status of long-running asynchronous Civil 3D operations or requests cancellation.               |
-| `create_cogo_point`                | Creates a new COGO (Coordinate Geometry) point in the Civil 3D drawing.                                    |
-| `create_line_segment`              | Creates a simple line segment in the Civil 3D drawing.                                                     |
-| `civil3d_point`                    | Reads, creates, imports, and deletes Civil 3D COGO points and point groups.                                |
-| `civil3d_alignment`                | Reads Civil 3D horizontal alignments, converts stationing, and supports create/delete operations.          |
-| `civil3d_profile`                  | Reads Civil 3D vertical profiles and supports creation and deletion of profiles.                           |
-| `civil3d_surface`                  | Reads Civil 3D surface data and supports create/delete operations.                                         |
-| `civil3d_surface_edit`             | Modifies Civil 3D surface data (add points/breaklines/boundaries, extract contours, compute volumes).      |
-| `civil3d_corridor`                 | Reads Civil 3D corridor data and controls corridor rebuild and volume operations.                          |
-| `civil3d_section`                  | Reads Civil 3D section data and supports sample line creation.                                             |
-| `civil3d_feature_line`             | Reads Civil 3D feature lines and supports exporting them as 3D polylines.                                  |
-| `civil3d_style`                    | Lists and inspects Civil 3D styles for supported object types.                                             |
-| `civil3d_label`                    | Manages labels on Civil 3D objects.                                                                        |
-| `civil3d_coordinate_system`        | Provides coordinate system information and performs coordinate transformations.                            |
-| `civil3d_data_shortcut`            | Manages Civil 3D data shortcuts including listing, syncing, and creating references.                       |
-| `civil3d_parcel`                   | Reads Civil 3D parcel and site data.                                                                       |
-| `civil3d_pipe_network`             | Reads Civil 3D pipe network data including networks, pipes, structures, and interference checks.           |
-| `civil3d_pipe_network_edit`        | Creates and modifies Civil 3D pipe networks, pipes, and structures.                                        |
-| `civil3d_assembly`                 | Lists and inspects Civil 3D assemblies and their subassemblies.                                            |
-| `acad_create_polyline`             | Creates an AutoCAD 2D polyline in model space.                                                             |
-| `acad_create_3dpolyline`           | Creates an AutoCAD 3D polyline in model space.                                                             |
-| `acad_create_text`                 | Creates AutoCAD DBText in model space.                                                                     |
-| `acad_create_mtext`                | Creates AutoCAD MText in model space.                                                                      |
+### Core
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_health` | Connection and plugin status check |
+| `civil3d_drawing` | Drawing management (info, settings, save, undo/redo, new from template) |
+| `civil3d_job` | Async operation status and cancellation |
+| `get_drawing_info` | Active drawing information |
+| `list_civil_object_types` | Available Civil 3D object types in the current drawing |
+| `get_selected_civil_objects_info` | Properties of currently selected objects |
+
+### Points & Geometry
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_point` | COGO point and point group CRUD operations |
+| `create_cogo_point` | Create a single COGO point |
+| `create_line_segment` | Create a line segment |
+| `acad_create_polyline` | Create a 2D polyline |
+| `acad_create_3dpolyline` | Create a 3D polyline |
+
+### Horizontal & Vertical Design
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_alignment` | Horizontal alignment read, create, delete, and station conversion |
+| `civil3d_profile` | Vertical profile read, create, and delete |
+| `civil3d_corridor` | Corridor data, rebuild, and volume operations |
+| `civil3d_section` | Section data and sample line creation |
+| `civil3d_assembly` | Assembly and subassembly inspection |
+
+### Surfaces
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_surface` | Surface data read, create, and delete |
+| `civil3d_surface_edit` | Add points/breaklines/boundaries, extract contours, compute volumes |
+
+### Site & Utilities
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_parcel` | Parcel and site data |
+| `civil3d_pipe_network` | Pipe network data, interference checks |
+| `civil3d_pipe_network_edit` | Create and modify pipe networks, pipes, and structures |
+| `civil3d_feature_line` | Feature line data and 3D polyline export |
+
+### Annotation & Coordinate Systems
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_label` | Label management on Civil 3D objects |
+| `civil3d_style` | Style listing and inspection |
+| `civil3d_coordinate_system` | Coordinate system info and transformations |
+| `civil3d_data_shortcut` | Data shortcut management |
+| `acad_create_text` | Create DBText |
+| `acad_create_mtext` | Create MText |
+
+---
+
+## Requirements
+
+- **Node.js** 18+
+- **Autodesk Civil 3D 2026** with the MCP plugin installed
+- An MCP-compatible client (Claude Desktop, Cline, VS Code + Continue, etc.)
+
+---
+
+## Installation
+
+### 1. Clone & Build
+
+```bash
+git clone https://github.com/Sacred-G/Civil3D-mcp.git
+cd Civil3D-mcp
+npm install
+npm run build
+```
+
+### 2. Install the Civil 3D Plugin
+
+Load the C# plugin into Civil 3D. See the [`Civil3D-MCP-Plugin`](./Civil3D-MCP-Plugin) directory for build instructions and the plugin DLL.
+
+### 3. Configure Your MCP Client
+
+**Claude Desktop**
+
+Open `Settings → Developer → Edit Config → claude_desktop_config.json` and add:
+
+```json
+{
+  "mcpServers": {
+    "civil3d-mcp": {
+      "command": "node",
+      "args": ["C:\\path\\to\\Civil3D-mcp\\build\\index.js"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop. The hammer icon confirms a successful connection.
+
+**Other MCP Clients**
+
+Point your client's MCP server configuration to the built `index.js` using the `node` command, following the same pattern above.
+
+---
+
+## Project Structure
+
+```
+Civil3D-mcp/
+├── src/                        # TypeScript MCP server source
+├── Civil3D-MCP-Plugin/         # C# plugin for Civil 3D
+├── Civil3D-AI-CoPilot-master/  # AI CoPilot integration
+├── templates/                  # Drawing templates
+├── assets/                     # Screenshots and media
+├── tools.md                    # Detailed tool documentation
+├── package.json
+└── tsconfig.json
+```
+
+---
+
+## Usage Examples
+
+Once connected, you can interact with Civil 3D through natural language:
+
+> "Show me all the surfaces in the current drawing"
+
+> "Create a COGO point at coordinates 1000, 2000, elevation 350"
+
+> "What alignments exist in this project? Give me the station range for the main alignment."
+
+> "Add breaklines to the existing ground surface from the selected feature lines"
+
+> "Check for pipe network interference between the storm and sanitary systems"
+
+---
+
+## Tech Stack
+
+- **TypeScript / Node.js** — MCP server implementation
+- **C# / .NET** — Civil 3D plugin (AutoCAD/Civil 3D API)
+- **Model Context Protocol** — AI tool interface standard
+
+---
+
+## License
+
+[MIT](./LICENSE)
+
+---
+
+## Author
+
+**Steven Bouldin**
+- LinkedIn: [linkedin.com/in/steven-bouldin](https://linkedin.com/in/steven-bouldin)
+- GitHub: [github.com/Sacred-G](https://github.com/Sacred-G)
+- Web: [stevenbouldin.com](https://stevenbouldin.com)
