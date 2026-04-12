@@ -12,18 +12,24 @@ Join [Discord](https://discord.gg/cGzUGurq) | [QQ Group](http://qm.qq.com/cgi-bi
 
 ## Features
 
-- **150 MCP tools** covering the full Civil 3D design workflow
+- **180+ MCP tools** covering the full Civil 3D design workflow
 - Allow AI to read, create, modify, and delete Civil 3D objects
 - Full road design pipeline: alignments, profiles, corridors, cross-sections, superelevation
 - Surface analysis: elevation bands, slope distribution, aspect, watershed, cut/fill volumes
-- Pipe and pressure network design and validation
+- Pipe and pressure network design and validation with hydraulic analysis
 - Plan production: sheet sets, Plan/Profile sheets, PDF export
 - QC checks: alignment, profile, corridor, surface, pipe network, drawing standards
 - Quantity takeoff: earthwork, corridor materials, pipe lengths, parcel areas, export to CSV
+- Cost estimation: pay items, material costs, construction estimates
 - Grading: feature lines, grading groups, grading criteria, surface generation
 - Intersection design and corridor target mapping
 - COGO/Survey: inverse, traverse, curve solve, survey figures
-- Hydrology: flow path tracing, watershed delineation, Rational Method runoff
+- Hydrology: flow path tracing, watershed delineation, Rational Method runoff, time of concentration
+- Storm and Sanitary Analysis (SSA) integration
+- Detention basin sizing and stage-storage analysis
+- Slope geometry and stability analysis
+- Sight distance calculations and stopping sight distance checks
+- Assembly and subassembly creation and editing
 
 ## Requirements
 
@@ -98,7 +104,7 @@ flowchart LR
 	end
 ```
 
-## Supported Tools (150 total)
+## Supported Tools (180+ total)
 
 ### Drawing Info & Context
 
@@ -328,13 +334,106 @@ flowchart LR
 | `civil3d_qty_point_count_by_group` | Count COGO points per point group |
 | `civil3d_qty_export_to_csv` | Export consolidated quantity takeoff report to CSV |
 
-### Hydrology (3 tools)
+### Hydrology (6 tools)
 
 | Tool | Description |
 |------|-------------|
 | `civil3d_hydrology` | Hydrology analysis helpers and surface-based flow path tracing |
+| `civil3d_hydrology_workflows` | Complete hydrology workflows: flow path, watershed, runoff estimation |
+| `civil3d_catchment` | Manages catchments and catchment groups (8 actions) |
+| `civil3d_time_of_concentration` | Calculates Tc using standard methods and generates SCS hydrographs (3 actions) |
 | `civil3d_surface_drainage_workflow` | Runs surface drainage workflow: flow path, elevations, runoff estimate |
 | `civil3d_surface_watershed_add` | Add watershed analysis: drainage basins and flow paths |
+
+### Pipe Hydraulics (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_pipe_network_hgl` | Calculate Hydraulic Grade Line (HGL) for gravity pipe networks |
+| `civil3d_pipe_network_hydraulics` | Perform full hydraulic capacity analysis on pipe networks |
+| `civil3d_pipe_structure_properties` | Retrieve detailed properties of individual pipe structures |
+
+### Pipe Design Automation (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_pipe_network_size` | Size gravity-network pipes from Manning full-flow capacity with catalog part selection |
+| `civil3d_pipe_profile_view_automation` | Automate gravity-pipe profile-view setup with EG profile creation |
+
+### Assembly Creation (3 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_assembly_create` | Create a new Civil 3D assembly at a specified model-space location |
+| `civil3d_subassembly_create` | Add a subassembly from the Civil 3D catalog to an existing assembly |
+| `civil3d_assembly_edit` | Inspect or modify an existing Civil 3D assembly (list, update, delete subassemblies) |
+
+### Sight Distance (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_sight_distance_calculate` | Calculate AASHTO stopping, passing, or decision sight distance for design speed |
+| `civil3d_stopping_distance_check` | Check stopping sight distance compliance along an alignment at station intervals |
+
+### Detention & Stormwater (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_detention_basin_size_calculate` | Size a detention basin to reduce peak stormwater runoff |
+| `civil3d_detention_stage_storage` | Generate stage-storage-discharge table for a detention basin surface |
+
+### Slope Analysis (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_slope_geometry_calculate` | Calculate daylight line coordinates and slope geometry for cut/fill sections |
+| `civil3d_slope_stability_check` | Evaluate cut and fill slope stability along an alignment |
+
+### Cost Estimation (2 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_pay_items_export` | Extract Civil 3D quantities and export as structured pay item schedule to CSV/Excel |
+| `civil3d_material_cost_estimate` | Generate construction cost estimate by combining quantities with unit prices |
+
+### Survey Processing (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_survey_observation_list` | List survey observations from a survey database |
+| `civil3d_survey_network_adjust` | Adjust survey networks using various methods (least squares, compass, transit, crandall) |
+| `civil3d_survey_figure_create` | Create survey figures from point numbers |
+| `civil3d_survey_landxml_import` | Import survey data from LandXML files |
+
+### Data Shortcut Management (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_data_shortcut_create` | Create data shortcuts for Civil 3D objects |
+| `civil3d_data_shortcut_promote` | Promote data shortcut references to full editable objects |
+| `civil3d_data_shortcut_reference` | Reference existing data shortcuts into the current drawing |
+| `civil3d_data_shortcut_sync` | Synchronize outdated data shortcut references |
+
+### Parcel Editing (4 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_parcel_create` | Create parcels from polylines, feature lines, or vertex lists |
+| `civil3d_parcel_edit` | Edit parcel properties (name, style, label style, description) |
+| `civil3d_parcel_lot_line_adjust` | Adjust lot lines to achieve a target area |
+| `civil3d_parcel_report` | Generate parcel reports with coordinate and unit settings |
+
+### Storm & Sanitary Analysis (SSA) (4 actions)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_stm` | Manages Storm and Sanitary Analysis workflows including STM file import/export (4 actions) |
+
+### Standards Lookup (1 tool)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_standards_lookup` | Looks up Civil 3D standards, template governance, layer/style guidance, and labeling conventions |
 
 ### Miscellaneous (6 tools)
 

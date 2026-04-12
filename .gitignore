@@ -1,9 +1,73 @@
+# Node.js
 build/
 node_modules/
-.vs/
 dist/
+
+# Build artifacts
 **/bin/
 **/obj/
+*.dll
+*.pdb
+
+# IDE
+.vs/
+.vscode/
+.idea/
 .DS_Store
+
+# Claude
 .claude
 .claude.md.local
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Output directories
+output/
+output_clean*/
+output_clean*/
+
+# Help files (4041 files in docs/help/)
+docs/help/
+
+# External projects
+Civil3D-AI-CoPilot-master/
+MCPControl-main/
+
+# C# References
+C_References/
+
+# Templates
+templates/
+*.dwt
+
+# Images and screenshots
+image/
+*.png
+*.jpg
+*.jpeg
+
+# PDF files
+*.pdf
+
+# Processing scripts (temporary)
+pdf.py
+flatten_help_files.py
+flatten_help_files_auto.py
+clear_help_files.py
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment files
+.env
+.env.local
+.env.*.local
