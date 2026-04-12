@@ -171,7 +171,6 @@ Point your client's MCP server configuration to the built `index.js` using the `
 Civil3D-mcp/
 ├── src/                        # TypeScript MCP server source
 ├── Civil3D-MCP-Plugin/         # C# plugin for Civil 3D
-├── Civil3D-AI-CoPilot-master/  # AI CoPilot integration
 ├── templates/                  # Drawing templates
 ├── assets/                     # Screenshots and media
 ├── tools.md                    # Detailed tool documentation
@@ -212,6 +211,7 @@ Once connected, you can interact with Civil 3D through natural language:
 ---
 
 ## Author
+
 
 **Steven Bouldin**
 - LinkedIn: [linkedin.com/in/steven-bouldin](https://linkedin.com/in/steven-bouldin)
