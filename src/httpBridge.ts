@@ -1,5 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
 import { withApplicationConnection } from "./utils/ConnectionManager.js";
+import {
+  hasToolHandler,
+  executeRegisteredTool,
+  listRegisteredToolNames,
+} from "./tools/toolHandlerRegistry.js";
 import { createLogger } from "./utils/logger.js";
 
 const log = createLogger("HttpBridge");
@@ -35,6 +40,21 @@ function writeJson(response: ServerResponse, statusCode: number, payload: unknow
   response.end(JSON.stringify(payload));
 }
 
+/**
+ * Legacy convenience endpoints used by the Copilot's McpClient.cs for
+ * drawing-context queries. These tool names do NOT correspond to registered
+ * MCP tools — they are synthetic shortcuts that map directly to C# plugin commands.
+ */
+const LEGACY_TOOL_NAMES = new Set([
+  "civil3d_list_alignments",
+  "civil3d_list_surfaces",
+  "civil3d_list_profiles",
+  "civil3d_list_assemblies",
+  "civil3d_list_corridors",
+  "civil3d_alignment_report",
+  "civil3d_surface_report",
+]);
+
 async function executeLegacyTool(toolName: string, parameters: Record<string, unknown>): Promise<unknown> {
   return await withApplicationConnection(async (appClient) => {
     switch (toolName) {
@@ -58,30 +78,41 @@ async function executeLegacyTool(toolName: string, parameters: Record<string, un
         return await appClient.sendCommand("getSurface", {
           name: parameters.surfaceName,
         });
-      case "civil3d_corridor_summary": {
-        const name = parameters.corridorName;
-        const corridor = await appClient.sendCommand("getCorridor", { name });
-        try {
-          const surfaces = await appClient.sendCommand("getCorridorSurfaces", { name });
-          return {
-            ...corridor,
-            surfaces: surfaces?.surfaces ?? corridor?.surfaces ?? [],
-          };
-        } catch {
-          return corridor;
-        }
-      }
-      case "civil3d_health":
-        return await appClient.sendCommand("getCivil3DHealth", {});
       default:
-        throw new Error(`Unsupported HTTP bridge tool '${toolName}'.`);
+        throw new Error(`Unknown legacy tool '${toolName}'.`);
     }
   });
 }
 
+/**
+ * Execute a tool by name. Resolution order:
+ *   1. Registered MCP tool handlers (all 180+ tools)
+ *   2. Legacy synthetic endpoints (drawing-context convenience queries)
+ *   3. Error
+ */
+async function executeBridgeTool(toolName: string, parameters: Record<string, unknown>): Promise<unknown> {
+  // 1. Check the global tool handler registry (populated during registerTools)
+  if (hasToolHandler(toolName)) {
+    return await executeRegisteredTool(toolName, parameters);
+  }
+
+  // 2. Legacy convenience endpoints for Copilot drawing-context queries
+  if (LEGACY_TOOL_NAMES.has(toolName)) {
+    return await executeLegacyTool(toolName, parameters);
+  }
+
+  // 3. Not found
+  const registeredCount = listRegisteredToolNames().length;
+  throw new Error(
+    `Tool '${toolName}' is not registered (${registeredCount} tools available) ` +
+    `and is not a legacy bridge endpoint. Check the tool name.`
+  );
+}
+
 async function handleHealth(_request: IncomingMessage, response: ServerResponse): Promise<void> {
   try {
-    const result = await executeLegacyTool("civil3d_health", {});
+    // civil3d_health is a registered MCP tool — route through the main dispatcher
+    const result = await executeBridgeTool("civil3d_health", {});
     writeJson(response, 200, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -104,7 +135,7 @@ async function handleExecute(request: IncomingMessage, response: ServerResponse)
       ? body.parameters
       : {};
 
-    const result = await executeLegacyTool(body.tool, parameters);
+    const result = await executeBridgeTool(body.tool, parameters);
     writeJson(response, 200, result);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -125,6 +156,12 @@ export function startHttpBridge() {
 
       if (method === "GET" && url === "/health") {
         await handleHealth(request, response);
+        return;
+      }
+
+      if (method === "GET" && url === "/tools") {
+        const tools = listRegisteredToolNames();
+        writeJson(response, 200, { count: tools.length, tools });
         return;
       }
 

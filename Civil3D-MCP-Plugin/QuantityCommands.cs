@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.Civil.DatabaseServices;
+using AcDbObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Civil3DMcpPlugin;
 
@@ -521,7 +523,7 @@ public static class QuantityCommands
         sb.AppendLine("Section,Name,Type,MinElevation,MaxElevation,Area2D,NumberOfPoints,Units");
         foreach (ObjectId surfId in civilDoc.GetSurfaceIds())
         {
-          var surface = CivilObjectUtils.GetRequiredObject<Surface>(transaction, surfId, OpenMode.ForRead);
+          var surface = CivilObjectUtils.GetRequiredObject<CivilSurface>(transaction, surfId, OpenMode.ForRead);
           if (filterNames != null && !filterNames.Contains(surface.Name)) continue;
           var gp = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
           var minElev = CivilObjectUtils.GetPropertyValue<double?>(gp, "MinimumElevation") ?? 0;
@@ -732,7 +734,7 @@ public static class QuantityCommands
           double x = 0, y = 0;
           try
           {
-            alignment.PointLocation(currentStation, 0, out x, out y);
+            alignment.PointLocation(currentStation, 0, ref x, ref y);
           }
           catch
           {
@@ -798,7 +800,7 @@ public static class QuantityCommands
   // Private helpers
   // -------------------------------------------------------------------------
 
-  private static DBObject? FindPipeNetworkByNameReflection(
+  private static AcDbObject? FindPipeNetworkByNameReflection(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction,
     string name)
@@ -826,7 +828,7 @@ public static class QuantityCommands
     return null;
   }
 
-  private static DBObject? FindPressureNetworkByNameReflection(
+  private static AcDbObject? FindPressureNetworkByNameReflection(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction,
     string name)
@@ -854,7 +856,7 @@ public static class QuantityCommands
     return null;
   }
 
-  private static IEnumerable<DBObject> EnumerateAllPipeNetworks(
+  private static IEnumerable<AcDbObject> EnumerateAllPipeNetworks(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction)
   {
@@ -870,7 +872,7 @@ public static class QuantityCommands
     }
   }
 
-  private static IEnumerable<ObjectId> GetChildObjectIds(DBObject owner, params string[] memberNames)
+  private static IEnumerable<ObjectId> GetChildObjectIds(AcDbObject owner, params string[] memberNames)
   {
     foreach (var memberName in memberNames)
     {
@@ -907,7 +909,7 @@ public static class QuantityCommands
     return null;
   }
 
-  private static double? InvokeSurfaceElevationSafe(Surface surface, double x, double y)
+  private static double? InvokeSurfaceElevationSafe(CivilSurface surface, double x, double y)
   {
     try
     {

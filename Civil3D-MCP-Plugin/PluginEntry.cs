@@ -16,7 +16,7 @@ public sealed class PluginEntry : IExtensionApplication
       PluginRuntime.StartServer();
       WriteMessage("Civil3D MCP plugin initialized.");
     }
-    catch (Exception ex)
+    catch (System.Exception ex)
     {
       WriteMessage($"Civil3D MCP plugin failed to initialize: {ex.Message}");
     }

@@ -251,7 +251,7 @@ public static class CostEstimationCommands
     });
   }
 
-  private static (double CutCy, double FillCy) GetEarthworkVolumes(object civilDoc, Transaction transaction, string baseSurface, string designSurface)
+  private static (double CutCy, double FillCy) GetEarthworkVolumes(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, string baseSurface, string designSurface)
   {
     var baseSurf = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurface, OpenMode.ForRead);
     var desSurf = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, designSurface, OpenMode.ForRead);
@@ -275,7 +275,7 @@ public static class CostEstimationCommands
     return (0, 0);
   }
 
-  private static List<(string Name, double VolumeCy)> GetCorridorMaterialVolumes(object civilDoc, Transaction transaction, string corridorName)
+  private static List<(string Name, double VolumeCy)> GetCorridorMaterialVolumes(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, string corridorName)
   {
     var results = new List<(string, double)>();
     try

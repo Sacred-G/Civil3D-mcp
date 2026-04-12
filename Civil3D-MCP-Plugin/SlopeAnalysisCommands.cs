@@ -288,8 +288,10 @@ public static class SlopeAnalysisCommands
         System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
       if (method2 != null)
       {
-        double xOut = 0, yOut = 0;
-        method2.Invoke(alignment, new object?[] { station, 0.0, ref xOut, ref yOut });
+        var invokeArgs = new object?[] { station, 0.0, 0.0, 0.0 };
+        method2.Invoke(alignment, invokeArgs);
+        double xOut = Convert.ToDouble(invokeArgs[2] ?? 0.0);
+        double yOut = Convert.ToDouble(invokeArgs[3] ?? 0.0);
         return (xOut, yOut);
       }
     }

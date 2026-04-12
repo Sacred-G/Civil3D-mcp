@@ -3,6 +3,7 @@ using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.Civil.DatabaseServices;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Civil3DMcpPlugin;
 
@@ -14,7 +15,7 @@ public static class SurfaceCommands
     {
       var surfaces = civilDoc.GetSurfaceIds()
         .Cast<ObjectId>()
-        .Select(id => CivilObjectUtils.GetRequiredObject<Surface>(transaction, id, OpenMode.ForRead))
+        .Select(id => CivilObjectUtils.GetRequiredObject<CivilSurface>(transaction, id, OpenMode.ForRead))
         .Select(surface => new Dictionary<string, object?>
         {
           ["name"] = surface.Name,
@@ -157,7 +158,7 @@ public static class SurfaceCommands
     {
       var styleId = LookupUtils.GetSurfaceStyleId(civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "style"));
       var surfaceId = CreateTinSurface(civilDoc, name, styleId);
-      var surface = CivilObjectUtils.GetRequiredObject<Surface>(transaction, surfaceId, OpenMode.ForWrite);
+      var surface = CivilObjectUtils.GetRequiredObject<CivilSurface>(transaction, surfaceId, OpenMode.ForWrite);
       var layerName = PluginRuntime.GetOptionalString(parameters, "layer");
       if (!string.IsNullOrWhiteSpace(layerName))
       {
@@ -309,7 +310,7 @@ public static class SurfaceCommands
         ["majorInterval"] = majorInterval,
         ["contourCount"] = extracted.Count,
         ["handles"] = extracted
-          .Select(objectId => CivilObjectUtils.GetHandle(CivilObjectUtils.GetRequiredObject<Entity>(transaction, objectId, OpenMode.ForRead)))
+          .Select(objectId => CivilObjectUtils.GetHandle(CivilObjectUtils.GetRequiredObject<Autodesk.AutoCAD.DatabaseServices.Entity>(transaction, objectId, OpenMode.ForRead)))
           .ToList(),
       };
     });
@@ -530,9 +531,8 @@ public static class SurfaceCommands
   public static Task<object?> AnalyzeSurfaceSlopeAsync(JsonObject? parameters)
   {
     var name = PluginRuntime.GetRequiredString(parameters, "name");
-    var numRanges = (int)(PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>() == 0
-      ? 5
-      : (int?)((PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>()) ?? 5;
+    var requestedRanges = (PluginRuntime.GetParameter(parameters, "numRanges") as JsonNode)?.GetValue<int>();
+    var numRanges = requestedRanges is > 0 ? requestedRanges.Value : 5;
     var rangesNode = PluginRuntime.GetParameter(parameters, "ranges") as JsonArray;
 
     return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
@@ -1074,7 +1074,7 @@ public static class SurfaceCommands
     return inside;
   }
 
-  private static string MapSurfaceType(Surface surface)
+  private static string MapSurfaceType(CivilSurface surface)
   {
     return surface switch
     {
@@ -1084,7 +1084,7 @@ public static class SurfaceCommands
     };
   }
 
-  private static double InvokeSurfaceElevation(Surface surface, double x, double y)
+  private static double InvokeSurfaceElevation(CivilSurface surface, double x, double y)
   {
     foreach (var methodName in new[] { "FindElevationAtXY", "GetElevationAtXY" })
     {
@@ -1139,7 +1139,7 @@ public static class SurfaceCommands
     throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", "Unable to create a TIN surface with the available Civil 3D API overloads.");
   }
 
-  private static object GetSurfaceDefinition(Surface surface)
+  private static object GetSurfaceDefinition(CivilSurface surface)
   {
     foreach (var propertyName in new[] { "Definition", "Operations", "BoundariesDefinition" })
     {
@@ -1350,7 +1350,7 @@ public static class SurfaceCommands
     return value.Replace("_", string.Empty).Replace("-", string.Empty).ToLowerInvariant();
   }
 
-  private static void SetSurfaceDescription(Surface surface, string? description)
+  private static void SetSurfaceDescription(CivilSurface surface, string? description)
   {
     if (!string.IsNullOrWhiteSpace(description))
     {
@@ -1358,12 +1358,12 @@ public static class SurfaceCommands
     }
   }
 
-  private static void RebuildSurfaceIfAvailable(Surface surface)
+  private static void RebuildSurfaceIfAvailable(CivilSurface surface)
   {
     _ = CivilObjectUtils.InvokeMethod(surface, "Rebuild");
   }
 
-  private static List<ObjectId> ExtractContourEntities(Surface surface, double minorInterval, double majorInterval)
+  private static List<ObjectId> ExtractContourEntities(CivilSurface surface, double minorInterval, double majorInterval)
   {
     foreach (var methodName in new[] { "ExtractContours", "ExtractContour" })
     {
@@ -1378,7 +1378,7 @@ public static class SurfaceCommands
     throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Unable to extract contours for surface '{surface.Name}' with the available Civil 3D API overloads.");
   }
 
-  private static object GetVolumeProperties(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, Surface baseSurface, Surface comparisonSurface)
+  private static object GetVolumeProperties(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, CivilSurface baseSurface, CivilSurface comparisonSurface)
   {
     var directProperties = CivilObjectUtils.InvokeMethod(baseSurface, "GetVolumeProperties", comparisonSurface);
     if (directProperties != null)
@@ -1396,7 +1396,7 @@ public static class SurfaceCommands
     return volumeSurface;
   }
 
-  private static object CreateTinVolumeSurface(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, Surface baseSurface, Surface comparisonSurface)
+  private static object CreateTinVolumeSurface(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, CivilSurface baseSurface, CivilSurface comparisonSurface)
   {
     var type = typeof(TinVolumeSurface);
     var surfaceId = ObjectId.Null;

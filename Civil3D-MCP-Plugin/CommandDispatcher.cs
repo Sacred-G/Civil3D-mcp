@@ -89,6 +89,7 @@ public static class CommandDispatcher
       "checkPipeNetworkInterference" => PipeNetworkCommands.CheckPipeNetworkInterferenceAsync(parameters),
       "createPipeNetwork" => PipeNetworkCommands.CreatePipeNetworkAsync(parameters),
       "addPipeToNetwork" => PipeNetworkCommands.AddPipeToNetworkAsync(parameters),
+      "resizePipeInNetwork" => PipeNetworkCommands.ResizePipeInNetworkAsync(parameters),
       "addStructureToNetwork" => PipeNetworkCommands.AddStructureToNetworkAsync(parameters),
       "listPipePartsCatalog" => PipeNetworkCommands.ListPipePartsCatalogAsync(parameters),
       "listPressureNetworks" => PressureNetworkCommands.ListPressureNetworksAsync(),
@@ -174,6 +175,7 @@ public static class CommandDispatcher
       "qcCheckLabels" => QcCommands.QcCheckLabelsAsync(parameters),
       "qcReportGenerate" => QcCommands.QcReportGenerateAsync(parameters),
       "qcCheckDrawingStandards" => QcCommands.QcCheckDrawingStandardsAsync(parameters),
+      "qcFixDrawingStandards" => QcCommands.QcFixDrawingStandardsAsync(parameters),
       // Quantity takeoff
       "qtyCorridorVolumes" => QuantityCommands.QtyCorridorVolumesAsync(parameters),
       "qtySurfaceVolume" => QuantityCommands.QtySurfaceVolumeAsync(parameters),
@@ -209,6 +211,24 @@ public static class CommandDispatcher
       "listLabelStyles" => LabelCommands.ListLabelStylesAsync(parameters),
       "listLabels" => LabelCommands.ListLabelsAsync(parameters),
       "addLabel" => LabelCommands.AddLabelAsync(parameters),
+      // Catchment management
+      "listCatchmentGroups" => CatchmentCommands.ListCatchmentGroupsAsync(),
+      "getCatchmentGroup" => CatchmentCommands.GetCatchmentGroupAsync(parameters),
+      "listCatchments" => CatchmentCommands.ListCatchmentsAsync(),
+      "getCatchmentProperties" => CatchmentCommands.GetCatchmentPropertiesAsync(parameters),
+      "setCatchmentProperties" => CatchmentCommands.SetCatchmentPropertiesAsync(parameters),
+      "copyCatchmentToGroup" => CatchmentCommands.CopyCatchmentToGroupAsync(parameters),
+      "getCatchmentFlowPath" => CatchmentCommands.GetCatchmentFlowPathAsync(parameters),
+      "getCatchmentBoundary" => CatchmentCommands.GetCatchmentBoundaryAsync(parameters),
+      // Time of concentration & hydrograph
+      "calculateTimeOfConcentration" => TimeOfConcentrationCommands.CalculateTimeOfConcentrationAsync(parameters),
+      "generateHydrograph" => TimeOfConcentrationCommands.GenerateHydrographAsync(parameters),
+      "listTcMethods" => TimeOfConcentrationCommands.ListTcMethodsAsync(),
+      // Storm and Sanitary Analysis (STM)
+      "exportStm" => StmCommands.ExportStmAsync(parameters),
+      "importStm" => StmCommands.ImportStmAsync(parameters),
+      "openStormSanitaryAnalysis" => StmCommands.OpenStormSanitaryAnalysisAsync(parameters),
+      "listSsaCapabilities" => StmCommands.ListSsaCapabilitiesAsync(),
       _ => throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Plugin method '{method}' is not implemented yet."),
     };
   }

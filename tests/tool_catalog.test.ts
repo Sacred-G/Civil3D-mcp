@@ -45,4 +45,39 @@ describe("Tool Catalog", () => {
     expect(hydrology!.domain).toBe("hydrology");
     expect(hydrology!.status).toBe("implemented");
   });
+
+  it("includes newly added entries across major sections", () => {
+    const requiredTools = [
+      "list_tool_capabilities",
+      "civil3d_alignment_add_tangent",
+      "civil3d_profile_add_pvi",
+      "civil3d_corridor_target_mapping_get",
+      "civil3d_section_view_create",
+      "civil3d_point_group_create",
+      "civil3d_parcel_create",
+      "civil3d_pressure_network_list",
+      "civil3d_pipe_network_size",
+      "civil3d_pipe_profile_view_automation",
+      "civil3d_data_shortcut_create",
+      "civil3d_intersection_list",
+      "civil3d_superelevation_get",
+      "civil3d_qc_check_alignment",
+      "civil3d_qc_fix_drawing_standards",
+      "civil3d_qty_corridor_volumes",
+      "civil3d_survey_observation_list",
+      "civil3d_sheet_set_list",
+      "civil3d_surface_statistics_get",
+      "civil3d_surface_volume_calculate",
+      "civil3d_sight_distance_calculate",
+      "civil3d_detention_basin_size_calculate",
+      "civil3d_slope_geometry_calculate",
+      "civil3d_material_cost_estimate",
+    ];
+
+    for (const toolName of requiredTools) {
+      const entry = TOOL_CATALOG.find((e) => e.toolName === toolName);
+      expect(entry, `${toolName} should be present in TOOL_CATALOG`).toBeDefined();
+      expect(entry!.status).toBe("implemented");
+    }
+  });
 });

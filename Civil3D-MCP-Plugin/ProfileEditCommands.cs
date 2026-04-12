@@ -126,7 +126,7 @@ public static class ProfileEditCommands
         var pviStation2 = CivilObjectUtils.GetPropertyValue<double?>(targetPvi, "Station") ?? pviStation;
         var pviElev = CivilObjectUtils.GetPropertyValue<double?>(targetPvi, "Elevation") ?? 0;
         CivilObjectUtils.InvokeMethod(pvis, "DeletePVIByStation", pviStation2);
-        CivilObjectUtils.InvokeMethod(pvis, "AddPVIByParabolaCurve", pviStation2, pviElev, length)
+        _ = CivilObjectUtils.InvokeMethod(pvis, "AddPVIByParabolaCurve", pviStation2, pviElev, length)
           ?? CivilObjectUtils.InvokeMethod(pvis, "AddPVI", pviStation2, pviElev);
       }
 
@@ -420,7 +420,7 @@ public static class ProfileEditCommands
     string name)
   {
     // Profile views live in model space; enumerate all ProfileView objects
-    var database = civilDoc.Database;
+    var database = CivilObjectUtils.GetDatabase(civilDoc);
     var blockTable = CivilObjectUtils.GetRequiredObject<BlockTable>(
       transaction, database.BlockTableId, OpenMode.ForRead);
     var modelSpace = CivilObjectUtils.GetRequiredObject<BlockTableRecord>(

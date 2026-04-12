@@ -1,4 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { captureToolHandler } from "./toolHandlerRegistry.js";
 import { registerCivil3DAssemblyTool } from "./civil3d_assembly.js";
 import { registerCivil3DAlignmentTool } from "./civil3d_alignment.js";
 import { registerCivil3DAlignmentReportTool } from "./civil3d_alignment_report.js";
@@ -9,10 +10,12 @@ import { registerCivil3DDataShortcutTool } from "./civil3d_data_shortcut.js";
 import { registerCivil3DFeatureLineTool } from "./civil3d_feature_line.js";
 import { registerCivil3DHealthTool } from "./civil3d_health.js";
 import { registerCivil3DHydrologyTool } from "./civil3d_hydrology.js";
+import { registerCivil3DHydrologyWorkflowTools } from "./civil3d_hydrology_workflows.js";
 import { registerCivil3DDrawingTool } from "./civil3d_drawing.js";
 import { registerCivil3DJobTool } from "./civil3d_job.js";
 import { registerCivil3DLabelTool } from "./civil3d_label.js";
 import { registerCivil3DParcelTool } from "./civil3d_parcel.js";
+import { registerCivil3DPipeCatalogTool } from "./civil3d_pipe_catalog.js";
 import { registerCivil3DPipeNetworkEditTool } from "./civil3d_pipe_network_edit.js";
 import { registerCivil3DPipeNetworkTool } from "./civil3d_pipe_network.js";
 import { registerCivil3DPointTool } from "./civil3d_point.js";
@@ -52,13 +55,34 @@ import { registerCivil3DParcelEditingTools } from "./civil3d_parcel_editing.js";
 import { registerCivil3DSurveyProcessingTools } from "./civil3d_survey_processing.js";
 import { registerCivil3DDataShortcutMgmtTools } from "./civil3d_data_shortcut_mgmt.js";
 import { registerCivil3DPipeHydraulicsTools } from "./civil3d_pipe_hydraulics.js";
+import { registerCivil3DPipeDesignAutomationTools } from "./civil3d_pipe_design_automation.js";
 import { registerCivil3DAssemblyCreationTools } from "./civil3d_assembly_creation.js";
 import { registerCivil3DSightDistanceTools } from "./civil3d_sight_distance.js";
 import { registerCivil3DDetentionTools } from "./civil3d_detention.js";
 import { registerCivil3DSlopeAnalysisTools } from "./civil3d_slope_analysis.js";
 import { registerCivil3DCostEstimationTools } from "./civil3d_cost_estimation.js";
+import { registerCivil3DOrchestrateTool } from "./civil3d_orchestrate.js";
+import { registerCivil3DStandardsLookupTool } from "./civil3d_standards_lookup.js";
+import { registerCivil3DCatchmentTools } from "./civil3d_catchment.js";
+import { registerCivil3DTimeOfConcentrationTools } from "./civil3d_time_of_concentration.js";
+import { registerCivil3DStmTools } from "./civil3d_stm.js";
 
 export async function registerTools(server: McpServer) {
+  // Intercept server.tool() to capture every handler in the global registry.
+  // This allows the HTTP bridge to invoke any registered tool by name,
+  // without maintaining a separate hardcoded switch statement.
+  const originalTool = server.tool.bind(server);
+  (server as any).tool = function (...args: unknown[]) {
+    if (args.length >= 2) {
+      const name = args[0];
+      const handler = args[args.length - 1];
+      if (typeof name === "string" && typeof handler === "function") {
+        captureToolHandler(name, handler as Parameters<typeof captureToolHandler>[1]);
+      }
+    }
+    return (originalTool as Function).apply(server, args);
+  };
+
   registerCivil3DAssemblyTool(server);
   registerCivil3DAlignmentTool(server);
   registerCivil3DAlignmentReportTool(server);
@@ -69,10 +93,12 @@ export async function registerTools(server: McpServer) {
   registerCivil3DFeatureLineTool(server);
   registerCivil3DHealthTool(server);
   registerCivil3DHydrologyTool(server);
+  registerCivil3DHydrologyWorkflowTools(server);
   registerCivil3DDrawingTool(server);
   registerCivil3DJobTool(server);
   registerCivil3DLabelTool(server);
   registerCivil3DParcelTool(server);
+  registerCivil3DPipeCatalogTool(server);
   registerCivil3DPipeNetworkEditTool(server);
   registerCivil3DPipeNetworkTool(server);
   registerCivil3DPointTool(server);
@@ -112,9 +138,15 @@ export async function registerTools(server: McpServer) {
   registerCivil3DSurveyProcessingTools(server);
   registerCivil3DDataShortcutMgmtTools(server);
   registerCivil3DPipeHydraulicsTools(server);
+  registerCivil3DPipeDesignAutomationTools(server);
   registerCivil3DAssemblyCreationTools(server);
   registerCivil3DSightDistanceTools(server);
   registerCivil3DDetentionTools(server);
   registerCivil3DSlopeAnalysisTools(server);
   registerCivil3DCostEstimationTools(server);
+  registerCivil3DOrchestrateTool(server);
+  registerCivil3DStandardsLookupTool(server);
+  registerCivil3DCatchmentTools(server);
+  registerCivil3DTimeOfConcentrationTools(server);
+  registerCivil3DStmTools(server);
 }

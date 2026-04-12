@@ -101,6 +101,19 @@ export const QcDrawingStandardsInputSchema = z.object({
 
 const QcDrawingStandardsInputShape = QcDrawingStandardsInputSchema.shape;
 
+// ─── 9. civil3d_qc_fix_drawing_standards ───────────────────────────────────
+
+export const QcFixDrawingStandardsInputSchema = z.object({
+  layerPrefix: z.string().optional().describe("Required layer prefix to enforce during remediation."),
+  fixSpaces: z.boolean().optional().describe("Replace spaces in layer names with underscores (default: true)."),
+  maxNameLength: z.number().int().positive().optional().describe("Maximum allowed layer-name length after remediation (default: 64)."),
+  colorIndex: z.number().int().min(1).max(255).optional().describe("Optional ACI color index to apply to non-reserved layers."),
+  lineweight: z.number().int().optional().describe("Optional AutoCAD lineweight enum value to apply to non-reserved layers."),
+  dryRun: z.boolean().optional().describe("Preview changes without modifying the drawing."),
+});
+
+const QcFixDrawingStandardsInputShape = QcFixDrawingStandardsInputSchema.shape;
+
 // ─── Registration ───────────────────────────────────────────────────────────
 
 export function registerCivil3DQcTools(server: McpServer) {
@@ -293,6 +306,32 @@ export function registerCivil3DQcTools(server: McpServer) {
         return { content: [{ type: "text", text: JSON.stringify(validated, null, 2) }] };
       } catch (error) {
         return errorResult("civil3d_qc_check_drawing_standards", error);
+      }
+    }
+  );
+
+  // 9. civil3d_qc_fix_drawing_standards
+  server.tool(
+    "civil3d_qc_fix_drawing_standards",
+    "Automatically remediate drawing-standard layer issues by normalizing layer prefixes, removing spaces, truncating overlong names, and optionally standardizing layer color/lineweight settings.",
+    QcFixDrawingStandardsInputShape,
+    async (args) => {
+      try {
+        const parsed = QcFixDrawingStandardsInputSchema.parse(args);
+        const response = await withApplicationConnection(async (appClient) => {
+          return await appClient.sendCommand("qcFixDrawingStandards", {
+            layerPrefix: parsed.layerPrefix ?? null,
+            fixSpaces: parsed.fixSpaces ?? true,
+            maxNameLength: parsed.maxNameLength ?? 64,
+            colorIndex: parsed.colorIndex ?? null,
+            lineweight: parsed.lineweight ?? null,
+            dryRun: parsed.dryRun ?? false,
+          });
+        });
+        const validated = GenericResponseSchema.parse(response);
+        return { content: [{ type: "text", text: JSON.stringify(validated, null, 2) }] };
+      } catch (error) {
+        return errorResult("civil3d_qc_fix_drawing_standards", error);
       }
     }
   );

@@ -31,6 +31,17 @@ function findSelectedNameByType(projectContext: ProjectContext, objectTypeMatch:
   return selectedName && selectedName.length > 0 ? selectedName : undefined;
 }
 
+function findFirstSelectedName(projectContext: ProjectContext, objectTypeMatches: string[]): string | undefined {
+  for (const objectTypeMatch of objectTypeMatches) {
+    const selectedName = findSelectedNameByType(projectContext, objectTypeMatch);
+    if (selectedName) {
+      return selectedName;
+    }
+  }
+
+  return undefined;
+}
+
 export function resolveParamsFromSelection(params: RouteParams, projectContext: ProjectContext): SelectionResolution {
   const resolvedParams: RouteParams = { ...params };
   const inferredFromSelection: string[] = [];
@@ -52,9 +63,9 @@ export function resolveParamsFromSelection(params: RouteParams, projectContext: 
   }
 
   if (!resolvedParams.name) {
-    const selectedSurfaceName = findSelectedNameByType(projectContext, "surface");
-    if (selectedSurfaceName) {
-      resolvedParams.name = selectedSurfaceName;
+    const selectedObjectName = findFirstSelectedName(projectContext, ["surface", "alignment", "corridor"]);
+    if (selectedObjectName) {
+      resolvedParams.name = selectedObjectName;
       inferredFromSelection.push("name");
     }
   }

@@ -197,6 +197,45 @@ public static class PipeNetworkCommands
     });
   }
 
+  public static Task<object?> ResizePipeInNetworkAsync(JsonObject? parameters)
+  {
+    var networkName = PluginRuntime.GetRequiredString(parameters, "networkName");
+    var pipeName = PluginRuntime.GetRequiredString(parameters, "pipeName");
+    var newPartName = PluginRuntime.GetOptionalString(parameters, "newPartName");
+    var newDiameter = PluginRuntime.GetOptionalDouble(parameters, "newDiameter");
+
+    if (string.IsNullOrWhiteSpace(newPartName) && !newDiameter.HasValue)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "Either 'newPartName' or 'newDiameter' is required.");
+    }
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var network = FindPipeNetworkByName(civilDoc, transaction, networkName, OpenMode.ForWrite);
+      var pipe = FindPipeByName(network, transaction, pipeName, OpenMode.ForWrite);
+
+      if (!string.IsNullOrWhiteSpace(newPartName))
+      {
+        var partId = FindPartIdForNetwork(network, transaction, newPartName!, false);
+        TrySetObjectIdProperty(pipe, partId, "PartId", "PartFamilyId", "PartSizeId");
+      }
+
+      if (newDiameter.HasValue)
+      {
+        TrySetDoubleProperty(pipe, newDiameter.Value, "InnerDiameterOrWidth", "InnerDiameter", "Diameter");
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["networkName"] = networkName,
+        ["pipeName"] = pipeName,
+        ["newPartName"] = newPartName,
+        ["newDiameter"] = newDiameter,
+        ["resized"] = true,
+      };
+    });
+  }
+
   public static Task<object?> ListPipePartsCatalogAsync(JsonObject? parameters)
   {
     var partsListName = PluginRuntime.GetOptionalString(parameters, "partsList");
@@ -359,6 +398,7 @@ public static class PipeNetworkCommands
     {
       ["name"] = CivilObjectUtils.GetName(network) ?? string.Empty,
       ["handle"] = CivilObjectUtils.GetHandle(network),
+      ["partsList"] = ResolveObjectName(transaction, GetAnyObjectId(network, "PartsListId")),
       ["style"] = ResolveObjectName(transaction, GetAnyObjectId(network, "StyleId")) ?? string.Empty,
       ["referenceSurface"] = ResolveObjectName(transaction, GetAnyObjectId(network, "ReferenceSurfaceId", "SurfaceId")),
       ["referenceAlignment"] = ResolveObjectName(transaction, GetAnyObjectId(network, "ReferenceAlignmentId", "AlignmentId")),
@@ -868,6 +908,22 @@ public static class PipeNetworkCommands
       {
       }
     }
+  }
+
+  private static void TrySetDoubleProperty(object target, double value, params string[] propertyNames)
+  {
+    foreach (var propertyName in propertyNames)
+    {
+      var property = target.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+      if (property != null && property.CanWrite && (property.PropertyType == typeof(double) || property.PropertyType == typeof(double?)))
+      {
+        property.SetValue(target, value);
+        return;
+      }
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED",
+      $"Could not set any of the expected double properties [{string.Join(", ", propertyNames)}] on '{target.GetType().Name}'.");
   }
 
   private static ObjectId FindStyleId(object civilDoc, Transaction transaction, string styleName, params string[] collectionNames)

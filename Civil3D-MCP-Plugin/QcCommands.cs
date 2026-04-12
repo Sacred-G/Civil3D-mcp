@@ -2,8 +2,11 @@ using System.Collections;
 using System.Reflection;
 using System.Text;
 using System.Text.Json.Nodes;
+using Autodesk.AutoCAD.Colors;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.Civil.DatabaseServices;
+using AcDbObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Civil3DMcpPlugin;
 
@@ -685,7 +688,7 @@ public static class QcCommands
         {
           foreach (ObjectId surfaceId in civilDoc.GetSurfaceIds())
           {
-            var surface = CivilObjectUtils.GetRequiredObject<Surface>(transaction, surfaceId, OpenMode.ForRead);
+            var surface = CivilObjectUtils.GetRequiredObject<CivilSurface>(transaction, surfaceId, OpenMode.ForRead);
             if (surface.StyleId == ObjectId.Null)
             {
               findings.Add(new Dictionary<string, object?>
@@ -809,7 +812,7 @@ public static class QcCommands
           sb.AppendLine("--- SURFACE CHECKS ---");
           foreach (ObjectId surfId in civilDoc.GetSurfaceIds())
           {
-            var surface = CivilObjectUtils.GetRequiredObject<Surface>(transaction, surfId, OpenMode.ForRead);
+            var surface = CivilObjectUtils.GetRequiredObject<CivilSurface>(transaction, surfId, OpenMode.ForRead);
             var gp = CivilObjectUtils.InvokeMethod(surface, "GetGeneralProperties");
             var npts = CivilObjectUtils.GetPropertyValue<int?>(gp, "NumberOfPoints") ?? 0;
             var ntri = CivilObjectUtils.GetPropertyValue<int?>(gp, "NumberOfTriangles") ?? 0;
@@ -1078,11 +1081,129 @@ public static class QcCommands
     });
   }
 
+  public static Task<object?> QcFixDrawingStandardsAsync(JsonObject? parameters)
+  {
+    var layerPrefix = PluginRuntime.GetOptionalString(parameters, "layerPrefix");
+    var fixSpaces = PluginRuntime.GetOptionalBool(parameters, "fixSpaces") ?? true;
+    var maxNameLength = PluginRuntime.GetOptionalInt(parameters, "maxNameLength") ?? 64;
+    var colorIndex = PluginRuntime.GetOptionalInt(parameters, "colorIndex");
+    var lineweight = PluginRuntime.GetOptionalInt(parameters, "lineweight");
+    var dryRun = PluginRuntime.GetOptionalBool(parameters, "dryRun") ?? false;
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      try
+      {
+        var changes = new List<Dictionary<string, object?>>();
+        var lt = transaction.GetObject(database.LayerTableId, OpenMode.ForRead) as LayerTable;
+        if (lt == null)
+        {
+          return new Dictionary<string, object?>
+          {
+            ["changedCount"] = 0,
+            ["changes"] = changes,
+            ["dryRun"] = dryRun,
+          };
+        }
+
+        foreach (ObjectId layerId in lt)
+        {
+          var layer = transaction.GetObject(layerId, dryRun ? OpenMode.ForRead : OpenMode.ForWrite) as LayerTableRecord;
+          if (layer == null) continue;
+          if (layer.Name == "0" || layer.Name.Equals("Defpoints", StringComparison.OrdinalIgnoreCase)) continue;
+
+          var originalName = layer.Name;
+          var targetName = originalName;
+
+          if (fixSpaces)
+          {
+            targetName = targetName.Replace(' ', '_');
+          }
+
+          if (!string.IsNullOrWhiteSpace(layerPrefix) &&
+              !targetName.StartsWith(layerPrefix, StringComparison.OrdinalIgnoreCase))
+          {
+            targetName = $"{layerPrefix}{targetName}";
+          }
+
+          if (targetName.Length > maxNameLength)
+          {
+            targetName = targetName[..maxNameLength];
+          }
+
+          var layerChanges = new Dictionary<string, object?>
+          {
+            ["layerName"] = originalName,
+          };
+
+          if (!string.Equals(originalName, targetName, StringComparison.Ordinal))
+          {
+            if (!dryRun)
+            {
+              if (!TryRenameLayer(database, transaction, layer, targetName, out var finalName))
+              {
+                layerChanges["renameSkipped"] = true;
+                layerChanges["targetName"] = targetName;
+              }
+              else
+              {
+                layerChanges["renamedTo"] = finalName;
+              }
+            }
+            else
+            {
+              layerChanges["renamedTo"] = targetName;
+            }
+          }
+
+          if (colorIndex.HasValue)
+          {
+            layerChanges["colorIndex"] = colorIndex.Value;
+            if (!dryRun)
+            {
+              layer.Color = Color.FromColorIndex(ColorMethod.ByAci, (short)colorIndex.Value);
+            }
+          }
+
+          if (lineweight.HasValue)
+          {
+            layerChanges["lineweight"] = lineweight.Value;
+            if (!dryRun)
+            {
+              layer.LineWeight = (LineWeight)lineweight.Value;
+            }
+          }
+
+          if (layerChanges.Count > 1)
+          {
+            changes.Add(layerChanges);
+          }
+        }
+
+        return new Dictionary<string, object?>
+        {
+          ["layerPrefix"] = layerPrefix,
+          ["changedCount"] = changes.Count,
+          ["changes"] = changes,
+          ["dryRun"] = dryRun,
+        };
+      }
+      catch (JsonRpcDispatchException)
+      {
+        throw;
+      }
+      catch (Exception ex)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.QC_ERROR", $"Error fixing drawing standards: {ex.Message}");
+      }
+    });
+  }
+
   // -------------------------------------------------------------------------
   // Private helpers
   // -------------------------------------------------------------------------
 
-  private static DBObject? FindPipeNetworkByNameReflection(
+  private static AcDbObject? FindPipeNetworkByNameReflection(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction,
     string name)
@@ -1113,7 +1234,7 @@ public static class QcCommands
     return null;
   }
 
-  private static IEnumerable<DBObject> EnumerateAllPipeNetworks(
+  private static IEnumerable<AcDbObject> EnumerateAllPipeNetworks(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction)
   {
@@ -1129,7 +1250,7 @@ public static class QcCommands
     }
   }
 
-  private static IEnumerable<ObjectId> GetChildObjectIds(DBObject owner, params string[] memberNames)
+  private static IEnumerable<ObjectId> GetChildObjectIds(AcDbObject owner, params string[] memberNames)
   {
     foreach (var memberName in memberNames)
     {
@@ -1145,6 +1266,26 @@ public static class QcCommands
         if (objectId != ObjectId.Null) yield return objectId;
       }
     }
+  }
+
+  private static bool TryRenameLayer(Database database, Transaction transaction, LayerTableRecord layer, string targetName, out string finalName)
+  {
+    finalName = targetName;
+    if (string.Equals(layer.Name, targetName, StringComparison.OrdinalIgnoreCase))
+    {
+      finalName = layer.Name;
+      return true;
+    }
+
+    var layerTable = (LayerTable)transaction.GetObject(database.LayerTableId, OpenMode.ForRead);
+    if (layerTable.Has(targetName))
+    {
+      return false;
+    }
+
+    layer.Name = targetName;
+    finalName = layer.Name;
+    return true;
   }
 
   private static double? GetAnyDouble(object? value, params string[] propertyNames)

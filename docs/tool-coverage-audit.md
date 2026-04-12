@@ -1,7 +1,7 @@
 # Civil3D MCP Tool Coverage Audit
 
-**Last Updated**: 2026-03-17
-**Author**: Founding Engineer (Paperclip JFS-18)
+**Last Updated**: 2026-03-20
+**Author**: Founding Engineer + Cascade audit refresh
 **V3 Plan**: `ULTIMATE-CIVIL3D-MCP-PLAN-V3.md`
 **Branch**: `main`
 
@@ -11,265 +11,176 @@
 
 | Metric | Value |
 |--------|-------|
-| V3 Planned Tools | 169+ across 8 microservices |
-| Actually Implemented | **162 MCP tools** in a single server |
-| Coverage | ~96% of planned tool count |
-| Architecture | Single MCP server (pragmatic, intentional) |
+| V3 Planned Tools | 169+ across 8 planned microservices |
+| Registered MCP Tools | **186** |
+| Cataloged Tools (`tool_catalog.ts`) | **186** |
+| Coverage vs V3 Count | ~110% by raw tool count |
+| Runtime Architecture | Single TypeScript MCP server + Civil3D plugin bridge |
 
-### JFS-18 Additions (2026-03-17) — +12 tools (150 → 162)
-| Category | Tools Added |
-|----------|-------------|
-| Parcel Editing | `civil3d_parcel_create`, `civil3d_parcel_edit`, `civil3d_parcel_lot_line_adjust`, `civil3d_parcel_report` |
-| Survey Processing | `civil3d_survey_observation_list`, `civil3d_survey_network_adjust`, `civil3d_survey_figure_create`, `civil3d_survey_landxml_import` |
-| Data Shortcut Management | `civil3d_data_shortcut_create`, `civil3d_data_shortcut_promote`, `civil3d_data_shortcut_reference`, `civil3d_data_shortcut_sync` |
+## Audit Corrections Applied
 
-### JFS-13 Additions (2026-03-17) — +16 tools (134 → 150)
-| Category | Tools Added |
-|----------|-------------|
-| Section Views | `civil3d_section_view_create`, `civil3d_section_view_list`, `civil3d_section_view_update_style`, `civil3d_section_view_group_create`, `civil3d_section_view_export` |
-| Superelevation | `civil3d_superelevation_get`, `civil3d_superelevation_set`, `civil3d_superelevation_design_check`, `civil3d_superelevation_report` |
-| Corridor Editing | `civil3d_corridor_target_mapping_get`, `civil3d_corridor_target_mapping_set`, `civil3d_corridor_region_add`, `civil3d_corridor_region_delete` |
-| Intersection Design | `civil3d_intersection_list`, `civil3d_intersection_create`, `civil3d_intersection_get` |
+- **Registered missing tool**: `civil3d_pipe_catalog` existed and was plugin-backed, but was not exposed in `src/tools/register.ts`.
+- **Backfilled 12 missing catalog entries** in `src/tools/tool_catalog.ts`:
+  - `civil3d_assembly_create`
+  - `civil3d_subassembly_create`
+  - `civil3d_assembly_edit`
+  - `civil3d_cogo_inverse`
+  - `civil3d_cogo_direction_distance`
+  - `civil3d_cogo_traverse`
+  - `civil3d_cogo_curve_solve`
+  - `civil3d_pipe_catalog`
+  - `civil3d_survey_database_list`
+  - `civil3d_survey_database_create`
+  - `civil3d_survey_figure_list`
+  - `civil3d_survey_figure_get`
+- **Removed stale gap claims**: alignment editing, profile editing, QC, quantity takeoff, section views, superelevation, intersections, parcels, and survey-processing are no longer “missing”.
+- **Verified real backend gaps** against `Civil3D-MCP-Plugin` instead of relying on plan-era assumptions.
+- **Closed previously documented gaps**:
+  - Multi-turn Copilot tool-use loop
+  - Pressure network drawing context
+  - Gravity pipe sizing automation
+  - Gravity pipe profile-view automation
+  - Standards auto-remediation for layer-based drawing standards
 
 ---
 
 ## Architecture Note
 
-The V3 plan describes an 8-microservice ecosystem. What is actually built is a **single TypeScript MCP server** (`src/`) connecting directly to Civil3D via a socket bridge (`httpBridge.ts`). This is the right approach at current scale — do not migrate to microservices without a concrete operational reason.
+The V3 plan describes an 8-microservice ecosystem. What is actually implemented is a **single TypeScript MCP server** in `src/`, connected to Civil 3D through the C# plugin bridge in `Civil3D-MCP-Plugin/` via `httpBridge.ts`.
+
+The **AI Copilot** (`Civil3D-AI-CoPilot-master/`) is a WPF palette running inside Civil 3D that communicates with the MCP server via HTTP. It has two execution paths:
+
+1. **Primary**: Copilot → HTTP POST `/execute` → `httpBridge.ts` → `toolHandlerRegistry` → MCP tool handlers → plugin TCP socket
+2. **Fallback**: Copilot → `PluginCommandClient.cs` → direct TCP to plugin on port 8080 (when MCP server unavailable)
+3. **External AI**: Claude Desktop / Windsurf / Cascade → MCP stdio protocol → registered tools (unchanged)
+
+That architecture is the current source of truth. Tool coverage should be audited from:
+
+- **Runtime registration**: `src/tools/register.ts`
+- **Catalog/documentation**: `src/tools/tool_catalog.ts`
+- **Backend command support**: `Civil3D-MCP-Plugin/CommandDispatcher.cs`
+- **AI Copilot prompt**: `Civil3D-AI-CoPilot-master/Core/AgentPromptManager.cs`
+- **HTTP bridge passthrough**: `src/httpBridge.ts` + `src/tools/toolHandlerRegistry.ts`
 
 ---
 
-## Implemented Tools (100 Total)
+## Current Coverage Snapshot
 
-### Core Design — Surfaces (15 / 15 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_surface` | ✅ Implemented |
-| `civil3d_surface_edit` | ✅ Implemented |
-| `civil3d_surface_comparison_workflow` | ✅ Implemented |
-| `civil3d_surface_drainage_workflow` | ✅ Implemented |
-| `civil3d_surface_volume_calculate` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_volume_report` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_volume_by_region` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_analyze_slope` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_analyze_elevation` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_analyze_directions` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_watershed_add` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_contour_interval_set` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_statistics_get` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_sample_elevations` | ✅ Implemented (JFS-7) |
-| `civil3d_surface_create_from_dem` | ✅ Implemented (JFS-7) |
+### Fully or Broadly Implemented Areas
 
-### Core Design — Alignments (2 / 10 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_alignment` | ✅ Implemented |
-| `civil3d_alignment_report` | ✅ Implemented |
-| Alignment edit, offset, design check, superelevation, widenings, station equations, label, import/export | ❌ Missing (8 tools) |
+- **Surface / terrain**
+  - Surface CRUD, drainage workflow, comparison workflow, volume analysis, slope/elevation/aspect analysis, contour control, statistics, DEM import, elevation sampling.
 
-### Core Design — Profiles (2 / 10 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_profile` | ✅ Implemented |
-| `civil3d_profile_report` | ✅ Implemented |
-| Profile edit, design check, label, existing ground, superimpose, grade break, vertical curves, import/export | ❌ Missing (8 tools) |
+- **Alignment / profile design**
+  - Alignment and profile base tools, reports, editing tools, offset/widening, station equations, station/elevation sampling, K-value checks, profile views, superelevation, and intersections.
 
-### Core Design — Corridors / Sections (5 / ~10 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_corridor` | ✅ Implemented |
-| `civil3d_corridor_summary` | ✅ Implemented |
-| `civil3d_section` | ✅ Implemented |
-| `civil3d_assembly` | ✅ Implemented |
-| `civil3d_feature_line` | ✅ Implemented |
-| Section views, sample lines, corridor targets, section labels, corridor solids | ❌ Missing |
+- **Corridor / section / assembly**
+  - Corridor inspection and summary, corridor target mapping, corridor region editing, section tools, section views, assembly inspection, assembly creation/editing, and feature-line support.
 
-### Core Design — Grading (12 / 12 planned) ✅ NEW JFS-9
-| Tool | Status |
-|------|--------|
-| `civil3d_grading_group_list` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_group_get` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_group_create` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_group_delete` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_group_volume` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_group_surface_create` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_list` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_get` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_create` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_delete` | ✅ Implemented (JFS-9) |
-| `civil3d_grading_criteria_list` | ✅ Implemented (JFS-9) |
-| `civil3d_feature_line_create` | ✅ Implemented (JFS-9) |
+- **Grading**
+  - Grading groups, grading creation/deletion, grading criteria lookup, grading group surfaces, and feature-line creation.
 
-### Infrastructure — Pipe Networks (3 / 25 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_pipe_network` | ✅ Implemented |
-| `civil3d_pipe_network_edit` | ✅ Implemented |
-| `civil3d_pipe_catalog` | ✅ Implemented |
-| Gravity pipe analysis, pipe sizing, storm drain design, network labels, profile views | ❌ Missing |
+- **Points / survey / COGO**
+  - COGO point operations, point groups, point export/transform, COGO inverse/direction-distance/traverse/curve solve, survey databases, survey figures, observation listing, network adjustment, and LandXML import.
 
-### Infrastructure — Pressure Networks (15 / 15 planned) ✅ Complete (JFS-8)
-| Tool | Status |
-|------|--------|
-| `civil3d_pressure_network_list` | ✅ Implemented |
-| `civil3d_pressure_network_info` | ✅ Implemented |
-| `civil3d_pressure_network_create` | ✅ Implemented |
-| `civil3d_pressure_network_delete` | ✅ Implemented |
-| `civil3d_pressure_network_assign_parts_list` | ✅ Implemented |
-| `civil3d_pressure_network_set_cover` | ✅ Implemented |
-| `civil3d_pressure_network_validate` | ✅ Implemented |
-| `civil3d_pressure_network_export` | ✅ Implemented |
-| `civil3d_pressure_network_connect` | ✅ Implemented |
-| `civil3d_pressure_pipe_add` | ✅ Implemented |
-| `civil3d_pressure_pipe_properties` | ✅ Implemented |
-| `civil3d_pressure_pipe_resize` | ✅ Implemented |
-| `civil3d_pressure_fitting_add` | ✅ Implemented |
-| `civil3d_pressure_fitting_properties` | ✅ Implemented |
-| `civil3d_pressure_appurtenance_add` | ✅ Implemented |
+- **Parcels / data shortcuts**
+  - Parcel query/create/edit/lot-line adjustment/report and data shortcut create/promote/reference/sync.
 
-### Infrastructure — Hydrology (1 / 8 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_hydrology` | ✅ Implemented |
-| Watershed analysis, runoff calcs, grading tools (7 tools) | ❌ Missing |
+- **Pipes / utilities**
+  - Gravity pipe network query/edit, pipe parts catalog, HGL calculation, hydraulic analysis, and structure properties.
+  - Gravity pipe automation now includes `civil3d_pipe_network_size` and `civil3d_pipe_profile_view_automation`.
+  - Pressure network suite is implemented with create/delete/connect/export/validate and component-level add/resize/get operations.
 
-### Survey & Data — COGO Points (6 / 10 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_point` (list/get/create/list_groups/import/delete) | ✅ Implemented |
-| `create_cogo_point` | ✅ Implemented |
-| Survey processing (4 tools), traverse solve | ❌ Missing |
+- **Documentation / QC / orchestration**
+  - Drawing, label, style, health, coordinate system, object info, tool capability listing, standards lookup, job inspection, orchestrate planning, QC checks, quantity takeoff, and standards auto-remediation tools.
 
-### Survey & Data — Point Groups (5 / 5 planned) ✅ NEW JFS-9
-| Tool | Status |
-|------|--------|
-| `civil3d_point_group_create` | ✅ Implemented (JFS-9) |
-| `civil3d_point_group_update` | ✅ Implemented (JFS-9) |
-| `civil3d_point_group_delete` | ✅ Implemented (JFS-9) |
-| `civil3d_point_export` | ✅ Implemented (JFS-9) |
-| `civil3d_point_transform` | ✅ Implemented (JFS-9) |
+- **Hydrology / catchment / stormwater**
+  - Surface-based flow tracing, watershed delineation, Rational Method runoff, watershed-to-runoff/detention/pipe workflows.
+  - Catchment group management: list groups, list/get/edit catchment properties (runoff coefficient, Manning's n, curve number, Tc), copy between groups, retrieve flow paths and boundaries.
+  - Time of Concentration: Kirpich, TR-55 (sheet/shallow/channel), FAA, NRCS Lag methods. SCS triangular and curvilinear unit hydrograph generation.
+  - Storm & Sanitary Analysis (STM): export/import Hydraflow .STM files, open gravity network analysis dialog.
 
-### Survey & Data — COGO Calculations (4 / 8 planned) ✅ NEW JFS-9
-| Tool | Status |
-|------|--------|
-| `civil3d_cogo_inverse` | ✅ Implemented (JFS-9) |
-| `civil3d_cogo_direction_distance` | ✅ Implemented (JFS-9) |
-| `civil3d_cogo_traverse` | ✅ Implemented (JFS-9) |
-| `civil3d_cogo_curve_solve` | ✅ Implemented (JFS-9) |
-| COGO lot fit, import survey data, figures from traverse | ❌ Missing (4 tools) |
+- **Extended analysis domains**
+  - Sight distance, detention sizing, slope analysis, and cost estimation are implemented.
 
-### Survey & Data — Survey Databases & Figures (8 / 8 planned) ✅ Complete (JFS-18)
-| Tool | Status |
-|------|--------|
-| `civil3d_survey_database_list` | ✅ Implemented (JFS-9) |
-| `civil3d_survey_database_create` | ✅ Implemented (JFS-9) |
-| `civil3d_survey_figure_list` | ✅ Implemented (JFS-9) |
-| `civil3d_survey_figure_get` | ✅ Implemented (JFS-9) |
-| `civil3d_survey_observation_list` | ✅ Implemented (JFS-18) |
-| `civil3d_survey_network_adjust` | ✅ Implemented (JFS-18) |
-| `civil3d_survey_figure_create` | ✅ Implemented (JFS-18) |
-| `civil3d_survey_landxml_import` | ✅ Implemented (JFS-18) |
-
-### Survey & Data — Parcels (5 / 5 planned) ✅ Complete (JFS-18)
-| Tool | Status |
-|------|--------|
-| `civil3d_parcel` | ✅ Implemented |
-| `civil3d_parcel_create` | ✅ Implemented (JFS-18) |
-| `civil3d_parcel_edit` | ✅ Implemented (JFS-18) |
-| `civil3d_parcel_lot_line_adjust` | ✅ Implemented (JFS-18) |
-| `civil3d_parcel_report` | ✅ Implemented (JFS-18) |
-
-### Survey & Data — Data Shortcuts (5 / 5 planned) ✅ Complete (JFS-18)
-| Tool | Status |
-|------|--------|
-| `civil3d_data_shortcut` | ✅ Implemented |
-| `civil3d_data_shortcut_create` | ✅ Implemented (JFS-18) |
-| `civil3d_data_shortcut_promote` | ✅ Implemented (JFS-18) |
-| `civil3d_data_shortcut_reference` | ✅ Implemented (JFS-18) |
-| `civil3d_data_shortcut_sync` | ✅ Implemented (JFS-18) |
-
-### Documentation & QC (3 / 35 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_drawing` | ✅ Implemented |
-| `civil3d_label` | ✅ Implemented |
-| `civil3d_style` | ✅ Implemented |
-| QC checks (8 tools), reporting (10 tools), standards compliance (7 tools), quantity takeoff (7 tools) | ❌ Missing (32 tools) |
-
-### Plan Production / Sheets (12 / 12 planned) ✅ Complete (JFS-8)
-| Tool | Status |
-|------|--------|
-| `civil3d_sheet_set_list` | ✅ Implemented |
-| `civil3d_sheet_set_info` | ✅ Implemented |
-| `civil3d_sheet_set_create` | ✅ Implemented |
-| `civil3d_sheet_add` | ✅ Implemented |
-| `civil3d_sheet_properties` | ✅ Implemented |
-| `civil3d_sheet_title_block_set` | ✅ Implemented |
-| `civil3d_plan_profile_sheet_create` | ✅ Implemented |
-| `civil3d_plan_profile_sheet_update` | ✅ Implemented |
-| `civil3d_sheet_view_create` | ✅ Implemented |
-| `civil3d_sheet_view_scale_set` | ✅ Implemented |
-| `civil3d_sheet_publish_pdf` | ✅ Implemented |
-| `civil3d_sheet_set_export` | ✅ Implemented |
-
-### Workflow & Coordination (4 / 15 planned)
-| Tool | Status |
-|------|--------|
-| `civil3d_orchestrate` | ✅ Implemented |
-| `civil3d_job` | ✅ Implemented |
-| `civil3d_surface_comparison_workflow` | ✅ (counted above) |
-| `civil3d_surface_drainage_workflow` | ✅ (counted above) |
-| Multi-step corridor workflow, pipe design workflow, QC workflow, export workflow | ❌ Missing |
-
-### AutoCAD Primitives (5 — bonus, not in V3 plan)
-| Tool | Status |
-|------|--------|
-| `acad_create_polyline` | ✅ Implemented |
-| `acad_create_3dpolyline` | ✅ Implemented |
-| `acad_create_text` | ✅ Implemented |
-| `acad_create_mtext` | ✅ Implemented |
-| `create_line_segment` | ✅ Implemented |
-
-### Utility / Info (7 — partial V3 coverage)
-| Tool | Status |
-|------|--------|
-| `civil3d_health` | ✅ Implemented |
-| `civil3d_coordinate_system` | ✅ Implemented |
-| `get_drawing_info` | ✅ Implemented |
-| `get_selected_civil_objects_info` | ✅ Implemented |
-| `list_civil_object_types` | ✅ Implemented |
-| `list_tool_capabilities` | ✅ Implemented |
-| `civil3d_pipe_catalog` | ✅ Implemented |
+- **AutoCAD primitive helpers**
+  - `acad_create_polyline`, `acad_create_3dpolyline`, `acad_create_text`, `acad_create_mtext`, `create_line_segment`.
 
 ---
 
-## Remaining Gaps (highest ROI first)
+## Verified Remaining Gaps
 
-| Domain | V3 Count | Implemented | Remaining |
-|--------|----------|-------------|-----------|
-| Alignment (edit/label/design check) | 10 | 10 | 0 ✅ JFS-10 |
-| Profile (edit/label/design check) | 10 | 10 | 0 ✅ JFS-10 |
-| QC checks | 8 | 8 | 0 ✅ JFS-11 |
-| Quantity takeoff / reporting | 10+ | 10 | 0 ✅ JFS-11 |
-| Section views / sample lines | 5 | 5 | 0 ✅ JFS-13 |
-| Superelevation | 4 | 4 | 0 ✅ JFS-13 |
-| Corridor target editing | 4 | 4 | 0 ✅ JFS-13 |
-| Intersection design | 3 | 3 | 0 ✅ JFS-13 |
-| Survey processing (observations, networks) | 8 | 8 | 0 ✅ JFS-18 |
-| Parcels (create/edit/lot line/report) | 5 | 5 | 0 ✅ JFS-18 |
-| Data shortcuts (create/promote/reference/sync) | 5 | 5 | 0 ✅ JFS-18 |
-| Standards compliance labels | 7 | 1 | 6 |
-| 3D viewer / APS integration | 6 | 0 | 6 |
-| Gravity pipe analysis / sizing | 22 | 3 | 19 |
+These are the real gaps after checking the TypeScript server, C# plugin backend, and AI Copilot integration.
+
+| Gap Area | Status | Notes |
+|----------|--------|-------|
+| APS / 3D viewer integration | Not implemented | No corresponding backend commands were found in `Civil3D-MCP-Plugin`. |
+| Rich workflow packs | Partial | `civil3d_orchestrate` still provides planning and limited execution rather than a broad library of end-to-end, domain-specific workflow packs. |
+| Full storm-drain synthesis | Partial | Pipe sizing and profile-view setup now exist, but there is still no single end-to-end gravity-network design synthesis tool covering layout, sizing, checks, and deliverables in one call. |
+
+---
+
+## Important Audit Notes
+
+- **Raw count alone is not enough**. The previous audit overstated and understated coverage in different places because it mixed plan assumptions with implementation reality.
+- **`tool_catalog.ts` must stay synchronized** with actual `server.tool(...)` registrations, or `list_tool_capabilities` becomes misleading.
+- **Do not claim a tool is implemented unless both are true**:
+  - it is registered in `src/tools/register.ts`
+  - it is backed by a real plugin command or internal implementation
+
+---
+
+## Copilot-Specific Fixes Applied (2026-03-20)
+
+### Critical: HTTP Bridge Passthrough (Phase 1)
+The HTTP bridge (`httpBridge.ts`) previously only supported ~11 hardcoded tool names. All other 168+ tools threw `Unsupported HTTP bridge tool`. Fixed by:
+- Creating `toolHandlerRegistry.ts` — captures every `server.tool()` handler during registration
+- Modifying `register.ts` — intercepts `server.tool()` to populate the registry
+- Rewriting `httpBridge.ts` — looks up handlers from registry first, falls back to legacy endpoints
+- Adding `GET /tools` endpoint for runtime tool discovery
+
+### Phase 2: Direct Plugin TCP Client
+- Created `PluginCommandClient.cs` — speaks JSON-RPC 2.0 directly to the C# plugin on port 8080
+- Integrated into `CommandExecutorService.cs` as a fallback when MCP HTTP server is unavailable
+- Wired into `AIChatPanel.xaml.cs` initialization flow
+
+### AgentPromptManager Updates
+- Added 24 missing tools to SUPPORTED COMMANDS (intersection, parcel editing, data shortcuts, survey processing, section views, corridor editing, standards lookup)
+- Added multi-turn result-loop rules and `ContinueWithResults` response contract
+- Added new tool coverage for gravity pipe sizing/profile-view automation and drawing-standards remediation
+- Fixed section counts: CORRIDOR 2→7, SECTION 1→8
+
+### DrawingContextService Expansion
+- Added pipe networks, pressure networks, sites/parcels, point groups to the drawing context summary
+- Previously only had: alignments, surfaces, assemblies, corridors
+
+### Copilot Multi-Turn Loop
+- `AIChatPanel.xaml.cs` now supports iterative command execution with tool-result feedback
+- `CommandExecutorService.cs` now returns structured per-command execution results
+- AI providers now accept conversation history and the JSON contract includes `ContinueWithResults`
+
+### New Backend and MCP Tools
+- Added plugin method `resizePipeInNetwork`
+- Added plugin method `qcFixDrawingStandards`
+- Added MCP tool `civil3d_pipe_network_size`
+- Added MCP tool `civil3d_pipe_profile_view_automation`
+- Added MCP tool `civil3d_qc_fix_drawing_standards`
 
 ---
 
 ## Recommendation
 
-Target 162 tools achieved (JFS-18). Remaining gaps are intentionally deferred:
+Use this priority order for future work:
 
-1. **Gravity pipe analysis / sizing** — storm drain design, HGL computation (very high complexity, deferred)
-2. **Standards compliance labels** — style-management automation (6 tools, medium value, low urgency)
-3. **3D viewer / APS integration** — deferred until operational need exists
+1. **APS / 3D viewer integration**
+   - Do not add TypeScript wrappers until an actual backend/API integration exists.
 
-**Skip rationale (JFS-18)**: Gravity pipe HGL and APS/3D viewer integrations were skipped. Pipe HGL requires a full hydraulics solver (not a thin API wrapper). APS integration has zero current operational demand.
+2. **Richer workflow packs**
+   - Add more single-call workflow tools for full corridor, utility, and QC delivery sequences where multi-step orchestration remains repetitive.
+
+3. **Broader standards remediation**
+   - Current remediation focuses on layer-based drawing standards. Style, label, and object-level standards repair remains future work.
+
+4. **Keep audit automation-friendly**
+   - Treat `register.ts` and `tool_catalog.ts` as the canonical implementation surfaces for future audits.
+   - Keep `AgentPromptManager.cs` SUPPORTED COMMANDS synchronized with the tool catalog.

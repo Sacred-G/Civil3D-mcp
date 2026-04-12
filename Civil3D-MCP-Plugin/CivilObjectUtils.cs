@@ -3,12 +3,14 @@ using System.Reflection;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.Civil.ApplicationServices;
 using Autodesk.Civil.DatabaseServices;
+using AcDbObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Civil3DMcpPlugin;
 
 public static class CivilObjectUtils
 {
-  public static string GetHandle(DBObject dbObject)
+  public static string GetHandle(AcDbObject dbObject)
   {
     return dbObject.Handle.ToString();
   }
@@ -123,20 +125,17 @@ public static class CivilObjectUtils
     }
   }
 
-  public static T GetRequiredObject<T>(Transaction transaction, ObjectId objectId, OpenMode openMode) where T : DBObject
+  public static T GetRequiredObject<T>(Transaction transaction, ObjectId objectId, OpenMode openMode) where T : AcDbObject
   {
     return (T)(transaction.GetObject(objectId, openMode) ?? throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Object {objectId} not found."));
   }
 
   public static string LinearUnits(Database database)
   {
-    return database.Insunits switch
-    {
-      UnitsValue.Meters => "meters",
-      UnitsValue.Feet => "feet",
-      UnitsValue.UsSurveyFeet => "feet",
-      _ => "other",
-    };
+    if (database.Insunits == UnitsValue.Meters) return "meters";
+    if (database.Insunits == UnitsValue.Feet) return "feet";
+    if (database.Insunits.ToString().Contains("Survey", StringComparison.OrdinalIgnoreCase)) return "feet";
+    return "other";
   }
 
   public static string AngularUnits(short aunits)
@@ -179,11 +178,11 @@ public static class CivilObjectUtils
     throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Profile '{name}' was not found on alignment '{alignment.Name}'.");
   }
 
-  public static Surface FindSurfaceByName(CivilDocument civilDoc, Transaction transaction, string name, OpenMode openMode)
+  public static CivilSurface FindSurfaceByName(CivilDocument civilDoc, Transaction transaction, string name, OpenMode openMode)
   {
     foreach (ObjectId objectId in civilDoc.GetSurfaceIds())
     {
-      var surface = GetRequiredObject<Surface>(transaction, objectId, openMode);
+      var surface = GetRequiredObject<CivilSurface>(transaction, objectId, openMode);
       if (string.Equals(surface.Name, name, StringComparison.OrdinalIgnoreCase))
       {
         return surface;
@@ -207,6 +206,27 @@ public static class CivilObjectUtils
     throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Corridor '{name}' was not found.");
   }
 
+  public static Database GetDatabase(object? civilDoc)
+  {
+    if (civilDoc != null)
+    {
+      var db = GetPropertyValue<Database>(civilDoc, "Database");
+      if (db != null)
+      {
+        return db;
+      }
+    }
+
+    return HostApplicationServices.WorkingDatabase
+      ?? throw new JsonRpcDispatchException("CIVIL3D.API_ERROR", "No active AutoCAD database is available.");
+  }
+
+  public static ObjectId GetModelSpaceBlockId(Database database, Transaction transaction)
+  {
+    var blockTable = GetRequiredObject<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
+    return blockTable[BlockTableRecord.ModelSpace];
+  }
+
   public static double? GetDoubleProperty(object? value, string propertyName)
   {
     if (value == null) return null;
@@ -227,16 +247,13 @@ public static class CivilObjectUtils
 
   public static string VolumeUnits(Database database)
   {
-    return database.Insunits switch
-    {
-      UnitsValue.Meters => "cubic meters",
-      UnitsValue.Feet => "cubic feet",
-      UnitsValue.UsSurveyFeet => "cubic feet",
-      _ => "cubic units",
-    };
+    if (database.Insunits == UnitsValue.Meters) return "cubic meters";
+    if (database.Insunits == UnitsValue.Feet) return "cubic feet";
+    if (database.Insunits.ToString().Contains("Survey", StringComparison.OrdinalIgnoreCase)) return "cubic feet";
+    return "cubic units";
   }
 
-  public static void TrySetName(DBObject obj, string name)
+  public static void TrySetName(AcDbObject obj, string name)
   {
     var prop = obj.GetType().GetProperty("Name", BindingFlags.Public | BindingFlags.Instance);
     try { prop?.SetValue(obj, name); } catch { /* ignore */ }
@@ -268,7 +285,7 @@ public static class CivilObjectUtils
     return null;
   }
 
-  public static void TrySetLayer(DBObject obj, string layer, Database database, Transaction transaction)
+  public static void TrySetLayer(AcDbObject obj, string layer, Database database, Transaction transaction)
   {
     try
     {

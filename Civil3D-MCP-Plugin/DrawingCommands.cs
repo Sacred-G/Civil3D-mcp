@@ -122,7 +122,7 @@ public static class DrawingCommands
       try
       {
         createdDocument = string.IsNullOrWhiteSpace(templatePath)
-          ? App.DocumentManager.Add()
+          ? App.DocumentManager.Add(string.Empty)
           : (File.Exists(templatePath)
             ? App.DocumentManager.Add(templatePath)
             : throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Template file does not exist: {templatePath}"));

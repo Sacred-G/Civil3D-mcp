@@ -421,8 +421,9 @@ public static class PlanProductionCommands
     }
 
     // Fallback: search the NamedObjectsDictionary for AeccSheetSet entries
+    var database = CivilObjectUtils.GetDatabase(civilDoc);
     var nod = (DBDictionary)transaction.GetObject(
-      ((Autodesk.AutoCAD.DatabaseServices.Database)GetNamedMember(civilDoc, "Database")! ?? throw new InvalidOperationException()).NamedObjectsDictionaryId,
+      database.NamedObjectsDictionaryId,
       OpenMode.ForRead);
 
     foreach (DictionaryEntry entry in nod)
@@ -532,18 +533,18 @@ public static class PlanProductionCommands
           try
           {
             var result = createMethod.Invoke(null, new object?[] { civilDoc, name });
-            if (result is DBObject sheetSet)
+            if (result is DBObject createdSheetSet)
             {
               if (!string.IsNullOrWhiteSpace(description))
-                TrySetStringProperty(sheetSet, description!, "Description", "Desc");
-              return sheetSet;
+                TrySetStringProperty(createdSheetSet, description!, "Description", "Desc");
+              return createdSheetSet;
             }
             if (result is ObjectId oid && oid != ObjectId.Null)
             {
-              var sheetSet = transaction.GetObject(oid, OpenMode.ForWrite);
+              var createdSheetSetObject = transaction.GetObject(oid, OpenMode.ForWrite);
               if (!string.IsNullOrWhiteSpace(description))
-                TrySetStringProperty(sheetSet, description!, "Description", "Desc");
-              return sheetSet;
+                TrySetStringProperty(createdSheetSetObject, description!, "Description", "Desc");
+              return createdSheetSetObject;
             }
           }
           catch { }
@@ -567,7 +568,7 @@ public static class PlanProductionCommands
     }
 
     // Fallback: store as a plain DBDictionary entry keyed under "CIVIL3D_SHEET_SETS"
-    var db = civilDoc.Database;
+    var db = CivilObjectUtils.GetDatabase(civilDoc);
     var nod = (DBDictionary)transaction.GetObject(db.NamedObjectsDictionaryId, OpenMode.ForWrite);
 
     DBDictionary sheetSetsDict;
@@ -649,8 +650,7 @@ public static class PlanProductionCommands
     if (scaleVal.HasValue && scaleVal.Value > 0) viewportScale = scaleVal.Value;
 
     string? alignmentName = null;
-    var alignmentId = CivilObjectUtils.GetPropertyValue<ObjectId>(sheet, "AlignmentId")
-      ?? CivilObjectUtils.GetPropertyValue<ObjectId>(sheet, "ReferenceAlignmentId");
+    var alignmentId = GetFirstObjectId(sheet, "AlignmentId", "ReferenceAlignmentId");
     if (alignmentId != ObjectId.Null)
     {
       try
@@ -662,8 +662,7 @@ public static class PlanProductionCommands
     }
 
     string? profileName = null;
-    var profileId = CivilObjectUtils.GetPropertyValue<ObjectId>(sheet, "ProfileId")
-      ?? CivilObjectUtils.GetPropertyValue<ObjectId>(sheet, "ReferenceProfileId");
+    var profileId = GetFirstObjectId(sheet, "ProfileId", "ReferenceProfileId");
     if (profileId != ObjectId.Null)
     {
       try
@@ -914,8 +913,8 @@ public static class PlanProductionCommands
         {
           ps.UpgradeOpen();
           var validator = PlotSettingsValidator.Current;
-          validator.SetPlotFileName(ps, outputPath);
-          validator.SetPlotToFile(ps, true);
+          TryInvokeIfPresent(validator, "SetPlotFileName", ps, outputPath);
+          TryInvokeIfPresent(validator, "SetPlotToFile", ps, true);
           if (!string.IsNullOrWhiteSpace(plotStyleTable))
             validator.SetCurrentStyleSheet(ps, plotStyleTable!);
           if (!string.IsNullOrWhiteSpace(paperSize))
@@ -1033,5 +1032,35 @@ public static class PlanProductionCommands
   {
     if (result is ObjectId id && id != ObjectId.Null) return id;
     return CivilObjectUtils.GetPropertyValue<ObjectId>(result, "ObjectId");
+  }
+
+  private static ObjectId GetFirstObjectId(object target, params string[] propertyNames)
+  {
+    foreach (var propertyName in propertyNames)
+    {
+      var objectId = CivilObjectUtils.GetPropertyValue<ObjectId>(target, propertyName);
+      if (objectId != ObjectId.Null)
+        return objectId;
+    }
+
+    return ObjectId.Null;
+  }
+
+  private static void TryInvokeIfPresent(object target, string methodName, params object?[] args)
+  {
+    var methods = target.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+      .Where(method => method.Name == methodName && method.GetParameters().Length == args.Length);
+
+    foreach (var method in methods)
+    {
+      try
+      {
+        method.Invoke(target, args);
+        return;
+      }
+      catch
+      {
+      }
+    }
   }
 }

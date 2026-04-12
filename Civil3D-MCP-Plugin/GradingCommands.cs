@@ -524,7 +524,7 @@ public static class GradingCommands
     Database database)
   {
     // Feature lines are AutoCAD entities in model space — iterate BlockTableRecord
-    var modelSpaceId = SymbolUtilityServices.GetModelSpaceBlockId(database);
+    var modelSpaceId = CivilObjectUtils.GetModelSpaceBlockId(database, transaction);
     var btr = transaction.GetObject(modelSpaceId, OpenMode.ForRead) as BlockTableRecord;
     if (btr == null) return null;
 

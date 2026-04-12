@@ -2,6 +2,7 @@ using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.Civil.DatabaseServices;
+using CivilSurface = Autodesk.Civil.DatabaseServices.Surface;
 
 namespace Civil3DMcpPlugin;
 
@@ -283,7 +284,7 @@ public static class HydrologyCommands
     };
   }
 
-  private static FlowPoint? FindSteepestDescentPoint(Surface surface, double x, double y, double currentElevation, double stepDistance)
+  private static FlowPoint? FindSteepestDescentPoint(CivilSurface surface, double x, double y, double currentElevation, double stepDistance)
   {
     FlowPoint? bestPoint = null;
     double[] directions = [0, 45, 90, 135, 180, 225, 270, 315];
@@ -318,7 +319,7 @@ public static class HydrologyCommands
     return bestPoint;
   }
 
-  private static double GetSurfaceElevation(Surface surface, double x, double y)
+  private static double GetSurfaceElevation(CivilSurface surface, double x, double y)
   {
     foreach (var methodName in new[] { "FindElevationAtXY", "GetElevationAtXY" })
     {
@@ -517,7 +518,7 @@ public static class HydrologyCommands
     });
   }
 
-  private static (bool ReachesOutlet, int Steps) TraceFlowToOutlet(Surface surface, double startX, double startY, double outletX, double outletY, double stepDistance, int maxSteps)
+  private static (bool ReachesOutlet, int Steps) TraceFlowToOutlet(CivilSurface surface, double startX, double startY, double outletX, double outletY, double stepDistance, int maxSteps)
   {
     var currentX = startX;
     var currentY = startY;

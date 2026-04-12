@@ -4,6 +4,7 @@ using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
 using Autodesk.Civil.DatabaseServices;
+using AcDbObject = Autodesk.AutoCAD.DatabaseServices.DBObject;
 
 namespace Civil3DMcpPlugin;
 
@@ -238,8 +239,10 @@ public static class PointGroupCommands
         y += translateY;
         z += translateZ;
 
-        writablePoint.Location = new Point3d(x, y, z);
-        transformedCount++;
+        if (TrySetPointCoordinate(writablePoint, x, y, z))
+        {
+          transformedCount++;
+        }
       }
 
       return new Dictionary<string, object?>
@@ -258,7 +261,7 @@ public static class PointGroupCommands
   // Private helpers
   // -------------------------------------------------------------------------
 
-  private static DBObject FindPointGroupByName(
+  private static AcDbObject FindPointGroupByName(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction,
     string name,
@@ -281,9 +284,42 @@ public static class PointGroupCommands
     throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Point group '{name}' was not found.");
   }
 
-  private static void TrySetProperty(DBObject obj, string propertyName, object value)
+  private static void TrySetProperty(AcDbObject obj, string propertyName, object value)
   {
     var prop = obj.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
     try { prop?.SetValue(obj, value); } catch { /* ignore */ }
+  }
+
+  private static bool TrySetPointCoordinate(CogoPoint point, double x, double y, double z)
+  {
+    if (TrySetCoordinateProperty(point, x, "Easting", "X")
+      & TrySetCoordinateProperty(point, y, "Northing", "Y")
+      & TrySetCoordinateProperty(point, z, "Elevation", "Z"))
+    {
+      return true;
+    }
+
+    return CivilObjectUtils.InvokeMethod(point, "MoveTo", new Point3d(x, y, z)) != null
+      || CivilObjectUtils.InvokeMethod(point, "SetLocation", new Point3d(x, y, z)) != null;
+  }
+
+  private static bool TrySetCoordinateProperty(CogoPoint point, double value, params string[] propertyNames)
+  {
+    foreach (var propertyName in propertyNames)
+    {
+      var prop = point.GetType().GetProperty(propertyName, BindingFlags.Public | BindingFlags.Instance);
+      if (prop == null || !prop.CanWrite) continue;
+
+      try
+      {
+        prop.SetValue(point, value);
+        return true;
+      }
+      catch
+      {
+      }
+    }
+
+    return false;
   }
 }
