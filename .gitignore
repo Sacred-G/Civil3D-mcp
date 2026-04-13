@@ -30,7 +30,22 @@ __pycache__/
 # Output directories
 output/
 output_clean*/
-output_clean*/
+output_repo_tools/
+temp_repo_only_tools/
+
+# Generated doc artifacts
+civil3d_docs.txt
+
+# Docs not needed to run the app
+docs/tutorials/
+docs/autodesk/
+docs/plans/
+docs/DEPLOYMENT.md
+docs/HYDROLOGY_GUIDE.md
+docs/tool-coverage-audit.md
+
+# Agent config files
+agents/
 
 # Help files (4041 files in docs/help/)
 docs/help/
