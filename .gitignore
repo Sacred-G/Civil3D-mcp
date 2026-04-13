@@ -66,6 +66,9 @@ image/
 *.png
 *.jpg
 *.jpeg
+!image/
+!image/civil3d_dynamic_mcp_blueprint/
+!image/civil3d_dynamic_mcp_blueprint/dffc9d11-a9c7-4794-bf73-ff1a39c72e3a.jpg
 
 # PDF files
 *.pdf
