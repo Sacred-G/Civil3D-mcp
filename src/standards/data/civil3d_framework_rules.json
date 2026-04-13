@@ -1,0 +1,406 @@
+[
+  {
+    "section_number": "3.2",
+    "title": "A Template is the Top Level of the",
+    "pages": [
+      14,
+      15
+    ],
+    "rule": "every possible style need or scenario in the model a drawing. template(s) you employ in production. Always Use Copy and/or New to create a different named version of the style if you must make a change in a production drawing.",
+    "score": 13,
+    "tags": [
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "2019.2",
+    "title": "– New Alignment line markers for Crossings in Profile conventions may be used",
+    "pages": [
+      27,
+      32
+    ],
+    "rule": "These general Link Styles may be used to simplify the display of This requires manually creating and/or editing a Code Set Links in Sections.",
+    "score": 11,
+    "tags": [
+      "objects",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "9.4",
+    "title": "The Label Set Power Set when the list is applied.",
+    "pages": [
+      23
+    ],
+    "rule": "You must hit the Apply button to display the new Set in You should take accountability and/or make copies of Set the drawing with the Set values without leaving the Label collections in your templates (see above).",
+    "score": 11,
+    "tags": [
+      "labels",
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "2.8.1",
+    "title": "Reasons to use STB include hatches when published in Profile and Section",
+    "pages": [
+      11
+    ],
+    "rule": "will typically use more layers than LDT and other traditional ACAD based applications, but users should spend significantly 2.9.1 Load and Assign Hatches less time in the Layer Manager.",
+    "score": 9,
+    "tags": [
+      "layers",
+      "objects",
+      "plotting"
+    ]
+  },
+  {
+    "section_number": "3.1.1",
+    "title": "Hierarchy in Civil 3D o The Import Style utility currently does not support",
+    "pages": [
+      14
+    ],
+    "rule": "The template(s) are constructed with this hierarchical 3.2.1 Manage Changes in the Template(s) structure and methodology in mind. Do not change templates used in production too",
+    "score": 9,
+    "tags": [
+      "hierarchy",
+      "objects",
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "3.5.1",
+    "title": "The Basic Templates ALL the Civil 3D styles in the templates, but exactly the",
+    "pages": [
+      16
+    ],
+    "rule": "The NoStyles template are useful for: If there is a Label Set associated with the Feature, you must",
+    "score": 9,
+    "tags": [
+      "labels",
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "3.5.7",
+    "title": "Thin down the Design Templates o The “Proposed” and “Existing” named textstyles are used",
+    "pages": [
+      17
+    ],
+    "rule": "by default in all Feature related Label Styles. You should probably remove many of the Survey “V” layers",
+    "score": 9,
+    "tags": [
+      "labels",
+      "layers",
+      "styles",
+      "templates",
+      "text"
+    ]
+  },
+  {
+    "section_number": "3.5.8",
+    "title": "Thin Down the Survey Template o Be careful not to inadvertently introduce new unwanted",
+    "pages": [
+      17
+    ],
+    "rule": "textstyles into your production templates via block You should probably remove many of the Design “C” layers references. and the Design (Pr) styles from the Survey template.",
+    "score": 9,
+    "tags": [
+      "blocks",
+      "layers",
+      "styles",
+      "templates",
+      "text"
+    ]
+  },
+  {
+    "section_number": "4",
+    "title": "Types of Parcel Labels Styles",
+    "pages": [
+      36
+    ],
+    "rule": "All use typical Segment or Area data from the parcel topology You should take authority over (rename) all the included styles for Contents used in the naming convention to simplify layer updates.",
+    "score": 9,
+    "tags": [
+      "labels",
+      "layers",
+      "naming",
+      "objects",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "6.1.4",
+    "title": "Layer State Resources General Segment Label C-PROP-LABL",
+    "pages": [
+      18,
+      20
+    ],
+    "rule": "Material Section C-VIEW-SECT-PATT Material Table C-VIEW-SECT-LABL Layer Rename processes should be performed in drawings Parcel C-PROP that contain the referencing Feature and Label Styles.",
+    "score": 9,
+    "tags": [
+      "labels",
+      "layers",
+      "objects",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "6.1.4",
+    "title": "Layer State Resources General Segment Label C-PROP-LABL",
+    "pages": [
+      18,
+      20
+    ],
+    "rule": "Users can learn and use Civil 3D and Survey Figure V-BRKL almost NEVER visit the Layer Manager to do anything.",
+    "score": 9,
+    "tags": [
+      "labels",
+      "layers"
+    ]
+  },
+  {
+    "section_number": "9.4.2",
+    "title": "Some Basic Label Set Rules…",
+    "pages": [
+      23,
+      25
+    ],
+    "rule": "Styles for Features that are used to turn OFF the displayed Styles Feature or Label Style.",
+    "score": 9,
+    "tags": [
+      "labels",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "10.1",
+    "title": "General Multi-purpose Styles",
+    "pages": [
+      26
+    ],
+    "rule": "Care should be taken to include the base Label Style that",
+    "score": 8,
+    "tags": [
+      "labels",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "18.2.2",
+    "title": "Text and Shapes",
+    "pages": [
+      74
+    ],
+    "rule": "used to document the existing conditions and the proposed All CAD applications collect CAD primitives together to create design.",
+    "score": 7,
+    "tags": [
+      "text"
+    ]
+  },
+  {
+    "section_number": "18.2.4",
+    "title": "Textstyle Naming Consistency",
+    "pages": [
+      75
+    ],
+    "rule": "Associations (APWA) All the blocks employed must use a common set of textstyles.",
+    "score": 7,
+    "tags": [
+      "blocks",
+      "styles",
+      "text"
+    ]
+  },
+  {
+    "section_number": "3.2",
+    "title": "A Template is the Top Level of the",
+    "pages": [
+      14,
+      15
+    ],
+    "rule": "Ruthlessly remove styles you do not use drawings and projects.",
+    "score": 7,
+    "tags": [
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "3.2",
+    "title": "A Template is the Top Level of the",
+    "pages": [
+      14,
+      15
+    ],
+    "rule": "not have to root around to understand the label. • Never edit a Style in a production drawing. Simplify whenever and wherever possible.",
+    "score": 7,
+    "tags": [
+      "labels",
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "3.5.1",
+    "title": "The Basic Templates ALL the Civil 3D styles in the templates, but exactly the",
+    "pages": [
+      16
+    ],
+    "rule": "Delete styles that you do NOT expect to use immediately.",
+    "score": 7,
+    "tags": [
+      "styles",
+      "templates"
+    ]
+  },
+  {
+    "section_number": "6.1.4",
+    "title": "Layer State Resources General Segment Label C-PROP-LABL",
+    "pages": [
+      18,
+      20
+    ],
+    "rule": "Tin Surface-Labeling V-TOPO-LABL View Frame C-NPLT 9.1.2 Feature and Label Styles Do the Work View Frame-Labeling C-NPLT When used to its best potential Civil 3D does NOT rely on user manual control of AutoCAD layers and their properties.",
+    "score": 7,
+    "tags": [
+      "labels",
+      "layers",
+      "objects",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "9.1.3",
+    "title": "The Display tab",
+    "pages": [
+      20,
+      21
+    ],
+    "rule": "Since Color doesn’t matter (if you use the STB plotting method), we do force Component Color properties occasionally to make things easier to visualize feature 9.1.6 Always use the Description box Component differences better.",
+    "score": 7,
+    "tags": [
+      "plotting",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "9.6",
+    "title": "Style Name Conventions",
+    "pages": [
+      23
+    ],
+    "rule": "You must know where to change the Set properties for the specific Features. Annotative (An)",
+    "score": 7,
+    "tags": [
+      "styles"
+    ]
+  },
+  {
+    "section_number": "10.11",
+    "title": "Cant Views Sample Lines can use multiple of data sources:",
+    "pages": [
+      46
+    ],
+    "rule": "Used to display and control Cant parameters and some specifics",
+    "score": 6,
+    "tags": []
+  },
+  {
+    "section_number": "10.7",
+    "title": "Alignments Alignment Design Checks",
+    "pages": [
+      37,
+      45
+    ],
+    "rule": "You must create a separate Profile View to superimpose a Labels the difference between two-point locations in the Profile",
+    "score": 6,
+    "tags": [
+      "labels",
+      "objects"
+    ]
+  },
+  {
+    "section_number": "2019.2",
+    "title": "– New Alignment line markers for Crossings in Profile conventions may be used",
+    "pages": [
+      27,
+      32
+    ],
+    "rule": "These Markers may be used with Label routines that may",
+    "score": 6,
+    "tags": [
+      "labels",
+      "objects"
+    ]
+  },
+  {
+    "section_number": "3.2",
+    "title": "A Template is the Top Level of the",
+    "pages": [
+      14,
+      15
+    ],
+    "rule": "If you do not like things and want to change them, do so",
+    "score": 6,
+    "tags": [
+      "templates"
+    ]
+  },
+  {
+    "section_number": "3.4",
+    "title": "The Hierarchy Rules",
+    "pages": [
+      15
+    ],
+    "rule": "Never change the component Name in a child",
+    "score": 6,
+    "tags": [
+      "hierarchy",
+      "labels"
+    ]
+  },
+  {
+    "section_number": "3.5.2",
+    "title": "Reference Templates or",
+    "pages": [
+      16
+    ],
+    "rule": "Always use the –PURGE command to purge the Regapps",
+    "score": 6,
+    "tags": [
+      "templates"
+    ]
+  },
+  {
+    "section_number": "9.4.2",
+    "title": "Some Basic Label Set Rules…",
+    "pages": [
+      23,
+      25
+    ],
+    "rule": "(+) the plus character is typically used to arrange or group +INVISIBLE Special Feature and Label Styles NOPLOT Styles with other special styles +INVISIBLE",
+    "score": 6,
+    "tags": [
+      "labels",
+      "styles"
+    ]
+  },
+  {
+    "section_number": "9.4.2",
+    "title": "Some Basic Label Set Rules…",
+    "pages": [
+      23,
+      25
+    ],
+    "rule": "Styles for Features that are used to display in a complex feature in a very simple form employ the (An) prefix",
+    "score": 6,
+    "tags": [
+      "labels",
+      "styles"
+    ]
+  }
+]

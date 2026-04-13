@@ -56,7 +56,7 @@ function getPromptRulesPath(): string {
   const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
   return path.resolve(
     currentDirectory,
-    "../../output_clean7/ace49987-8f85-403b-a9af-9aa393c4f006_prompt_rules.json"
+    "../standards/data/civil3d_framework_rules.json"
   );
 }
 
