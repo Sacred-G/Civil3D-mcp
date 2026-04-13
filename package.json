@@ -12,7 +12,10 @@
     "prebuild": "npm run clean",
     "build": "tsc",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "claude:add": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-claude-mcp.ps1 -Scope project",
+    "claude:add:user": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-claude-mcp.ps1 -Scope user",
+    "claude:print-add": "powershell -NoProfile -ExecutionPolicy Bypass -File ./scripts/install-claude-mcp.ps1 -Scope project -PrintOnly"
   },
   "files": [
     "build"
