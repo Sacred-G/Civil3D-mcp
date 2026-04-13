@@ -1,9 +1,7 @@
 import { z } from "zod";
 import { withApplicationConnection } from "../../utils/ConnectionManager.js";
-import { DRAWING_RUNTIME_DOMAIN_DEFINITION } from "./drawingRuntimeDomain.js";
 import type { DomainToolDefinition } from "../domainRuntime.js";
 import { PIPE_DOMAIN_DEFINITION } from "./pipeDomain.js";
-import { PROJECT_DOMAIN_DEFINITION } from "./projectDomain.js";
 import { SURFACE_DOMAIN_DEFINITION } from "./surfaceDomain.js";
 import { SURVEY_DOMAIN_DEFINITION } from "./surveyDomain.js";
 
@@ -385,47 +383,17 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
       capabilities: ["create", "manage"],
       requiresActiveDrawing: true,
       safeForRetry: false,
-      pluginMethods: ["createDataShortcut", "syncDataShortcuts"],
-      execute: async (args) => {
-        const publishResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_create.execute({
-          action: "data_shortcut_create",
+      pluginMethods: ["dataShortcutPublishSyncWorkflow"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("dataShortcutPublishSyncWorkflow", {
           objectType: args.objectType,
           objectName: args.objectName,
+          shortcutName: args.shortcutName,
           description: args.description,
           projectFolder: args.projectFolder,
-        });
-        const shortcutName = args.shortcutName ?? args.objectName;
-        const syncResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_sync.execute({
-          action: "data_shortcut_sync",
-          projectFolder: args.projectFolder,
-          shortcutNames: [shortcutName],
-          dryRun: args.dryRun ?? false,
-        });
-
-        return buildWorkflowResult(
-          "data_shortcut_publish_sync",
-          `Published and synchronized data shortcut '${shortcutName}'.`,
-          [
-            {
-              name: "Publish data shortcut",
-              action: "project.data_shortcut_create",
-              status: "completed",
-              result: publishResult,
-            },
-            {
-              name: "Synchronize published shortcut",
-              action: "project.data_shortcut_sync",
-              status: "completed",
-              result: syncResult,
-            },
-          ],
-          {
-            publish: publishResult,
-            sync: syncResult,
-            shortcutName,
-          },
-        );
-      },
+          dryRun: args.dryRun,
+        }),
+      ),
     },
     data_shortcut_reference_sync: {
       action: "data_shortcut_reference_sync",
@@ -434,45 +402,16 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
       capabilities: ["create", "manage"],
       requiresActiveDrawing: true,
       safeForRetry: false,
-      pluginMethods: ["referenceDataShortcut", "syncDataShortcuts"],
-      execute: async (args) => {
-        const referenceResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_reference.execute({
-          action: "data_shortcut_reference",
+      pluginMethods: ["dataShortcutReferenceSyncWorkflow"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("dataShortcutReferenceSyncWorkflow", {
           projectFolder: args.projectFolder,
           shortcutName: args.shortcutName,
           shortcutType: args.shortcutType,
           layer: args.layer,
-        });
-        const syncResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_sync.execute({
-          action: "data_shortcut_sync",
-          projectFolder: args.projectFolder,
-          shortcutNames: [args.shortcutName],
-          dryRun: args.dryRun ?? false,
-        });
-
-        return buildWorkflowResult(
-          "data_shortcut_reference_sync",
-          `Referenced and synchronized data shortcut '${args.shortcutName}'.`,
-          [
-            {
-              name: "Reference project data shortcut",
-              action: "project.data_shortcut_reference",
-              status: "completed",
-              result: referenceResult,
-            },
-            {
-              name: "Synchronize referenced shortcut",
-              action: "project.data_shortcut_sync",
-              status: "completed",
-              result: syncResult,
-            },
-          ],
-          {
-            reference: referenceResult,
-            sync: syncResult,
-          },
-        );
-      },
+          dryRun: args.dryRun,
+        }),
+      ),
     },
     project_startup: {
       action: "project_startup",
@@ -496,85 +435,14 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
       capabilities: ["create", "manage", "inspect"],
       requiresActiveDrawing: true,
       safeForRetry: false,
-      pluginMethods: ["referenceDataShortcut", "syncDataShortcuts", "listDataShortcuts", "saveDrawing"],
-      execute: async (args) => {
-        const referenceResults: unknown[] = [];
-        const steps: Array<z.infer<typeof WorkflowStepSchema>> = [];
-        const references = args.references as Array<z.infer<typeof WorkflowShortcutReferenceSchema>>;
-
-        for (const reference of references) {
-          const result = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_reference.execute({
-            action: "data_shortcut_reference",
-            projectFolder: reference.projectFolder,
-            shortcutName: reference.shortcutName,
-            shortcutType: reference.shortcutType,
-            layer: reference.layer,
-          });
-          referenceResults.push(result);
-          steps.push({
-            name: `Reference data shortcut '${reference.shortcutName}'`,
-            action: "project.data_shortcut_reference",
-            status: "completed",
-            result,
-          });
-        }
-
-        const syncProjectFolder = references[0].projectFolder;
-        const syncResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_sync.execute({
-          action: "data_shortcut_sync",
-          projectFolder: syncProjectFolder,
-          shortcutNames: references.map((reference) => reference.shortcutName),
-          dryRun: args.dryRun ?? false,
-        });
-        steps.push({
-          name: "Synchronize referenced shortcuts",
-          action: "project.data_shortcut_sync",
-          status: "completed",
-          result: syncResult,
-        });
-
-        const dataShortcutsResult = await PROJECT_DOMAIN_DEFINITION.actions.data_shortcut_list.execute({
-          action: "data_shortcut_list",
-        });
-        steps.push({
-          name: "List data shortcuts after setup",
-          action: "project.data_shortcut_list",
-          status: "completed",
-          result: dataShortcutsResult,
-        });
-
-        let saveResult: unknown = null;
-        if (args.saveAs) {
-          saveResult = await DRAWING_RUNTIME_DOMAIN_DEFINITION.actions.save.execute({
-            action: "save",
-            saveAs: args.saveAs,
-          });
-          steps.push({
-            name: "Save drawing after reference setup",
-            action: "drawing.save",
-            status: "completed",
-            result: saveResult,
-          });
-        } else {
-          steps.push({
-            name: "Save drawing after reference setup",
-            action: "drawing.save",
-            status: "skipped",
-          });
-        }
-
-        return buildWorkflowResult(
-          "project_reference_setup",
-          `Completed project reference setup for ${references.length} data shortcut(s).`,
-          steps,
-          {
-            references: referenceResults,
-            sync: syncResult,
-            dataShortcuts: dataShortcutsResult,
-            save: saveResult,
-          },
-        );
-      },
+      pluginMethods: ["projectReferenceSetupWorkflow"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("projectReferenceSetupWorkflow", {
+          references: args.references,
+          dryRun: args.dryRun,
+          saveAs: args.saveAs,
+        }),
+      ),
     },
     drawing_readiness_audit: {
       action: "drawing_readiness_audit",

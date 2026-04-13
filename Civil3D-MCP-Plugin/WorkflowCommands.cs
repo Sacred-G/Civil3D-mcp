@@ -111,6 +111,91 @@ public static class WorkflowCommands
       });
   }
 
+  public static async Task<object?> DataShortcutPublishSyncWorkflowAsync(JsonObject? parameters)
+  {
+    var objectType = PluginRuntime.GetRequiredString(parameters, "objectType");
+    var objectName = PluginRuntime.GetRequiredString(parameters, "objectName");
+    var shortcutName = PluginRuntime.GetOptionalString(parameters, "shortcutName") ?? objectName;
+    var description = PluginRuntime.GetOptionalString(parameters, "description");
+    var projectFolder = PluginRuntime.GetOptionalString(parameters, "projectFolder");
+    var dryRun = PluginRuntime.GetOptionalBool(parameters, "dryRun") ?? false;
+
+    var publishResult = await RequireDictionary(
+      DataShortcutCommands.CreateDataShortcutAsync(new JsonObject
+      {
+        ["objectType"] = objectType,
+        ["objectName"] = objectName,
+        ["description"] = description,
+        ["projectFolder"] = projectFolder,
+      }),
+      "createDataShortcut");
+
+    var syncResult = await RequireDictionary(
+      DataShortcutCommands.SyncDataShortcutsAsync(new JsonObject
+      {
+        ["projectFolder"] = projectFolder,
+        ["shortcutNames"] = ToJsonArray(new[] { shortcutName }),
+        ["dryRun"] = dryRun,
+      }),
+      "syncDataShortcuts");
+
+    return WorkflowResult(
+      "data_shortcut_publish_sync",
+      $"Published and synchronized data shortcut '{shortcutName}'.",
+      new List<Dictionary<string, object?>>
+      {
+        WorkflowStep("Publish data shortcut", "project.data_shortcut_create", "completed", publishResult),
+        WorkflowStep("Synchronize published shortcut", "project.data_shortcut_sync", "completed", syncResult),
+      },
+      new Dictionary<string, object?>
+      {
+        ["publish"] = publishResult,
+        ["sync"] = syncResult,
+        ["shortcutName"] = shortcutName,
+      });
+  }
+
+  public static async Task<object?> DataShortcutReferenceSyncWorkflowAsync(JsonObject? parameters)
+  {
+    var projectFolder = PluginRuntime.GetRequiredString(parameters, "projectFolder");
+    var shortcutName = PluginRuntime.GetRequiredString(parameters, "shortcutName");
+    var shortcutType = PluginRuntime.GetRequiredString(parameters, "shortcutType");
+    var layer = PluginRuntime.GetOptionalString(parameters, "layer");
+    var dryRun = PluginRuntime.GetOptionalBool(parameters, "dryRun") ?? false;
+
+    var referenceResult = await RequireDictionary(
+      DataShortcutCommands.ReferenceDataShortcutAsync(new JsonObject
+      {
+        ["projectFolder"] = projectFolder,
+        ["shortcutName"] = shortcutName,
+        ["shortcutType"] = shortcutType,
+        ["layer"] = layer,
+      }),
+      "referenceDataShortcut");
+    var syncResult = await RequireDictionary(
+      DataShortcutCommands.SyncDataShortcutsAsync(new JsonObject
+      {
+        ["projectFolder"] = projectFolder,
+        ["shortcutNames"] = ToJsonArray(new[] { shortcutName }),
+        ["dryRun"] = dryRun,
+      }),
+      "syncDataShortcuts");
+
+    return WorkflowResult(
+      "data_shortcut_reference_sync",
+      $"Referenced and synchronized data shortcut '{shortcutName}'.",
+      new List<Dictionary<string, object?>>
+      {
+        WorkflowStep("Reference project data shortcut", "project.data_shortcut_reference", "completed", referenceResult),
+        WorkflowStep("Synchronize referenced shortcut", "project.data_shortcut_sync", "completed", syncResult),
+      },
+      new Dictionary<string, object?>
+      {
+        ["reference"] = referenceResult,
+        ["sync"] = syncResult,
+      });
+  }
+
   public static async Task<object?> ProjectStartupWorkflowAsync(JsonObject? parameters)
   {
     var templatePath = PluginRuntime.GetOptionalString(parameters, "templatePath");
@@ -140,13 +225,12 @@ public static class WorkflowCommands
     var drawingInfoResult = await RequireDictionary(DrawingCommands.GetDrawingInfoAsync(), "getDrawingInfo");
     var drawingSettingsResult = await RequireDictionary(DrawingCommands.GetDrawingSettingsAsync(), "getDrawingSettings");
     var objectTypesResult = await DrawingCommands.ListCivilObjectTypesAsync();
+    var dataShortcutsResult = await RequireDictionary(DataShortcutCommands.ListDataShortcutsAsync(), "listDataShortcuts");
 
     steps.Add(WorkflowStep("Inspect drawing info", "drawing.info", "completed", drawingInfoResult));
     steps.Add(WorkflowStep("Inspect drawing settings", "drawing.settings", "completed", drawingSettingsResult));
     steps.Add(WorkflowStep("List Civil 3D object types", "drawing.list_object_types", "completed", objectTypesResult));
-
-    warnings.Add("Project data-shortcut listing is not yet implemented in the native plugin workflow layer, so that step was skipped.");
-    steps.Add(WorkflowStep("List project data shortcuts", "project.data_shortcut_list", "skipped"));
+    steps.Add(WorkflowStep("List project data shortcuts", "project.data_shortcut_list", "completed", dataShortcutsResult));
 
     object? saveResult = null;
     if (!string.IsNullOrWhiteSpace(saveAs))
@@ -172,10 +256,86 @@ public static class WorkflowCommands
         ["drawingInfo"] = drawingInfoResult,
         ["drawingSettings"] = drawingSettingsResult,
         ["objectTypes"] = objectTypesResult,
-        ["dataShortcuts"] = null,
+        ["dataShortcuts"] = dataShortcutsResult,
         ["save"] = saveResult,
       },
       warnings);
+  }
+
+  public static async Task<object?> ProjectReferenceSetupWorkflowAsync(JsonObject? parameters)
+  {
+    if (PluginRuntime.GetParameter(parameters, "references") is not JsonArray referencesArray || referencesArray.Count == 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "projectReferenceSetupWorkflow requires at least one reference.");
+    }
+
+    var dryRun = PluginRuntime.GetOptionalBool(parameters, "dryRun") ?? false;
+    var saveAs = PluginRuntime.GetOptionalString(parameters, "saveAs");
+    var referenceResults = new List<object?>();
+    var steps = new List<Dictionary<string, object?>>();
+    var shortcutNames = new List<string>();
+    string? syncProjectFolder = null;
+
+    foreach (var referenceNode in referencesArray.OfType<JsonObject>())
+    {
+      var projectFolder = PluginRuntime.GetRequiredString(referenceNode, "projectFolder");
+      var shortcutName = PluginRuntime.GetRequiredString(referenceNode, "shortcutName");
+      var shortcutType = PluginRuntime.GetRequiredString(referenceNode, "shortcutType");
+      var layer = PluginRuntime.GetOptionalString(referenceNode, "layer");
+
+      syncProjectFolder ??= projectFolder;
+      shortcutNames.Add(shortcutName);
+
+      var result = await RequireDictionary(
+        DataShortcutCommands.ReferenceDataShortcutAsync(new JsonObject
+        {
+          ["projectFolder"] = projectFolder,
+          ["shortcutName"] = shortcutName,
+          ["shortcutType"] = shortcutType,
+          ["layer"] = layer,
+        }),
+        $"referenceDataShortcut.{shortcutName}");
+      referenceResults.Add(result);
+      steps.Add(WorkflowStep($"Reference data shortcut '{shortcutName}'", "project.data_shortcut_reference", "completed", result));
+    }
+
+    var syncResult = await RequireDictionary(
+      DataShortcutCommands.SyncDataShortcutsAsync(new JsonObject
+      {
+        ["projectFolder"] = syncProjectFolder,
+        ["shortcutNames"] = ToJsonArray(shortcutNames),
+        ["dryRun"] = dryRun,
+      }),
+      "syncDataShortcuts");
+    steps.Add(WorkflowStep("Synchronize referenced shortcuts", "project.data_shortcut_sync", "completed", syncResult));
+
+    var dataShortcutsResult = await RequireDictionary(DataShortcutCommands.ListDataShortcutsAsync(), "listDataShortcuts");
+    steps.Add(WorkflowStep("List data shortcuts after setup", "project.data_shortcut_list", "completed", dataShortcutsResult));
+
+    object? saveResult = null;
+    if (!string.IsNullOrWhiteSpace(saveAs))
+    {
+      saveResult = await RequireDictionary(
+        DrawingCommands.SaveDrawingAsync(new JsonObject { ["saveAs"] = saveAs }),
+        "saveDrawing");
+      steps.Add(WorkflowStep("Save drawing after reference setup", "drawing.save", "completed", saveResult));
+    }
+    else
+    {
+      steps.Add(WorkflowStep("Save drawing after reference setup", "drawing.save", "skipped"));
+    }
+
+    return WorkflowResult(
+      "project_reference_setup",
+      $"Completed project reference setup for {shortcutNames.Count} data shortcut(s).",
+      steps,
+      new Dictionary<string, object?>
+      {
+        ["references"] = referenceResults,
+        ["sync"] = syncResult,
+        ["dataShortcuts"] = dataShortcutsResult,
+        ["save"] = saveResult,
+      });
   }
 
   public static async Task<object?> DrawingReadinessAuditWorkflowAsync(JsonObject? parameters)
@@ -474,6 +634,17 @@ public static class WorkflowCommands
       .Where(value => !string.IsNullOrWhiteSpace(value))
       .Cast<string>()
       .ToList();
+  }
+
+  private static JsonArray ToJsonArray(IEnumerable<string> values)
+  {
+    var array = new JsonArray();
+    foreach (var value in values)
+    {
+      array.Add(value);
+    }
+
+    return array;
   }
 
   private static class JsonSerializerHelper

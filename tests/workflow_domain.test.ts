@@ -144,18 +144,17 @@ describe("workflow domain execution", () => {
 
   it("publishes and synchronizes a data shortcut", async () => {
     sendCommandMock.mockImplementation(async (commandName: string, args: Record<string, unknown>) => {
-      if (commandName === "createDataShortcut") {
+      if (commandName === "dataShortcutPublishSyncWorkflow") {
         return {
-          objectName: args.objectName,
-          objectType: args.objectType,
-          created: true,
-        };
-      }
-      if (commandName === "syncDataShortcuts") {
-        return {
-          projectFolder: args.projectFolder,
-          shortcutNames: args.shortcutNames,
-          synced: true,
+          workflow: "data_shortcut_publish_sync",
+          status: "completed",
+          summary: "Published and synchronized data shortcut 'FG'.",
+          steps: [
+            { name: "Publish data shortcut", action: "project.data_shortcut_create", status: "completed" },
+            { name: "Synchronize published shortcut", action: "project.data_shortcut_sync", status: "completed" },
+          ],
+          outputs: { shortcutName: "FG" },
+          warnings: [],
         };
       }
       throw new Error(`Unexpected command: ${commandName}`);
@@ -168,16 +167,13 @@ describe("workflow domain execution", () => {
       projectFolder: "C:/Projects/Roadway",
     });
 
-    expect(sendCommandMock).toHaveBeenCalledWith("createDataShortcut", {
+    expect(sendCommandMock).toHaveBeenCalledWith("dataShortcutPublishSyncWorkflow", {
       objectType: "surface",
       objectName: "FG",
-      description: null,
+      shortcutName: undefined,
+      description: undefined,
       projectFolder: "C:/Projects/Roadway",
-    });
-    expect(sendCommandMock).toHaveBeenCalledWith("syncDataShortcuts", {
-      projectFolder: "C:/Projects/Roadway",
-      shortcutNames: ["FG"],
-      dryRun: false,
+      dryRun: undefined,
     });
     expect(result.status).toBe("completed");
     expect(result.outputs.shortcutName).toBe("FG");
@@ -185,16 +181,17 @@ describe("workflow domain execution", () => {
 
   it("references and synchronizes a data shortcut", async () => {
     sendCommandMock.mockImplementation(async (commandName: string, args: Record<string, unknown>) => {
-      if (commandName === "referenceDataShortcut") {
+      if (commandName === "dataShortcutReferenceSyncWorkflow") {
         return {
-          shortcutName: args.shortcutName,
-          referenced: true,
-        };
-      }
-      if (commandName === "syncDataShortcuts") {
-        return {
-          shortcutNames: args.shortcutNames,
-          synced: true,
+          workflow: "data_shortcut_reference_sync",
+          status: "completed",
+          summary: "Referenced and synchronized data shortcut 'FG'.",
+          steps: [
+            { name: "Reference project data shortcut", action: "project.data_shortcut_reference", status: "completed" },
+            { name: "Synchronize referenced shortcut", action: "project.data_shortcut_sync", status: "completed" },
+          ],
+          outputs: { reference: { shortcutName: args.shortcutName }, sync: { shortcutNames: [args.shortcutName] } },
+          warnings: [],
         };
       }
       throw new Error(`Unexpected command: ${commandName}`);
@@ -207,16 +204,12 @@ describe("workflow domain execution", () => {
       shortcutType: "surface",
     });
 
-    expect(sendCommandMock).toHaveBeenCalledWith("referenceDataShortcut", {
+    expect(sendCommandMock).toHaveBeenCalledWith("dataShortcutReferenceSyncWorkflow", {
       projectFolder: "C:/Projects/Roadway",
       shortcutName: "FG",
       shortcutType: "surface",
-      layer: null,
-    });
-    expect(sendCommandMock).toHaveBeenCalledWith("syncDataShortcuts", {
-      projectFolder: "C:/Projects/Roadway",
-      shortcutNames: ["FG"],
-      dryRun: false,
+      layer: undefined,
+      dryRun: undefined,
     });
     expect(result.status).toBe("completed");
     expect(result.steps.map((step) => step.action)).toEqual([
@@ -231,7 +224,7 @@ describe("workflow domain execution", () => {
         case "projectStartupWorkflow":
           return {
             workflow: "project_startup",
-            status: "completed_with_warnings",
+            status: "completed",
             summary: "Completed project startup and drawing readiness workflow.",
             steps: [
               { name: "Check Civil 3D health", action: "plugin.health", status: "completed" },
@@ -239,14 +232,14 @@ describe("workflow domain execution", () => {
               { name: "Inspect drawing info", action: "drawing.info", status: "completed" },
               { name: "Inspect drawing settings", action: "drawing.settings", status: "completed" },
               { name: "List Civil 3D object types", action: "drawing.list_object_types", status: "completed" },
-              { name: "List project data shortcuts", action: "project.data_shortcut_list", status: "skipped" },
+              { name: "List project data shortcuts", action: "project.data_shortcut_list", status: "completed" },
               { name: "Save startup drawing", action: "drawing.save", status: "completed" },
             ],
             outputs: {
               health: { connected: true },
               save: { saved: true, saveAs: args.saveAs },
             },
-            warnings: ["Project data-shortcut listing is not yet implemented in the native plugin workflow layer, so that step was skipped."],
+            warnings: [],
           };
         default:
           throw new Error(`Unexpected command: ${commandName}`);
@@ -263,7 +256,7 @@ describe("workflow domain execution", () => {
       templatePath: "C:/templates/civil3d.dwt",
       saveAs: "C:/projects/startup.dwg",
     });
-    expect(result.status).toBe("completed_with_warnings");
+    expect(result.status).toBe("completed");
     expect(result.steps.map((step) => step.action)).toEqual([
       "plugin.health",
       "drawing.new",
@@ -280,14 +273,24 @@ describe("workflow domain execution", () => {
   it("references multiple project shortcuts, syncs them, and saves the drawing", async () => {
     sendCommandMock.mockImplementation(async (commandName: string, args: Record<string, unknown>) => {
       switch (commandName) {
-        case "referenceDataShortcut":
-          return { shortcutName: args.shortcutName, referenced: true };
-        case "syncDataShortcuts":
-          return { shortcutNames: args.shortcutNames, synced: true };
-        case "listDataShortcuts":
-          return { incoming: [{ objectName: "FG", objectType: "surface", sourceFilePath: "C:/p/fg.dwg", isSynced: true, isValid: true }], exportable: [] };
-        case "saveDrawing":
-          return { saved: true, saveAs: args.saveAs };
+        case "projectReferenceSetupWorkflow":
+          return {
+            workflow: "project_reference_setup",
+            status: "completed",
+            summary: "Completed project reference setup for 2 data shortcut(s).",
+            steps: [
+              { name: "Reference data shortcut 'FG'", action: "project.data_shortcut_reference", status: "completed" },
+              { name: "Reference data shortcut 'CL-1'", action: "project.data_shortcut_reference", status: "completed" },
+              { name: "Synchronize referenced shortcuts", action: "project.data_shortcut_sync", status: "completed" },
+              { name: "List data shortcuts after setup", action: "project.data_shortcut_list", status: "completed" },
+              { name: "Save drawing after reference setup", action: "drawing.save", status: "completed" },
+            ],
+            outputs: {
+              references: [{ shortcutName: "FG" }, { shortcutName: "CL-1" }],
+              save: { saved: true, saveAs: args.saveAs },
+            },
+            warnings: [],
+          };
         default:
           throw new Error(`Unexpected command: ${commandName}`);
       }
@@ -302,6 +305,14 @@ describe("workflow domain execution", () => {
       saveAs: "C:/Projects/Roadway/ref-setup.dwg",
     });
 
+    expect(sendCommandMock).toHaveBeenCalledWith("projectReferenceSetupWorkflow", {
+      references: [
+        { projectFolder: "C:/Projects/Roadway", shortcutName: "FG", shortcutType: "surface" },
+        { projectFolder: "C:/Projects/Roadway", shortcutName: "CL-1", shortcutType: "alignment" },
+      ],
+      dryRun: undefined,
+      saveAs: "C:/Projects/Roadway/ref-setup.dwg",
+    });
     expect(result.status).toBe("completed");
     expect(result.steps.map((step) => step.action)).toEqual([
       "project.data_shortcut_reference",
