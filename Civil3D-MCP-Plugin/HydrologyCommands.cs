@@ -51,12 +51,120 @@ public static class HydrologyCommands
           ["status"] = "implemented",
           ["description"] = "Estimates peak runoff with the Rational Method using user-provided drainage area, runoff coefficient, and rainfall intensity.",
         },
+        new()
+        {
+          ["name"] = "list_catchment_groups",
+          ["status"] = "implemented",
+          ["description"] = "Lists Civil 3D catchment groups available in the active drawing.",
+        },
+        new()
+        {
+          ["name"] = "get_catchment_group",
+          ["status"] = "implemented",
+          ["description"] = "Gets a detailed summary for a specific catchment group.",
+        },
+        new()
+        {
+          ["name"] = "list_catchments",
+          ["status"] = "implemented",
+          ["description"] = "Lists catchments in the active drawing together with their containing groups.",
+        },
+        new()
+        {
+          ["name"] = "get_catchment_properties",
+          ["status"] = "implemented",
+          ["description"] = "Reads detailed properties for a specific catchment.",
+        },
+        new()
+        {
+          ["name"] = "set_catchment_properties",
+          ["status"] = "implemented",
+          ["description"] = "Updates supported catchment properties such as runoff coefficient, Manning's coefficient, curve number, description, or name.",
+        },
+        new()
+        {
+          ["name"] = "copy_catchment_to_group",
+          ["status"] = "implemented",
+          ["description"] = "Copies a catchment into another catchment group.",
+        },
+        new()
+        {
+          ["name"] = "get_catchment_flow_path",
+          ["status"] = "implemented",
+          ["description"] = "Returns the stored flow path geometry for a catchment when available.",
+        },
+        new()
+        {
+          ["name"] = "get_catchment_boundary",
+          ["status"] = "implemented",
+          ["description"] = "Returns the stored boundary geometry for a catchment when available.",
+        },
+        new()
+        {
+          ["name"] = "list_tc_methods",
+          ["status"] = "implemented",
+          ["description"] = "Lists supported time-of-concentration methods and their required inputs.",
+        },
+        new()
+        {
+          ["name"] = "calculate_tc",
+          ["status"] = "implemented",
+          ["description"] = "Calculates time of concentration using supported hydrology formulas such as Kirpich, TR-55, FAA, and NRCS lag.",
+        },
+        new()
+        {
+          ["name"] = "generate_hydrograph",
+          ["status"] = "implemented",
+          ["description"] = "Generates supported hydrograph outputs from drainage area, runoff depth, and time of concentration inputs.",
+        },
+        new()
+        {
+          ["name"] = "list_ssa_capabilities",
+          ["status"] = "implemented",
+          ["description"] = "Lists supported Storm and Sanitary Analysis interoperability actions.",
+        },
+        new()
+        {
+          ["name"] = "export_stm",
+          ["status"] = "implemented",
+          ["description"] = "Exports Storm and Sanitary Analysis data to an STM file.",
+        },
+        new()
+        {
+          ["name"] = "import_stm",
+          ["status"] = "implemented",
+          ["description"] = "Imports Storm and Sanitary Analysis data from an STM file.",
+        },
+        new()
+        {
+          ["name"] = "open_storm_sanitary_analysis",
+          ["status"] = "implemented",
+          ["description"] = "Launches Storm and Sanitary Analysis from the active Civil 3D session.",
+        },
+        new()
+        {
+          ["name"] = "watershed_runoff_workflow",
+          ["status"] = "implemented",
+          ["description"] = "Runs a combined low-point, watershed, catchment-area, and Rational Method runoff workflow.",
+        },
+        new()
+        {
+          ["name"] = "runoff_detention_workflow",
+          ["status"] = "implemented",
+          ["description"] = "Runs a combined runoff-to-detention sizing workflow and can optionally generate stage-storage output.",
+        },
+        new()
+        {
+          ["name"] = "runoff_pipe_workflow",
+          ["status"] = "implemented",
+          ["description"] = "Runs a combined runoff-to-pipe-network workflow including HGL and hydraulic capacity analysis.",
+        },
       },
       ["notes"] = new List<string>
       {
-        "This MVP focuses on surface-based flow tracing and capability discovery.",
-        "Runoff estimation uses the Rational Method with user-supplied inputs and does not automatically delineate drainage areas.",
-        "Watershed delineation requires additional validated Civil 3D or drainage-specific workflows.",
+        "Surface tracing tools operate on sampled Civil 3D surface data and return approximate drainage behavior suitable for engineering workflows, not regulatory certification by themselves.",
+        "Catchment, Tc, SSA, detention, and pipe-network actions are exposed through the hydrology domain even when their underlying implementation lives in specialized helper command classes.",
+        "Hydrology workflow actions are now available as native plugin entry points that orchestrate the implemented lower-level commands and return combined results.",
       },
     });
   }
@@ -518,6 +626,276 @@ public static class HydrologyCommands
     });
   }
 
+  public static async Task<object?> WatershedRunoffWorkflowAsync(JsonObject? parameters)
+  {
+    var surfaceName = PluginRuntime.GetRequiredString(parameters, "surfaceName");
+    var runoffCoefficient = PluginRuntime.GetRequiredDouble(parameters, "runoffCoefficient");
+    var rainfallIntensity = PluginRuntime.GetRequiredDouble(parameters, "rainfallIntensity");
+    var intensityUnits = PluginRuntime.GetRequiredString(parameters, "intensityUnits");
+    var outletX = PluginRuntime.GetOptionalDouble(parameters, "outletX");
+    var outletY = PluginRuntime.GetOptionalDouble(parameters, "outletY");
+    var findLowPointSampleSpacing = PluginRuntime.GetOptionalDouble(parameters, "findLowPointSampleSpacing") ?? 25d;
+    var gridSpacing = PluginRuntime.GetOptionalDouble(parameters, "gridSpacing") ?? 10d;
+    var searchRadius = PluginRuntime.GetOptionalDouble(parameters, "searchRadius") ?? 100d;
+    var catchmentSampleSpacing = PluginRuntime.GetOptionalDouble(parameters, "catchmentSampleSpacing") ?? 15d;
+    var maxDistance = PluginRuntime.GetOptionalDouble(parameters, "maxDistance") ?? 200d;
+    var runoffAreaUnits = PluginRuntime.GetOptionalString(parameters, "runoffAreaUnits");
+
+    if (outletX.HasValue != outletY.HasValue)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "Provide both outletX and outletY, or omit both to auto-detect the low point.");
+    }
+
+    Dictionary<string, object?> outlet;
+
+    if (outletX.HasValue && outletY.HasValue)
+    {
+      outlet = new Dictionary<string, object?>
+      {
+        ["x"] = outletX.Value,
+        ["y"] = outletY.Value,
+        ["elevation"] = null,
+        ["source"] = "user_provided",
+        ["sampleSpacing"] = null,
+        ["sampledPointCount"] = null,
+      };
+    }
+    else
+    {
+      var lowPointResult = RequireDictionary(
+        await FindLowPointAsync(new JsonObject
+        {
+          ["surfaceName"] = surfaceName,
+          ["sampleSpacing"] = findLowPointSampleSpacing,
+        }),
+        "findHydrologyLowPoint");
+
+      var lowPoint = RequireDictionary(lowPointResult["lowPoint"], "findHydrologyLowPoint.lowPoint");
+      outlet = new Dictionary<string, object?>
+      {
+        ["x"] = RequireDouble(lowPoint["x"], "findHydrologyLowPoint.lowPoint.x"),
+        ["y"] = RequireDouble(lowPoint["y"], "findHydrologyLowPoint.lowPoint.y"),
+        ["elevation"] = RequireDouble(lowPoint["elevation"], "findHydrologyLowPoint.lowPoint.elevation"),
+        ["source"] = "auto_low_point",
+        ["sampleSpacing"] = RequireDouble(lowPointResult["sampleSpacing"], "findHydrologyLowPoint.sampleSpacing"),
+        ["sampledPointCount"] = RequireInteger(lowPointResult["sampledPointCount"], "findHydrologyLowPoint.sampledPointCount"),
+      };
+    }
+
+    var outletPointX = RequireDouble(outlet["x"], "workflow.outlet.x");
+    var outletPointY = RequireDouble(outlet["y"], "workflow.outlet.y");
+
+    var watershed = RequireDictionary(
+      await DelineateWatershedAsync(new JsonObject
+      {
+        ["surfaceName"] = surfaceName,
+        ["outletX"] = outletPointX,
+        ["outletY"] = outletPointY,
+        ["gridSpacing"] = gridSpacing,
+        ["searchRadius"] = searchRadius,
+      }),
+      "delineateWatershed");
+
+    var catchment = RequireDictionary(
+      await CalculateCatchmentAreaAsync(new JsonObject
+      {
+        ["surfaceName"] = surfaceName,
+        ["outletX"] = outletPointX,
+        ["outletY"] = outletPointY,
+        ["sampleSpacing"] = catchmentSampleSpacing,
+        ["maxDistance"] = maxDistance,
+      }),
+      "calculateCatchmentArea");
+
+    var drainageArea = ConvertCatchmentAreaForRunoff(
+      RequireDouble(catchment["catchmentArea"], "calculateCatchmentArea.catchmentArea"),
+      RequireNestedString(catchment, "units", "horizontal", "calculateCatchmentArea.units.horizontal"),
+      runoffAreaUnits);
+
+    var runoff = RequireDictionary(
+      await EstimateRunoffAsync(new JsonObject
+      {
+        ["drainageArea"] = drainageArea["convertedDrainageArea"] as double? ?? throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", "Converted drainage area is missing."),
+        ["runoffCoefficient"] = runoffCoefficient,
+        ["rainfallIntensity"] = rainfallIntensity,
+        ["areaUnits"] = drainageArea["convertedAreaUnits"] as string ?? throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", "Converted drainage area units are missing."),
+        ["intensityUnits"] = intensityUnits,
+      }),
+      "estimateHydrologyRunoff");
+
+    return new Dictionary<string, object?>
+    {
+      ["workflow"] = "watershed_to_runoff",
+      ["surfaceName"] = surfaceName,
+      ["outlet"] = outlet,
+      ["watershed"] = watershed,
+      ["catchment"] = catchment,
+      ["derivedDrainageArea"] = drainageArea,
+      ["runoffEstimate"] = runoff,
+    };
+  }
+
+  public static async Task<object?> RunoffDetentionWorkflowAsync(JsonObject? parameters)
+  {
+    var drainageArea = PluginRuntime.GetRequiredDouble(parameters, "drainageArea");
+    var areaUnits = PluginRuntime.GetRequiredString(parameters, "areaUnits");
+    var runoffCoefficient = PluginRuntime.GetRequiredDouble(parameters, "runoffCoefficient");
+    var rainfallIntensity = PluginRuntime.GetRequiredDouble(parameters, "rainfallIntensity");
+    var intensityUnits = PluginRuntime.GetRequiredString(parameters, "intensityUnits");
+    var allowableOutflow = PluginRuntime.GetRequiredDouble(parameters, "allowableOutflow");
+    var stormDuration = PluginRuntime.GetOptionalDouble(parameters, "stormDuration") ?? 60d;
+    var detentionMethod = PluginRuntime.GetOptionalString(parameters, "detentionMethod") ?? "modified_rational";
+    var sideSlope = PluginRuntime.GetOptionalDouble(parameters, "sideSlope") ?? 3d;
+    var bottomWidth = PluginRuntime.GetOptionalDouble(parameters, "bottomWidth") ?? 10d;
+    var freeboardDepth = PluginRuntime.GetOptionalDouble(parameters, "freeboardDepth") ?? 1d;
+    var basinSurfaceName = PluginRuntime.GetOptionalString(parameters, "basinSurfaceName");
+    var bottomElevation = PluginRuntime.GetOptionalDouble(parameters, "bottomElevation");
+    var topElevation = PluginRuntime.GetOptionalDouble(parameters, "topElevation");
+    var elevationIncrement = PluginRuntime.GetOptionalDouble(parameters, "elevationIncrement") ?? 0.5d;
+    var outletType = PluginRuntime.GetOptionalString(parameters, "outletType") ?? "orifice";
+    var outletDiameter = PluginRuntime.GetOptionalDouble(parameters, "outletDiameter");
+    var weirLength = PluginRuntime.GetOptionalDouble(parameters, "weirLength");
+    var dischargeCoefficient = PluginRuntime.GetOptionalDouble(parameters, "dischargeCoefficient");
+
+    var providedStageStorageFields = new object?[] { basinSurfaceName, bottomElevation, topElevation }.Count(value => value != null);
+    if (providedStageStorageFields > 0 && providedStageStorageFields < 3)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "Provide basinSurfaceName, bottomElevation, and topElevation together to generate stage-storage output.");
+    }
+
+    var runoff = RequireDictionary(
+      await EstimateRunoffAsync(new JsonObject
+      {
+        ["drainageArea"] = drainageArea,
+        ["runoffCoefficient"] = runoffCoefficient,
+        ["rainfallIntensity"] = rainfallIntensity,
+        ["areaUnits"] = areaUnits,
+        ["intensityUnits"] = intensityUnits,
+      }),
+      "estimateHydrologyRunoff");
+
+    var runoffRate = RequireDictionary(runoff["runoffRate"], "estimateHydrologyRunoff.runoffRate");
+    var detentionSizing = RequireDictionary(
+      await DetentionCommands.CalculateDetentionBasinSizeAsync(new JsonObject
+      {
+        ["inflow"] = RequireDouble(runoffRate["cfs"], "estimateHydrologyRunoff.runoffRate.cfs"),
+        ["outflow"] = allowableOutflow,
+        ["stormDuration"] = stormDuration,
+        ["method"] = detentionMethod,
+        ["sideSlope"] = sideSlope,
+        ["bottomWidth"] = bottomWidth,
+        ["freeboardDepth"] = freeboardDepth,
+        ["surfaceName"] = basinSurfaceName,
+      }),
+      "calculateDetentionBasinSize");
+
+    object? stageStorage = null;
+    if (basinSurfaceName != null && bottomElevation.HasValue && topElevation.HasValue)
+    {
+      stageStorage = RequireDictionary(
+        await DetentionCommands.CalculateDetentionStageStorageAsync(new JsonObject
+        {
+          ["surfaceName"] = basinSurfaceName,
+          ["bottomElevation"] = bottomElevation.Value,
+          ["topElevation"] = topElevation.Value,
+          ["elevationIncrement"] = elevationIncrement,
+          ["outletType"] = outletType,
+          ["outletDiameter"] = outletDiameter,
+          ["weirLength"] = weirLength,
+          ["dischargeCoefficient"] = dischargeCoefficient,
+        }),
+        "calculateDetentionStageStorage");
+    }
+
+    return new Dictionary<string, object?>
+    {
+      ["workflow"] = "runoff_to_detention",
+      ["inputHydrology"] = new Dictionary<string, object?>
+      {
+        ["drainageArea"] = drainageArea,
+        ["areaUnits"] = areaUnits,
+        ["runoffCoefficient"] = runoffCoefficient,
+        ["rainfallIntensity"] = rainfallIntensity,
+        ["intensityUnits"] = intensityUnits,
+      },
+      ["runoffEstimate"] = runoff,
+      ["detentionSizing"] = detentionSizing,
+      ["stageStorage"] = stageStorage,
+    };
+  }
+
+  public static async Task<object?> RunoffPipeWorkflowAsync(JsonObject? parameters)
+  {
+    var networkName = PluginRuntime.GetRequiredString(parameters, "networkName");
+    var drainageArea = PluginRuntime.GetRequiredDouble(parameters, "drainageArea");
+    var areaUnits = PluginRuntime.GetRequiredString(parameters, "areaUnits");
+    var runoffCoefficient = PluginRuntime.GetRequiredDouble(parameters, "runoffCoefficient");
+    var rainfallIntensity = PluginRuntime.GetRequiredDouble(parameters, "rainfallIntensity");
+    var intensityUnits = PluginRuntime.GetRequiredString(parameters, "intensityUnits");
+    var designFlowMultiplier = PluginRuntime.GetOptionalDouble(parameters, "designFlowMultiplier") ?? 1d;
+    var tailwaterElevation = PluginRuntime.GetOptionalDouble(parameters, "tailwaterElevation");
+    var manningsN = PluginRuntime.GetOptionalDouble(parameters, "manningsN") ?? 0.013d;
+    var minCoverDepth = PluginRuntime.GetOptionalDouble(parameters, "minCoverDepth") ?? 2d;
+    var minVelocity = PluginRuntime.GetOptionalDouble(parameters, "minVelocity") ?? 2d;
+    var maxVelocity = PluginRuntime.GetOptionalDouble(parameters, "maxVelocity") ?? 10d;
+    var minSlope = PluginRuntime.GetOptionalDouble(parameters, "minSlope") ?? 0.5d;
+
+    var runoff = RequireDictionary(
+      await EstimateRunoffAsync(new JsonObject
+      {
+        ["drainageArea"] = drainageArea,
+        ["runoffCoefficient"] = runoffCoefficient,
+        ["rainfallIntensity"] = rainfallIntensity,
+        ["areaUnits"] = areaUnits,
+        ["intensityUnits"] = intensityUnits,
+      }),
+      "estimateHydrologyRunoff");
+
+    var runoffRate = RequireDictionary(runoff["runoffRate"], "estimateHydrologyRunoff.runoffRate");
+    var designFlowCfs = RequireDouble(runoffRate["cfs"], "estimateHydrologyRunoff.runoffRate.cfs") * designFlowMultiplier;
+
+    var hglAnalysis = RequireDictionary(
+      await PipeHydraulicsCommands.CalculatePipeNetworkHglAsync(new JsonObject
+      {
+        ["networkName"] = networkName,
+        ["tailwaterElevation"] = tailwaterElevation,
+        ["designFlow"] = designFlowCfs,
+        ["manningsN"] = manningsN,
+      }),
+      "calculatePipeNetworkHgl");
+
+    var hydraulicAnalysis = RequireDictionary(
+      await PipeHydraulicsCommands.AnalyzePipeNetworkHydraulicsAsync(new JsonObject
+      {
+        ["networkName"] = networkName,
+        ["designFlow"] = designFlowCfs,
+        ["manningsN"] = manningsN,
+        ["minCoverDepth"] = minCoverDepth,
+        ["minVelocity"] = minVelocity,
+        ["maxVelocity"] = maxVelocity,
+        ["minSlope"] = minSlope,
+      }),
+      "analyzePipeNetworkHydraulics");
+
+    return new Dictionary<string, object?>
+    {
+      ["workflow"] = "runoff_to_pipe_network",
+      ["networkName"] = networkName,
+      ["inputHydrology"] = new Dictionary<string, object?>
+      {
+        ["drainageArea"] = drainageArea,
+        ["areaUnits"] = areaUnits,
+        ["runoffCoefficient"] = runoffCoefficient,
+        ["rainfallIntensity"] = rainfallIntensity,
+        ["intensityUnits"] = intensityUnits,
+      },
+      ["runoffEstimate"] = runoff,
+      ["designFlowCfs"] = designFlowCfs,
+      ["hglAnalysis"] = hglAnalysis,
+      ["hydraulicAnalysis"] = hydraulicAnalysis,
+    };
+  }
+
   private static (bool ReachesOutlet, int Steps) TraceFlowToOutlet(CivilSurface surface, double startX, double startY, double outletX, double outletY, double stepDistance, int maxSteps)
   {
     var currentX = startX;
@@ -613,5 +991,100 @@ public static class HydrologyCommands
     }
     
     return Math.Abs(area) / 2d;
+  }
+
+  private static Dictionary<string, object?> RequireDictionary(object? value, string context)
+  {
+    if (value is Dictionary<string, object?> dictionary)
+    {
+      return dictionary;
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Expected '{context}' to return an object result.");
+  }
+
+  private static double RequireDouble(object? value, string context)
+  {
+    return value switch
+    {
+      double doubleValue => doubleValue,
+      float floatValue => floatValue,
+      decimal decimalValue => (double)decimalValue,
+      int intValue => intValue,
+      long longValue => longValue,
+      _ => throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Expected '{context}' to contain a numeric value."),
+    };
+  }
+
+  private static int RequireInteger(object? value, string context)
+  {
+    return value switch
+    {
+      int intValue => intValue,
+      long longValue => checked((int)longValue),
+      double doubleValue => checked((int)doubleValue),
+      _ => throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Expected '{context}' to contain an integer value."),
+    };
+  }
+
+  private static string RequireNestedString(Dictionary<string, object?> dictionary, string objectKey, string valueKey, string context)
+  {
+    var nested = RequireDictionary(dictionary[objectKey], $"{context}.parent");
+    if (nested[valueKey] is string stringValue && !string.IsNullOrWhiteSpace(stringValue))
+    {
+      return stringValue;
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", $"Expected '{context}' to contain a non-empty string value.");
+  }
+
+  private static Dictionary<string, object?> ConvertCatchmentAreaForRunoff(double catchmentArea, string horizontalUnits, string? requestedAreaUnits)
+  {
+    var normalizedUnits = horizontalUnits.Trim().ToLowerInvariant();
+    var targetAreaUnits = requestedAreaUnits ?? normalizedUnits switch
+    {
+      "meters" => "hectares",
+      "feet" => "acres",
+      _ => null,
+    };
+
+    if (targetAreaUnits == null)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Unsupported drawing linear units '{horizontalUnits}' for automatic runoff area conversion. Use a feet- or meters-based drawing.");
+    }
+
+    if (normalizedUnits == "feet")
+    {
+      var drainageAreaAcres = catchmentArea / 43560.0;
+      var drainageAreaHectares = catchmentArea * 0.09290304 / 10000.0;
+      return new Dictionary<string, object?>
+      {
+        ["horizontalUnits"] = horizontalUnits,
+        ["sourceArea"] = catchmentArea,
+        ["sourceAreaUnits"] = "square_feet",
+        ["convertedDrainageArea"] = targetAreaUnits == "acres" ? drainageAreaAcres : drainageAreaHectares,
+        ["convertedAreaUnits"] = targetAreaUnits,
+        ["drainageAreaAcres"] = drainageAreaAcres,
+        ["drainageAreaHectares"] = drainageAreaHectares,
+      };
+    }
+
+    if (normalizedUnits == "meters")
+    {
+      var drainageAreaAcres = catchmentArea / 4046.8564224;
+      var drainageAreaHectares = catchmentArea / 10000.0;
+      return new Dictionary<string, object?>
+      {
+        ["horizontalUnits"] = horizontalUnits,
+        ["sourceArea"] = catchmentArea,
+        ["sourceAreaUnits"] = "square_meters",
+        ["convertedDrainageArea"] = targetAreaUnits == "acres" ? drainageAreaAcres : drainageAreaHectares,
+        ["convertedAreaUnits"] = targetAreaUnits,
+        ["drainageAreaAcres"] = drainageAreaAcres,
+        ["drainageAreaHectares"] = drainageAreaHectares,
+      };
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Unsupported drawing linear units '{horizontalUnits}' for automatic runoff area conversion. Use a feet- or meters-based drawing.");
   }
 }

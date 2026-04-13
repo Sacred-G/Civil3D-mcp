@@ -1,21 +1,44 @@
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { withApplicationConnection } from "../utils/ConnectionManager.js";
-import { routeIntent } from "../orchestration/IntentRouter.js";
+import { routeIntent, type RouteParams, type RouteResult } from "../orchestration/IntentRouter.js";
+import { findToolCatalogEntry } from "../orchestration/ToolCatalog.js";
 import { getProjectContext } from "../orchestration/ProjectContextService.js";
 import { buildWorkflowPlan } from "../orchestration/WorkflowPlanner.js";
 import { resolveParamsFromSelection } from "../orchestration/SelectionResolver.js";
-import { RouteParams } from "../orchestration/IntentRouter.js";
-import { listDomains, listToolCatalog } from "./tool_catalog.js";
+import { executeRegisteredTool } from "./toolHandlerRegistry.js";
 
 const Civil3DOrchestrateInputShape = {
-  request: z.string().min(1).describe("Natural-language Civil 3D request."),
+  request: z.string().min(1).optional().describe("Natural-language Civil 3D request."),
   execute: z.boolean().optional().describe("When true, execute the selected action if enough parameters are available."),
+  toolName: z.string().optional().describe("Exact registered tool name to plan or execute through the orchestrator."),
+  toolAction: z.string().optional().describe("Optional exact action when targeting a multi-action tool directly."),
+  toolParameters: z.record(z.unknown()).optional().describe("Optional exact tool parameters when targeting a tool directly."),
   name: z.string().optional(),
   alignmentName: z.string().optional(),
   corridorName: z.string().optional(),
   profileName: z.string().optional(),
   surfaceName: z.string().optional(),
+  projectFolder: z.string().optional(),
+  shortcutName: z.string().optional(),
+  shortcutType: z.string().optional(),
+  templatePath: z.string().optional(),
+  saveAs: z.string().optional(),
+  limit: z.number().optional(),
+  layerPrefix: z.string().optional(),
+  networkName: z.string().optional(),
+  pipeName: z.string().optional(),
+  structureName: z.string().optional(),
+  fittingName: z.string().optional(),
+  partName: z.string().optional(),
+  partsList: z.string().optional(),
+  targetType: z.string().optional(),
+  targetName: z.string().optional(),
+  targetNetwork: z.string().optional(),
+  sourceNetwork: z.string().optional(),
+  newPartName: z.string().optional(),
+  startPoint: z.object({ x: z.number(), y: z.number(), z: z.number().optional() }).optional(),
+  endPoint: z.object({ x: z.number(), y: z.number(), z: z.number().optional() }).optional(),
+  position: z.object({ x: z.number(), y: z.number(), z: z.number().optional() }).optional(),
   baseSurface: z.string().optional(),
   comparisonSurface: z.string().optional(),
   style: z.string().optional(),
@@ -29,6 +52,8 @@ const Civil3DOrchestrateInputShape = {
   outflow: z.number().optional(),
   bottomElevation: z.number().optional(),
   topElevation: z.number().optional(),
+  minCoverDepth: z.number().optional(),
+  maxCoverDepth: z.number().optional(),
   payItems: z.array(
     z.object({
       code: z.string(),
@@ -43,6 +68,65 @@ const Civil3DOrchestrateInputSchema = z.object(Civil3DOrchestrateInputShape);
 
 export type OrchestrateArgs = z.infer<typeof Civil3DOrchestrateInputSchema>;
 
+const ROUTE_PARAM_KEYS: Array<keyof RouteParams> = [
+  "name",
+  "alignmentName",
+  "corridorName",
+  "profileName",
+  "surfaceName",
+  "projectFolder",
+  "shortcutName",
+  "shortcutType",
+  "templatePath",
+  "saveAs",
+  "limit",
+  "layerPrefix",
+  "networkName",
+  "pipeName",
+  "structureName",
+  "fittingName",
+  "partName",
+  "partsList",
+  "targetType",
+  "targetName",
+  "targetNetwork",
+  "sourceNetwork",
+  "newPartName",
+  "startPoint",
+  "endPoint",
+  "position",
+  "baseSurface",
+  "comparisonSurface",
+  "style",
+  "layer",
+  "labelSet",
+  "filePath",
+  "outputPath",
+  "gridSpacing",
+  "designSpeed",
+  "inflow",
+  "outflow",
+  "bottomElevation",
+  "topElevation",
+  "minCoverDepth",
+  "maxCoverDepth",
+  "payItems",
+];
+
+function pickRouteParams(
+  source?: Record<string, unknown>,
+): Partial<RouteParams> {
+  if (!source) {
+    return {};
+  }
+
+  return Object.fromEntries(
+    ROUTE_PARAM_KEYS
+      .filter((key) => source[key] !== undefined)
+      .map((key) => [key, source[key]]),
+  ) as Partial<RouteParams>;
+}
+
 function buildMergedParams(args: OrchestrateArgs, routed: ReturnType<typeof routeIntent>) {
   return {
     name: args.name ?? routed.extractedParams.name,
@@ -50,6 +134,27 @@ function buildMergedParams(args: OrchestrateArgs, routed: ReturnType<typeof rout
     corridorName: args.corridorName ?? routed.extractedParams.corridorName,
     profileName: args.profileName ?? routed.extractedParams.profileName,
     surfaceName: args.surfaceName ?? routed.extractedParams.surfaceName,
+    projectFolder: args.projectFolder ?? routed.extractedParams.projectFolder,
+    shortcutName: args.shortcutName ?? routed.extractedParams.shortcutName,
+    shortcutType: args.shortcutType ?? routed.extractedParams.shortcutType,
+    templatePath: args.templatePath ?? routed.extractedParams.templatePath,
+    saveAs: args.saveAs ?? routed.extractedParams.saveAs,
+    limit: args.limit ?? routed.extractedParams.limit,
+    layerPrefix: args.layerPrefix ?? routed.extractedParams.layerPrefix,
+    networkName: args.networkName ?? routed.extractedParams.networkName,
+    pipeName: args.pipeName ?? routed.extractedParams.pipeName,
+    structureName: args.structureName ?? routed.extractedParams.structureName,
+    fittingName: args.fittingName ?? routed.extractedParams.fittingName,
+    partName: args.partName ?? routed.extractedParams.partName,
+    partsList: args.partsList ?? routed.extractedParams.partsList,
+    targetType: args.targetType ?? routed.extractedParams.targetType,
+    targetName: args.targetName ?? routed.extractedParams.targetName,
+    targetNetwork: args.targetNetwork ?? routed.extractedParams.targetNetwork,
+    sourceNetwork: args.sourceNetwork ?? routed.extractedParams.sourceNetwork,
+    newPartName: args.newPartName ?? routed.extractedParams.newPartName,
+    startPoint: args.startPoint ?? routed.extractedParams.startPoint,
+    endPoint: args.endPoint ?? routed.extractedParams.endPoint,
+    position: args.position ?? routed.extractedParams.position,
     baseSurface: args.baseSurface ?? routed.extractedParams.baseSurface,
     comparisonSurface: args.comparisonSurface ?? routed.extractedParams.comparisonSurface,
     style: args.style ?? routed.extractedParams.style,
@@ -63,8 +168,137 @@ function buildMergedParams(args: OrchestrateArgs, routed: ReturnType<typeof rout
     outflow: args.outflow ?? routed.extractedParams.outflow,
     bottomElevation: args.bottomElevation ?? routed.extractedParams.bottomElevation,
     topElevation: args.topElevation ?? routed.extractedParams.topElevation,
+    minCoverDepth: args.minCoverDepth ?? routed.extractedParams.minCoverDepth,
+    maxCoverDepth: args.maxCoverDepth ?? routed.extractedParams.maxCoverDepth,
     payItems: args.payItems ?? routed.extractedParams.payItems,
   };
+}
+
+function buildDirectParams(args: OrchestrateArgs): RouteParams {
+  const extractedRequestParams = args.request ? routeIntent(args.request).extractedParams : {};
+
+  return {
+    ...extractedRequestParams,
+    name: args.name ?? extractedRequestParams.name,
+    alignmentName: args.alignmentName ?? extractedRequestParams.alignmentName,
+    corridorName: args.corridorName ?? extractedRequestParams.corridorName,
+    profileName: args.profileName ?? extractedRequestParams.profileName,
+    surfaceName: args.surfaceName ?? extractedRequestParams.surfaceName,
+    projectFolder: args.projectFolder ?? extractedRequestParams.projectFolder,
+    shortcutName: args.shortcutName ?? extractedRequestParams.shortcutName,
+    shortcutType: args.shortcutType ?? extractedRequestParams.shortcutType,
+    templatePath: args.templatePath ?? extractedRequestParams.templatePath,
+    saveAs: args.saveAs ?? extractedRequestParams.saveAs,
+    limit: args.limit ?? extractedRequestParams.limit,
+    layerPrefix: args.layerPrefix ?? extractedRequestParams.layerPrefix,
+    networkName: args.networkName ?? extractedRequestParams.networkName,
+    pipeName: args.pipeName ?? extractedRequestParams.pipeName,
+    structureName: args.structureName ?? extractedRequestParams.structureName,
+    fittingName: args.fittingName ?? extractedRequestParams.fittingName,
+    partName: args.partName ?? extractedRequestParams.partName,
+    partsList: args.partsList ?? extractedRequestParams.partsList,
+    targetType: args.targetType ?? extractedRequestParams.targetType,
+    targetName: args.targetName ?? extractedRequestParams.targetName,
+    targetNetwork: args.targetNetwork ?? extractedRequestParams.targetNetwork,
+    sourceNetwork: args.sourceNetwork ?? extractedRequestParams.sourceNetwork,
+    newPartName: args.newPartName ?? extractedRequestParams.newPartName,
+    startPoint: args.startPoint ?? extractedRequestParams.startPoint,
+    endPoint: args.endPoint ?? extractedRequestParams.endPoint,
+    position: args.position ?? extractedRequestParams.position,
+    baseSurface: args.baseSurface ?? extractedRequestParams.baseSurface,
+    comparisonSurface: args.comparisonSurface ?? extractedRequestParams.comparisonSurface,
+    style: args.style ?? extractedRequestParams.style,
+    layer: args.layer ?? extractedRequestParams.layer,
+    labelSet: args.labelSet ?? extractedRequestParams.labelSet,
+    filePath: args.filePath ?? extractedRequestParams.filePath,
+    outputPath: args.outputPath ?? extractedRequestParams.outputPath,
+    gridSpacing: args.gridSpacing ?? extractedRequestParams.gridSpacing,
+    designSpeed: args.designSpeed ?? extractedRequestParams.designSpeed,
+    inflow: args.inflow ?? extractedRequestParams.inflow,
+    outflow: args.outflow ?? extractedRequestParams.outflow,
+    bottomElevation: args.bottomElevation ?? extractedRequestParams.bottomElevation,
+    topElevation: args.topElevation ?? extractedRequestParams.topElevation,
+    minCoverDepth: args.minCoverDepth ?? extractedRequestParams.minCoverDepth,
+    maxCoverDepth: args.maxCoverDepth ?? extractedRequestParams.maxCoverDepth,
+    payItems: args.payItems ?? extractedRequestParams.payItems,
+    ...pickRouteParams(args.toolParameters),
+  };
+}
+
+function buildDirectRoute(args: OrchestrateArgs): RouteResult {
+  const requestedToolName = args.toolName;
+  if (!requestedToolName) {
+    throw new Error("toolName is required for direct tool orchestration.");
+  }
+
+  const requestedAction =
+    args.toolAction
+    ?? (typeof args.toolParameters?.action === "string"
+      ? String(args.toolParameters.action)
+      : undefined);
+
+  const match = findToolCatalogEntry(requestedToolName, requestedAction);
+  if (!match) {
+    throw new Error(
+      requestedAction
+        ? `Tool '${requestedToolName}' with action '${requestedAction}' was not found in the tool catalog.`
+        : `Tool '${requestedToolName}' was not found in the tool catalog.`,
+    );
+  }
+
+  return {
+    match,
+    confidence: 1,
+    missingFields: [],
+    extractedParams: {},
+    reasoning: requestedAction
+      ? `Used exact tool override for '${requestedToolName}' action '${requestedAction}'.`
+      : `Used exact tool override for '${requestedToolName}'.`,
+  };
+}
+
+function findMissingRequiredFields(
+  requiredFields: string[],
+  params: Record<string, unknown> | RouteParams,
+) {
+  const paramRecord = params as Record<string, unknown>;
+  return requiredFields.filter((field) => !hasRequiredValue(paramRecord[field]));
+}
+
+function buildDirectExecutionContext(args: OrchestrateArgs) {
+  const routed = buildDirectRoute(args);
+  const params = buildDirectParams(args);
+  const exactParameters = buildExactToolParameters(args, params, routed.match.action);
+  const missingFields = findMissingRequiredFields(routed.match.requiredFields, exactParameters);
+
+  return {
+    routed,
+    params,
+    exactParameters,
+    missingFields,
+  };
+}
+
+function buildExactToolParameters(
+  args: OrchestrateArgs,
+  params: RouteParams,
+  selectedAction: string,
+): Record<string, unknown> {
+  const parameterObject = args.toolParameters ?? {};
+  const explicitAction =
+    args.toolAction
+    ?? (typeof parameterObject.action === "string" ? String(parameterObject.action) : undefined)
+    ?? (selectedAction !== "execute" ? selectedAction : undefined);
+
+  const exactParameters = {
+    ...(explicitAction ? { action: explicitAction } : {}),
+    ...params,
+    ...parameterObject,
+  };
+
+  return Object.fromEntries(
+    Object.entries(exactParameters).filter(([, value]) => value !== undefined),
+  );
 }
 
 function hasRequiredValue(value: unknown): boolean {
@@ -201,226 +435,67 @@ function buildContextAwareAdvice(intent: ReturnType<typeof routeIntent>, project
 }
 
 async function executeIntent(intent: ReturnType<typeof routeIntent>, params: RouteParams) {
-  switch (intent.match.intent) {
-    case "drawing_info":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getDrawingInfo", {}));
-    case "list_tool_capabilities":
-      return {
-        domains: listDomains(),
-        tools: listToolCatalog(),
-      };
-    case "list_surfaces":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("listSurfaces", {}));
-    case "get_surface":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getSurface", {
-        name: params.name,
-      }));
-    case "create_surface":
-      return await withApplicationConnection((appClient) =>
-        appClient.sendCommand("createSurface", {
-          name: params.name,
-          style: params.style,
-          layer: params.layer,
-        })
-      );
-    case "get_surface_statistics":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getSurfaceStatisticsDetailed", {
-        name: params.name,
-      }));
-    case "analyze_surface_slope":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("analyzeSurfaceSlope", {
-        name: params.name,
-        ranges: null,
-        numRanges: 5,
-      }));
-    case "calculate_surface_volume":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateSurfaceVolume", {
-        baseSurface: params.baseSurface,
-        comparisonSurface: params.comparisonSurface,
-        method: "tin_volume",
-      }));
-    case "generate_surface_volume_report":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getSurfaceVolumeReport", {
-        baseSurface: params.baseSurface,
-        comparisonSurface: params.comparisonSurface,
-        format: "summary",
-      }));
-    case "sample_surface_elevations":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("sampleSurfaceElevations", {
-        name: params.name,
-        method: "grid",
-        gridSpacing: params.gridSpacing,
-        points: undefined,
-        startPoint: undefined,
-        endPoint: undefined,
-        numSamples: 50,
-        boundary: undefined,
-      }));
-    case "create_surface_from_dem":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("createSurfaceFromDem", {
-        filePath: params.filePath,
-        name: params.name,
-        style: params.style,
-        layer: params.layer,
-        description: undefined,
-        coordinateSystem: undefined,
-      }));
-    case "list_alignments":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("listAlignments", {}));
-    case "get_alignment":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getAlignment", {
-        name: params.name,
-      }));
-    case "list_profiles":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("listProfiles", {
-        alignmentName: params.alignmentName,
-      }));
-    case "create_profile_from_surface":
-      return await withApplicationConnection((appClient) =>
-        appClient.sendCommand("createProfileFromSurface", {
-          alignmentName: params.alignmentName,
-          profileName: params.profileName,
-          surfaceName: params.surfaceName,
-          style: params.style,
-          layer: params.layer,
-          labelSet: params.labelSet,
-        })
-      );
-    case "create_layout_profile":
-      return await withApplicationConnection((appClient) =>
-        appClient.sendCommand("createLayoutProfile", {
-          alignmentName: params.alignmentName,
-          profileName: params.profileName,
-          style: params.style,
-          layer: params.layer,
-          labelSet: params.labelSet,
-        })
-      );
-    case "calculate_sight_distance":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateSightDistance", {
-        designSpeed: params.designSpeed,
-        speedUnits: "kmh",
-        sightDistanceType: "stopping",
-        grade: 0,
-        frictionCoefficient: null,
-        perceptionReactionTime: 2.5,
-        standard: "AASHTO",
-        alignmentName: params.alignmentName ?? null,
-        profileName: params.profileName ?? null,
-        checkStation: null,
-      }));
-    case "check_stopping_distance":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("checkStoppingDistance", {
-        alignmentName: params.alignmentName,
-        profileName: params.profileName,
-        designSpeed: params.designSpeed,
-        stationStart: null,
-        stationEnd: null,
-        stationInterval: 25,
-        standard: "AASHTO",
-      }));
-    case "calculate_detention_basin_size":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateDetentionBasinSize", {
-        inflow: params.inflow,
-        outflow: params.outflow,
-        stormDuration: 60,
-        method: "modified_rational",
-        sideSlope: 3.0,
-        bottomWidth: 10.0,
-        freeboardDepth: 1.0,
-        surfaceName: params.surfaceName ?? null,
-      }));
-    case "generate_detention_stage_storage":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateDetentionStageStorage", {
-        surfaceName: params.surfaceName,
-        bottomElevation: params.bottomElevation,
-        topElevation: params.topElevation,
-        elevationIncrement: 0.5,
-        outletType: "orifice",
-        outletDiameter: null,
-        weirLength: null,
-        dischargeCoefficient: null,
-      }));
-    case "calculate_slope_geometry":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateSlopeGeometry", {
-        alignmentName: params.alignmentName ?? null,
-        profileName: params.profileName ?? null,
-        surfaceName: params.surfaceName ?? null,
-        cutSlopeRatio: 2.0,
-        fillSlopeRatio: 3.0,
-        benchWidth: 0,
-        benchHeightInterval: 20,
-        stationStart: null,
-        stationEnd: null,
-        stationInterval: 10,
-        roadwayWidth: null,
-      }));
-    case "check_slope_stability":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("checkSlopeStability", {
-        alignmentName: params.alignmentName ?? null,
-        surfaceName: params.surfaceName ?? null,
-        maxCutSlopeRatio: 1.5,
-        maxFillSlopeRatio: 2.0,
-        maxCutHeight: 30,
-        maxFillHeight: 40,
-        stationInterval: 25,
-        soilType: "granular",
-      }));
-    case "export_pay_items":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("exportPayItems", {
-        outputPath: params.outputPath,
-        corridorName: params.corridorName ?? null,
-        baseSurface: params.baseSurface ?? null,
-        designSurface: params.comparisonSurface ?? null,
-        alignmentName: params.alignmentName ?? null,
-        payItems: params.payItems ?? [],
-        includeEarthwork: true,
-        includeCorridorMaterials: true,
-        includePipeLengths: true,
-        includeStructureCounts: true,
-      }));
-    case "estimate_material_cost":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("calculateMaterialCostEstimate", {
-        corridorName: params.corridorName ?? null,
-        baseSurface: params.baseSurface ?? null,
-        designSurface: params.comparisonSurface ?? null,
-        alignmentName: params.alignmentName ?? null,
-        contingencyPercent: 0,
-        mobilizationPercent: 5,
-        payItems: params.payItems,
-        outputPath: params.outputPath ?? null,
-      }));
-    case "list_corridors":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("listCorridors", {}));
-    case "get_corridor":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("getCorridor", {
-        name: params.name,
-      }));
-    case "rebuild_corridor":
-      return await withApplicationConnection((appClient) => appClient.sendCommand("rebuildCorridor", {
-        name: params.name,
-      }));
-    case "corridor_prerequisites":
-      return buildCorridorAdvice();
+  if (intent.match.intent === "corridor_prerequisites") {
+    return buildCorridorAdvice();
   }
+
+  const toolArgs = intent.match.buildToolArgs(params as unknown as Record<string, unknown>);
+  return await executeRegisteredToolDirectly(intent.match.toolName, toolArgs);
+}
+
+async function executeRegisteredToolDirectly(
+  toolName: string,
+  parameters: Record<string, unknown>,
+) {
+  return await executeRegisteredTool(toolName, parameters);
+}
+
+export async function executeToolCallViaOrchestrator(
+  toolName: string,
+  parameters: Record<string, unknown>,
+) {
+  const directExecution = buildDirectExecutionContext({
+    toolName,
+    toolAction: typeof parameters.action === "string"
+      ? String(parameters.action)
+      : undefined,
+    toolParameters: parameters,
+    ...pickRouteParams(parameters),
+  });
+
+  if (directExecution.missingFields.length > 0) {
+    throw new Error(
+      `Missing required fields: ${directExecution.missingFields.join(", ")}`,
+    );
+  }
+
+  return await executeRegisteredToolDirectly(
+    directExecution.routed.match.toolName,
+    directExecution.exactParameters,
+  );
 }
 
 export async function executeCivil3DOrchestrate(rawArgs: OrchestrateArgs) {
   const args = Civil3DOrchestrateInputSchema.parse(rawArgs);
-  const routed = routeIntent(args.request);
+  if (!args.request && !args.toolName) {
+    throw new Error("civil3d_orchestrate requires either a request or a toolName.");
+  }
+
+  const directExecution = args.toolName ? buildDirectExecutionContext(args) : null;
+  const routed = directExecution?.routed ?? routeIntent(args.request as string);
   const projectContext = await getProjectContext();
-  const mergedParams = buildMergedParams(args, routed);
+  const mergedParams = directExecution?.params ?? buildMergedParams(args, routed);
   const selectionResolution = resolveParamsFromSelection(mergedParams, projectContext);
   const params = selectionResolution.resolvedParams;
   const contextAdvice = buildContextAwareAdvice(routed, projectContext);
   const workflowPlan = buildWorkflowPlan(routed, params, projectContext);
-  const missingFields = routed.match.requiredFields.filter((field) => {
-    const value = params[field as keyof typeof params];
-    return !hasRequiredValue(value);
-  });
+  const missingFields = findMissingRequiredFields(
+    routed.match.requiredFields,
+    directExecution?.exactParameters ?? params,
+  );
 
   const response: Record<string, unknown> = {
-    request: args.request,
+    request: args.request ?? `direct:${args.toolName}`,
     selectedIntent: routed.match.intent,
     selectedTool: routed.match.toolName,
     selectedAction: routed.match.action,
@@ -442,7 +517,12 @@ export async function executeCivil3DOrchestrate(rawArgs: OrchestrateArgs) {
       response.clarificationQuestions = workflowPlan.clarificationQuestions;
     } else {
       response.status = "executed";
-      response.result = await executeIntent(routed, params);
+      response.result = directExecution
+        ? await executeRegisteredToolDirectly(
+          routed.match.toolName,
+          directExecution.exactParameters,
+        )
+        : await executeIntent(routed, params);
     }
   } else {
     response.status = missingFields.length > 0 ? "planned_needs_input" : "planned";
@@ -455,7 +535,7 @@ export async function executeCivil3DOrchestrate(rawArgs: OrchestrateArgs) {
 export function registerCivil3DOrchestrateTool(server: McpServer) {
   server.tool(
     "civil3d_orchestrate",
-    "Routes a natural-language Civil 3D request to the best starting tool or action and can execute a small supported set of actions.",
+    "Routes a natural-language Civil 3D request to the best starting tool or action and executes routed work through the registered MCP tool surface.",
     Civil3DOrchestrateInputShape,
     async (rawArgs) => {
       try {

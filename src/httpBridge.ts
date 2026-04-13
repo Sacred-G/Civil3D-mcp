@@ -1,10 +1,10 @@
 import { createServer, IncomingMessage, ServerResponse } from "node:http";
-import { withApplicationConnection } from "./utils/ConnectionManager.js";
 import {
   hasToolHandler,
   executeRegisteredTool,
   listRegisteredToolNames,
 } from "./tools/toolHandlerRegistry.js";
+import { executeToolCallViaOrchestrator } from "./tools/civil3d_orchestrate.js";
 import { createLogger } from "./utils/logger.js";
 
 const log = createLogger("HttpBridge");
@@ -56,32 +56,32 @@ const LEGACY_TOOL_NAMES = new Set([
 ]);
 
 async function executeLegacyTool(toolName: string, parameters: Record<string, unknown>): Promise<unknown> {
-  return await withApplicationConnection(async (appClient) => {
-    switch (toolName) {
-      case "civil3d_list_alignments":
-        return await appClient.sendCommand("listAlignments", {});
-      case "civil3d_list_surfaces":
-        return await appClient.sendCommand("listSurfaces", {});
-      case "civil3d_list_profiles":
-        return await appClient.sendCommand("listProfiles", {
-          alignmentName: parameters.alignmentName,
-        });
-      case "civil3d_list_assemblies":
-        return await appClient.sendCommand("listAssemblies", {});
-      case "civil3d_list_corridors":
-        return await appClient.sendCommand("listCorridors", {});
-      case "civil3d_alignment_report":
-        return await appClient.sendCommand("getAlignment", {
-          name: parameters.alignmentName,
-        });
-      case "civil3d_surface_report":
-        return await appClient.sendCommand("getSurface", {
-          name: parameters.surfaceName,
-        });
-      default:
-        throw new Error(`Unknown legacy tool '${toolName}'.`);
-    }
-  });
+  switch (toolName) {
+    case "civil3d_list_alignments":
+      return await executeToolCallViaOrchestrator("civil3d_alignment", { action: "list" });
+    case "civil3d_list_surfaces":
+      return await executeToolCallViaOrchestrator("civil3d_surface", { action: "list" });
+    case "civil3d_list_profiles":
+      return await executeToolCallViaOrchestrator("civil3d_profile", {
+        action: "list",
+        alignmentName: parameters.alignmentName,
+      });
+    case "civil3d_list_assemblies":
+      return await executeToolCallViaOrchestrator("civil3d_assembly", { action: "list" });
+    case "civil3d_list_corridors":
+      return await executeToolCallViaOrchestrator("civil3d_corridor", { action: "list" });
+    case "civil3d_alignment_report":
+      return await executeToolCallViaOrchestrator("civil3d_alignment_report", {
+        alignmentName: parameters.alignmentName,
+      });
+    case "civil3d_surface_report":
+      return await executeToolCallViaOrchestrator("civil3d_surface", {
+        action: "get",
+        name: parameters.surfaceName,
+      });
+    default:
+      throw new Error(`Unknown legacy tool '${toolName}'.`);
+  }
 }
 
 /**
@@ -93,7 +93,11 @@ async function executeLegacyTool(toolName: string, parameters: Record<string, un
 async function executeBridgeTool(toolName: string, parameters: Record<string, unknown>): Promise<unknown> {
   // 1. Check the global tool handler registry (populated during registerTools)
   if (hasToolHandler(toolName)) {
-    return await executeRegisteredTool(toolName, parameters);
+    if (toolName === "civil3d_orchestrate") {
+      return await executeRegisteredTool(toolName, parameters);
+    }
+
+    return await executeToolCallViaOrchestrator(toolName, parameters);
   }
 
   // 2. Legacy convenience endpoints for Copilot drawing-context queries

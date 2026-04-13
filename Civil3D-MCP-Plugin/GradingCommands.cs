@@ -1,3 +1,4 @@
+using System.Collections;
 using System.Reflection;
 using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
@@ -367,6 +368,93 @@ public static class GradingCommands
   }
 
   // -------------------------------------------------------------------------
+  // listFeatureLines
+  // -------------------------------------------------------------------------
+
+  public static Task<object?> ListFeatureLinesAsync()
+  {
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var featureLines = EnumerateFeatureLines(database, transaction)
+        .Select(featureLine => ToFeatureLineSummary(featureLine, transaction))
+        .ToList();
+
+      return new Dictionary<string, object?>
+      {
+        ["featureLines"] = featureLines,
+      };
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // getFeatureLine
+  // -------------------------------------------------------------------------
+
+  public static Task<object?> GetFeatureLineAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var featureLine = FindFeatureLineByName(civilDoc, transaction, name, database)
+        ?? throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Feature line '{name}' not found.");
+
+      return ToFeatureLineDetail(featureLine, database, transaction);
+    });
+  }
+
+  // -------------------------------------------------------------------------
+  // exportFeatureLineAsPolyline
+  // -------------------------------------------------------------------------
+
+  public static Task<object?> ExportFeatureLineAsPolylineAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var targetLayer = PluginRuntime.GetOptionalString(parameters, "targetLayer");
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var featureLine = FindFeatureLineByName(civilDoc, transaction, name, database)
+        ?? throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Feature line '{name}' not found.");
+
+      var vertices = GetFeatureLineVertices(featureLine);
+      if (vertices.Count < 2)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.API_ERROR", $"Feature line '{name}' does not expose enough vertices to export.");
+      }
+
+      var modelSpaceId = CivilObjectUtils.GetModelSpaceBlockId(database, transaction);
+      var modelSpace = CivilObjectUtils.GetRequiredObject<BlockTableRecord>(transaction, modelSpaceId, OpenMode.ForWrite);
+      var polylinePoints = new Point3dCollection();
+      foreach (var vertex in vertices)
+      {
+        polylinePoints.Add(vertex);
+      }
+
+      using var polyline3d = new Polyline3d(Poly3dType.SimplePoly, polylinePoints, false);
+      var polylineId = modelSpace.AppendEntity(polyline3d);
+      transaction.AddNewlyCreatedDBObject(polyline3d, true);
+
+      var resolvedLayer = targetLayer
+        ?? CivilObjectUtils.GetStringProperty(featureLine, "Layer")
+        ?? "0";
+      CivilObjectUtils.TrySetLayer(polyline3d, resolvedLayer, database, transaction);
+
+      var createdPolyline = CivilObjectUtils.GetRequiredObject<Polyline3d>(transaction, polylineId, OpenMode.ForRead);
+
+      return new Dictionary<string, object?>
+      {
+        ["sourceFeatureLineName"] = CivilObjectUtils.GetName(featureLine) ?? name,
+        ["sourceFeatureLineHandle"] = CivilObjectUtils.GetHandle(featureLine),
+        ["polylineHandle"] = CivilObjectUtils.GetHandle(createdPolyline),
+        ["targetLayer"] = resolvedLayer,
+        ["vertexCount"] = vertices.Count,
+        ["exported"] = true,
+      };
+    });
+  }
+
+  // -------------------------------------------------------------------------
   // createFeatureLine
   // -------------------------------------------------------------------------
 
@@ -517,6 +605,27 @@ public static class GradingCommands
     }
   }
 
+  private static IEnumerable<DBObject> EnumerateFeatureLines(
+    Database database,
+    Transaction transaction)
+  {
+    var modelSpaceId = CivilObjectUtils.GetModelSpaceBlockId(database, transaction);
+    var modelSpace = transaction.GetObject(modelSpaceId, OpenMode.ForRead) as BlockTableRecord;
+    if (modelSpace == null)
+    {
+      yield break;
+    }
+
+    foreach (ObjectId id in modelSpace)
+    {
+      var obj = transaction.GetObject(id, OpenMode.ForRead) as DBObject;
+      if (obj?.GetType().FullName == "Autodesk.Civil.DatabaseServices.FeatureLine")
+      {
+        yield return obj;
+      }
+    }
+  }
+
   private static DBObject? FindFeatureLineByName(
     Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
     Transaction transaction,
@@ -623,6 +732,41 @@ public static class GradingCommands
     };
   }
 
+  private static Dictionary<string, object?> ToFeatureLineSummary(DBObject featureLine, Transaction transaction)
+  {
+    return new Dictionary<string, object?>
+    {
+      ["name"] = CivilObjectUtils.GetName(featureLine),
+      ["handle"] = CivilObjectUtils.GetHandle(featureLine),
+      ["layer"] = CivilObjectUtils.GetStringProperty(featureLine, "Layer"),
+      ["style"] = GetFeatureLineStyleName(featureLine, transaction),
+    };
+  }
+
+  private static Dictionary<string, object?> ToFeatureLineDetail(
+    DBObject featureLine,
+    Database database,
+    Transaction transaction)
+  {
+    var vertices = GetFeatureLineVertices(featureLine);
+    var minElevation = vertices.Count > 0 ? vertices.Min(point => point.Z) : 0d;
+    var maxElevation = vertices.Count > 0 ? vertices.Max(point => point.Z) : 0d;
+
+    return new Dictionary<string, object?>
+    {
+      ["name"] = CivilObjectUtils.GetName(featureLine) ?? string.Empty,
+      ["handle"] = CivilObjectUtils.GetHandle(featureLine),
+      ["layer"] = CivilObjectUtils.GetStringProperty(featureLine, "Layer") ?? string.Empty,
+      ["style"] = GetFeatureLineStyleName(featureLine, transaction) ?? string.Empty,
+      ["length"] = GetFeatureLineLength(featureLine),
+      ["vertexCount"] = vertices.Count,
+      ["vertices"] = vertices.Select(ToPointData).ToList(),
+      ["minElevation"] = minElevation,
+      ["maxElevation"] = maxElevation,
+      ["units"] = CivilObjectUtils.LinearUnits(database),
+    };
+  }
+
   private static Dictionary<string, object?> ToGradingDetail(DBObject grading)
   {
     return new Dictionary<string, object?>
@@ -634,6 +778,288 @@ public static class GradingCommands
       ["isValid"] = CivilObjectUtils.GetBoolProperty(grading, "IsValid"),
       ["cutVolume"] = CivilObjectUtils.GetDoubleProperty(grading, "CutVolume"),
       ["fillVolume"] = CivilObjectUtils.GetDoubleProperty(grading, "FillVolume"),
+    };
+  }
+
+  private static string? GetFeatureLineStyleName(DBObject featureLine, Transaction transaction)
+  {
+    try
+    {
+      var styleName = CivilObjectUtils.GetStringProperty(featureLine, "StyleName");
+      if (!string.IsNullOrWhiteSpace(styleName))
+      {
+        return styleName;
+      }
+
+      var styleIdObject = CivilObjectUtils.GetPropertyValue<object>(featureLine, "StyleId");
+      if (styleIdObject is not ObjectId styleId || styleId == ObjectId.Null)
+      {
+        return null;
+      }
+
+      var style = transaction.GetObject(styleId, OpenMode.ForRead);
+      return CivilObjectUtils.GetName(style);
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
+  private static double GetFeatureLineLength(DBObject featureLine)
+  {
+    foreach (var propertyName in new[] { "Length3D", "Length2D", "Length" })
+    {
+      var value = CivilObjectUtils.GetDoubleProperty(featureLine, propertyName);
+      if (value.HasValue)
+      {
+        return value.Value;
+      }
+    }
+
+    var vertices = GetFeatureLineVertices(featureLine);
+    if (vertices.Count < 2)
+    {
+      return 0d;
+    }
+
+    var totalLength = 0d;
+    for (var index = 1; index < vertices.Count; index++)
+    {
+      totalLength += vertices[index - 1].DistanceTo(vertices[index]);
+    }
+
+    return totalLength;
+  }
+
+  private static List<Point3d> GetFeatureLineVertices(DBObject featureLine)
+  {
+    foreach (var candidate in EnumerateFeatureLinePointCandidates(featureLine))
+    {
+      var candidatePoints = new List<Point3d>();
+      if (TryAddPointCandidates(candidate, candidatePoints) && candidatePoints.Count >= 2)
+      {
+        return DeduplicateSequentialPoints(candidatePoints);
+      }
+    }
+
+    var count = GetFeatureLineVertexCount(featureLine);
+    if (count > 0)
+    {
+      foreach (var methodName in new[] { "GetPointAtIndex", "GetPointAt" })
+      {
+        var method = featureLine.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+          .FirstOrDefault(m =>
+            m.Name == methodName
+            && m.GetParameters().Length == 1
+            && m.GetParameters()[0].ParameterType == typeof(int));
+
+        if (method == null)
+        {
+          continue;
+        }
+
+        var indexedPoints = new List<Point3d>();
+        for (var index = 0; index < count; index++)
+        {
+          try
+          {
+            var value = method.Invoke(featureLine, new object[] { index });
+            if (!TryConvertToPoint3d(value, out var point))
+            {
+              indexedPoints.Clear();
+              break;
+            }
+
+            indexedPoints.Add(point);
+          }
+          catch
+          {
+            indexedPoints.Clear();
+            break;
+          }
+        }
+
+        if (indexedPoints.Count >= 2)
+        {
+          return DeduplicateSequentialPoints(indexedPoints);
+        }
+      }
+    }
+
+    return new List<Point3d>();
+  }
+
+  private static IEnumerable<object?> EnumerateFeatureLinePointCandidates(DBObject featureLine)
+  {
+    foreach (var propertyName in new[] { "Points", "Vertices", "PIPoints", "ElevationPoints" })
+    {
+      var propertyValue = CivilObjectUtils.GetPropertyValue<object>(featureLine, propertyName);
+      if (propertyValue != null)
+      {
+        yield return propertyValue;
+      }
+    }
+
+    foreach (var method in featureLine.GetType().GetMethods(BindingFlags.Public | BindingFlags.Instance)
+      .Where(m => m.Name == "GetPoints"))
+    {
+      var parameters = method.GetParameters();
+      if (parameters.Length == 0)
+      {
+        object? result = null;
+        try { result = method.Invoke(featureLine, Array.Empty<object>()); } catch { }
+        if (result != null)
+        {
+          yield return result;
+        }
+        continue;
+      }
+
+      if (parameters.Length == 1 && parameters[0].ParameterType.IsEnum)
+      {
+        foreach (var enumValue in SelectPreferredEnumValues(parameters[0].ParameterType))
+        {
+          object? result = null;
+          try { result = method.Invoke(featureLine, new[] { enumValue }); } catch { }
+          if (result != null)
+          {
+            yield return result;
+          }
+        }
+      }
+    }
+  }
+
+  private static IEnumerable<object> SelectPreferredEnumValues(Type enumType)
+  {
+    var values = Enum.GetValues(enumType).Cast<object>().ToList();
+    var preferredNames = new[]
+    {
+      "AllPoints",
+      "All",
+      "AllPointsIncludingElevationPoints",
+      "PIPointsAndElevationPoints",
+      "PIAndElevationPoints",
+      "ElevationPoints",
+      "PIPoints",
+    };
+
+    foreach (var preferredName in preferredNames)
+    {
+      var match = values.FirstOrDefault(value => string.Equals(value.ToString(), preferredName, StringComparison.OrdinalIgnoreCase));
+      if (match != null)
+      {
+        yield return match;
+      }
+    }
+
+    foreach (var value in values)
+    {
+      yield return value;
+    }
+  }
+
+  private static int GetFeatureLineVertexCount(DBObject featureLine)
+  {
+    foreach (var propertyName in new[] { "PointsCount", "PointCount", "VertexCount", "PIPointsCount", "PIPointCount" })
+    {
+      var value = CivilObjectUtils.GetPropertyValue<object>(featureLine, propertyName);
+      if (value == null)
+      {
+        continue;
+      }
+
+      try
+      {
+        var converted = Convert.ToInt32(value);
+        if (converted > 0)
+        {
+          return converted;
+        }
+      }
+      catch { }
+    }
+
+    return 0;
+  }
+
+  private static bool TryAddPointCandidates(object? value, List<Point3d> target)
+  {
+    if (value is null)
+    {
+      return false;
+    }
+
+    if (TryConvertToPoint3d(value, out var directPoint))
+    {
+      target.Add(directPoint);
+      return true;
+    }
+
+    if (value is not IEnumerable enumerable)
+    {
+      return false;
+    }
+
+    var added = false;
+    foreach (var item in enumerable)
+    {
+      if (!TryConvertToPoint3d(item, out var point))
+      {
+        continue;
+      }
+
+      target.Add(point);
+      added = true;
+    }
+
+    return added;
+  }
+
+  private static bool TryConvertToPoint3d(object? value, out Point3d point)
+  {
+    if (value is Point3d point3d)
+    {
+      point = point3d;
+      return true;
+    }
+
+    var x = CivilObjectUtils.GetDoubleProperty(value, "X") ?? CivilObjectUtils.GetDoubleProperty(value, "Easting");
+    var y = CivilObjectUtils.GetDoubleProperty(value, "Y") ?? CivilObjectUtils.GetDoubleProperty(value, "Northing");
+    var z = CivilObjectUtils.GetDoubleProperty(value, "Z") ?? CivilObjectUtils.GetDoubleProperty(value, "Elevation") ?? 0d;
+
+    if (x.HasValue && y.HasValue)
+    {
+      point = new Point3d(x.Value, y.Value, z);
+      return true;
+    }
+
+    point = Point3d.Origin;
+    return false;
+  }
+
+  private static List<Point3d> DeduplicateSequentialPoints(IEnumerable<Point3d> points)
+  {
+    var result = new List<Point3d>();
+    foreach (var point in points)
+    {
+      if (result.Count == 0 || !point.IsEqualTo(result[^1], new Tolerance(1e-8, 1e-8)))
+      {
+        result.Add(point);
+      }
+    }
+
+    return result;
+  }
+
+  private static Dictionary<string, object?> ToPointData(Point3d point)
+  {
+    return new Dictionary<string, object?>
+    {
+      ["x"] = point.X,
+      ["y"] = point.Y,
+      ["z"] = point.Z,
     };
   }
 

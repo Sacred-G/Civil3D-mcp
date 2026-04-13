@@ -64,6 +64,20 @@ function buildFieldClarificationQuestions(fields: string[]): string[] {
         return "What file path should be used?";
       case "outputPath":
         return "What output file path should be used?";
+      case "projectFolder":
+        return "Which project folder should be used?";
+      case "shortcutName":
+        return "Which data shortcut should be used?";
+      case "shortcutType":
+        return "What type of data shortcut is it?";
+      case "templatePath":
+        return "Which drawing template should be used?";
+      case "saveAs":
+        return "What save path should be used?";
+      case "limit":
+        return "How many selected objects should be inspected?";
+      case "layerPrefix":
+        return "Which layer prefix should be used for the standards audit?";
       case "gridSpacing":
         return "What grid spacing should be used?";
       case "designSpeed":
@@ -92,6 +106,131 @@ export function buildWorkflowPlan(routed: RouteResult, params: RouteParams, proj
   const hasAlignments = (objectCounts.alignments ?? 0) > 0;
   const hasProfiles = (objectCounts.profiles ?? 0) > 0;
   const missingFields = findMissingFields(params, routed.match.requiredFields);
+
+  if (routed.match.intent === "workflow_project_startup") {
+    const clarificationQuestions: string[] = [];
+
+    return {
+      kind: "workflow",
+      title: "Project startup workflow",
+      summary: "Plans startup checks, drawing readiness review, and optional template/save operations for a new or prepared project drawing.",
+      steps: [
+        {
+          title: "Check Civil 3D health",
+          toolName: "civil3d_health",
+          action: "health",
+          requiredFields: [],
+          status: "ready",
+          notes: "The workflow starts by confirming the plugin and host are responsive.",
+        },
+        {
+          title: "Create startup drawing from template",
+          toolName: "civil3d_workflow_project_startup",
+          action: "execute",
+          requiredFields: ["templatePath"],
+          status: params.templatePath ? "ready" : "missing_input",
+          notes: params.templatePath ? "A startup template path has been provided." : "Provide a templatePath if you want the workflow to create a new startup drawing.",
+        },
+        {
+          title: "Review drawing readiness",
+          toolName: "civil3d_workflow_project_startup",
+          action: "execute",
+          requiredFields: [],
+          status: "ready",
+          notes: "The workflow will inspect drawing info, settings, object types, and data shortcuts.",
+        },
+      ],
+      missingFields,
+      clarificationQuestions,
+    };
+  }
+
+  if (routed.match.intent === "workflow_drawing_readiness_audit") {
+    return {
+      kind: "workflow",
+      title: "Drawing readiness audit workflow",
+      summary: "Plans a consolidated readiness audit across plugin health, drawing metadata, selection context, and drawing standards.",
+      steps: [
+        {
+          title: "Inspect drawing readiness",
+          toolName: "civil3d_workflow_drawing_readiness_audit",
+          action: "execute",
+          requiredFields: [],
+          status: "ready",
+          notes: "This workflow can run immediately and optionally uses layerPrefix and limit when supplied.",
+        },
+      ],
+      missingFields,
+      clarificationQuestions: [],
+    };
+  }
+
+  if (routed.match.intent === "workflow_surface_comparison_report") {
+    const clarificationQuestions: string[] = [];
+    if (!params.baseSurface) {
+      clarificationQuestions.push("Which base surface should be used for the comparison workflow?");
+    }
+    if (!params.comparisonSurface) {
+      clarificationQuestions.push("Which comparison surface should be used for the comparison workflow?");
+    }
+
+    return {
+      kind: "workflow",
+      title: "Surface comparison workflow",
+      summary: "Plans the surface pair needed for a structured comparison plus formatted reporting workflow.",
+      steps: [
+        {
+          title: "Review available surfaces",
+          toolName: "civil3d_surface",
+          action: "list",
+          requiredFields: [],
+          status: hasSurfaces ? "ready" : "blocked",
+          notes: hasSurfaces ? "Surface objects are present in the drawing." : "No surfaces detected in drawing info.",
+        },
+        {
+          title: "Run surface comparison workflow",
+          toolName: "civil3d_workflow_surface_comparison_report",
+          action: "execute",
+          requiredFields: ["baseSurface", "comparisonSurface"],
+          status: missingFields.length === 0 && hasSurfaces ? "ready" : "missing_input",
+          notes: missingFields.length === 0 ? "Required inputs are available for the comparison workflow." : `Missing required inputs: ${missingFields.join(", ")}`,
+        },
+      ],
+      missingFields,
+      clarificationQuestions,
+    };
+  }
+
+  if (routed.match.intent === "workflow_data_shortcut_reference_sync") {
+    const clarificationQuestions: string[] = [];
+    if (!params.projectFolder) {
+      clarificationQuestions.push("Which project folder should be used for the data shortcut reference?");
+    }
+    if (!params.shortcutName) {
+      clarificationQuestions.push("Which data shortcut should be referenced?");
+    }
+    if (!params.shortcutType) {
+      clarificationQuestions.push("What type of data shortcut should be referenced?");
+    }
+
+    return {
+      kind: "workflow",
+      title: "Data shortcut reference workflow",
+      summary: "Plans the project folder, shortcut name, and shortcut type needed to reference and synchronize a data shortcut.",
+      steps: [
+        {
+          title: "Reference and synchronize data shortcut",
+          toolName: "civil3d_workflow_data_shortcut_reference_sync",
+          action: "execute",
+          requiredFields: ["projectFolder", "shortcutName", "shortcutType"],
+          status: missingFields.length === 0 ? "ready" : "missing_input",
+          notes: missingFields.length === 0 ? "Required inputs are available for data-shortcut reference and synchronization." : `Missing required inputs: ${missingFields.join(", ")}`,
+        },
+      ],
+      missingFields,
+      clarificationQuestions,
+    };
+  }
 
   if (routed.match.intent === "corridor_prerequisites") {
     const clarificationQuestions: string[] = [];

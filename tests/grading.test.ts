@@ -36,6 +36,13 @@ const GradingDeleteSchema = z.object({
   groupName: z.string(),
   handle: z.string(),
 });
+const FeatureLineGetSchema = z.object({
+  name: z.string(),
+});
+const FeatureLineExportSchema = z.object({
+  name: z.string(),
+  targetLayer: z.string().optional(),
+});
 const FeatureLineCreateSchema = z.object({
   points: z.array(Point3DSchema).min(2),
   name: z.string().optional(),
@@ -183,6 +190,23 @@ describe("civil3d_feature_line_create input schema", () => {
       points: [{ x: 0, y: 0, z: 0 }, { x: 10, y: 10, z: 5 }],
       name: "PAD-EDGE",
       layer: "GRADING",
+    }).success).toBe(true);
+  });
+});
+
+// ─── civil3d_feature_line get/export aliases ──────────────────────────────
+
+describe("civil3d_feature_line get/export input schemas", () => {
+  it("requires a name to get a feature line", () => {
+    expect(FeatureLineGetSchema.safeParse({ name: "PAD-EDGE" }).success).toBe(true);
+    expect(FeatureLineGetSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("accepts export args with optional targetLayer", () => {
+    expect(FeatureLineExportSchema.safeParse({ name: "PAD-EDGE" }).success).toBe(true);
+    expect(FeatureLineExportSchema.safeParse({
+      name: "PAD-EDGE",
+      targetLayer: "C-TOPO-FL",
     }).success).toBe(true);
   });
 });

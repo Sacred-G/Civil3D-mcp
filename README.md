@@ -218,11 +218,12 @@ flowchart LR
 | `civil3d_intersection_create` | Create an intersection between two road alignments |
 | `civil3d_intersection_get` | Get detailed properties of an intersection |
 
-### Grading & Feature Lines (13 tools)
+### Grading & Feature Lines (14 tools)
 
 | Tool | Description |
 |------|-------------|
-| `civil3d_feature_line` | Reads feature lines, export as 3D polylines |
+| `civil3d_grading` | Canonical grading domain tool for grading groups, gradings, grading criteria, and feature-line actions |
+| `civil3d_feature_line` | Reads feature lines and exports them as 3D polylines |
 | `civil3d_feature_line_create` | Create a new feature line from 3D points |
 | `civil3d_grading_group_list` | List all grading groups in the drawing |
 | `civil3d_grading_group_create` | Create a new grading group |
@@ -319,6 +320,25 @@ flowchart LR
 | `civil3d_qc_check_drawing_standards` | Audit drawing: layer naming, lineweights, colors |
 | `civil3d_qc_report_generate` | Run full QC pass and write consolidated report to disk |
 
+### Workflow Automation (14 tools)
+
+| Tool | Description |
+|------|-------------|
+| `civil3d_workflow` | Canonical workflow domain tool for multi-step QC, grading, pipe-design, standards, and publishing workflows |
+| `civil3d_workflow_corridor_qc_report` | Run corridor QC and optionally generate a consolidated QC report |
+| `civil3d_workflow_grading_surface_volume` | Calculate grading cut/fill volume between base and comparison surfaces |
+| `civil3d_workflow_surface_comparison_report` | Run a structured surface comparison and follow it with a volume report |
+| `civil3d_workflow_data_shortcut_publish_sync` | Publish a data shortcut for a Civil 3D object and immediately synchronize it |
+| `civil3d_workflow_data_shortcut_reference_sync` | Reference a project data shortcut and immediately synchronize it |
+| `civil3d_workflow_project_startup` | Check Civil 3D health, inspect drawing readiness, and optionally create/save a startup drawing |
+| `civil3d_workflow_project_reference_setup` | Reference one or more project data shortcuts, sync them, and optionally save the drawing |
+| `civil3d_workflow_drawing_readiness_audit` | Check health, drawing state, selection context, and standards readiness in one audit |
+| `civil3d_workflow_feature_line_to_grading` | Convert a feature line into grading and optionally create a grading surface |
+| `civil3d_workflow_pipe_network_design` | Size a gravity pipe network and optionally run hydraulic analysis |
+| `civil3d_workflow_plan_production_publish` | Publish a sheet set or explicit layout list to PDF output |
+| `civil3d_workflow_qc_fix_and_verify` | Audit drawing standards, apply fixes, and verify the result |
+| `civil3d_workflow_survey_import_adjust_figures` | Import survey LandXML, optionally adjust a network, and review resulting figures |
+
 ### Quantity Takeoff (10 tools)
 
 | Tool | Description |
@@ -334,16 +354,17 @@ flowchart LR
 | `civil3d_qty_point_count_by_group` | Count COGO points per point group |
 | `civil3d_qty_export_to_csv` | Export consolidated quantity takeoff report to CSV |
 
-### Hydrology (6 tools)
+### Hydrology (7 tools)
 
 | Tool | Description |
 |------|-------------|
-| `civil3d_hydrology` | Hydrology analysis helpers and surface-based flow path tracing |
-| `civil3d_hydrology_workflows` | Complete hydrology workflows: flow path, watershed, runoff estimation |
-| `civil3d_catchment` | Manages catchments and catchment groups (8 actions) |
-| `civil3d_time_of_concentration` | Calculates Tc using standard methods and generates SCS hydrographs (3 actions) |
-| `civil3d_surface_drainage_workflow` | Runs surface drainage workflow: flow path, elevations, runoff estimate |
-| `civil3d_surface_watershed_add` | Add watershed analysis: drainage basins and flow paths |
+| `civil3d_hydrology` | Canonical hydrology domain tool for surface drainage, catchments, Tc, SSA, and multi-step workflows |
+| `civil3d_catchment` | Manages catchments and catchment groups, including properties, flow paths, and boundaries |
+| `civil3d_time_of_concentration` | Calculates Tc using supported methods and generates hydrographs |
+| `civil3d_stm` | Exports/imports STM files and opens Storm and Sanitary Analysis |
+| `civil3d_hydrology_watershed_runoff_workflow` | Runs low-point or outlet-based watershed delineation through runoff estimation |
+| `civil3d_hydrology_runoff_detention_workflow` | Runs runoff estimation through detention sizing and optional stage-storage output |
+| `civil3d_hydrology_runoff_pipe_workflow` | Runs runoff estimation through gravity pipe HGL and hydraulic analysis |
 
 ### Pipe Hydraulics (3 tools)
 

@@ -1,5 +1,7 @@
 # Civil 3D MCP Server — Tool Catalog Specification
 
+> **IMPORTANT:** This document is an original specification defining 19 foundational tools. The actual implementation has grown significantly and now includes **180+ tools** across all Civil 3D domains. See [README.md](../README.md) for the complete current tool catalog.
+>
 > This document defines every MCP tool, its actions, input parameters, and response schemas for the Civil 3D MCP Server. Tools are consolidated by domain to keep the total count within the LLM's optimal selection range. Implement tools in the phased order specified at the end of this document.
 
 ---
@@ -1534,31 +1536,1512 @@ Returns detailed properties of an assembly including its subassemblies.
 
 ---
 
+## Domain Tools — Pressure Networks
+
+### Tool 20: `civil3d_pressure_network`
+
+Reads and manages pressure pipe networks (water, gas, force mains).
+
+**Actions:**
+
+#### `list`
+
+Returns all pressure networks in the drawing.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| action    | `"list"` | yes      | —          |
+
+**Response data:**
+
+```
+{
+  networks: [
+    {
+      name: string,
+      handle: string,
+      pipeCount: number,
+      fittingCount: number,
+      appurtenanceCount: number
+    }
+  ]
+}
+```
+
+#### `get`
+
+Returns detailed properties of a pressure network.
+
+| Parameter | Type      | Required | Description   |
+| --------- | --------- | -------- | ------------- |
+| action    | `"get"` | yes      | —             |
+| name      | string    | yes      | Network name  |
+
+#### `create`
+
+Creates a new pressure network.
+
+| Parameter   | Type         | Required | Description                   |
+| ----------- | ------------ | -------- | ----------------------------- |
+| action      | `"create"` | yes      | —                            |
+| name        | string       | yes      | Network name (must be unique) |
+| partsList   | string       | yes      | Parts list name               |
+| description | string       | no       | Optional description          |
+
+#### `delete`
+
+Deletes a pressure network.
+
+| Parameter | Type         | Required | Description  |
+| --------- | ------------ | -------- | ------------ |
+| action    | `"delete"` | yes      | —           |
+| name      | string       | yes      | Network name |
+
+---
+
+## Domain Tools — Grading
+
+### Tool 21: `civil3d_grading`
+
+Reads and manages grading groups and grading objects.
+
+**Actions:**
+
+#### `list_groups`
+
+Returns all grading groups in the drawing.
+
+| Parameter | Type             | Required | Description |
+| --------- | ---------------- | -------- | ----------- |
+| action    | `"list_groups"` | yes      | —          |
+
+#### `get_group`
+
+Returns detailed properties of a grading group.
+
+| Parameter | Type          | Required | Description    |
+| --------- | ------------- | -------- | -------------- |
+| action    | `"get_group"` | yes      | —             |
+| name      | string        | yes      | Group name     |
+
+#### `create_group`
+
+Creates a new grading group.
+
+| Parameter | Type              | Required | Description                   |
+| --------- | ----------------- | -------- | ----------------------------- |
+| action    | `"create_group"` | yes      | —                            |
+| name      | string            | yes      | Group name (must be unique)   |
+| site      | string            | no       | Site name                     |
+
+#### `delete_group`
+
+Deletes a grading group.
+
+| Parameter | Type              | Required | Description  |
+| --------- | ----------------- | -------- | ------------ |
+| action    | `"delete_group"` | yes      | —           |
+| name      | string            | yes      | Group name   |
+
+---
+
+## Domain Tools — Plan Production
+
+### Tool 22: `civil3d_sheet_set`
+
+Manages sheet sets for plan production.
+
+**Actions:**
+
+#### `list`
+
+Returns all sheet sets in the drawing.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| action    | `"list"` | yes      | —          |
+
+#### `get`
+
+Returns detailed properties of a sheet set.
+
+| Parameter | Type      | Required | Description  |
+| --------- | --------- | -------- | ------------ |
+| action    | `"get"` | yes      | —           |
+| name      | string    | yes      | Sheet set name |
+
+#### `create`
+
+Creates a new sheet set.
+
+| Parameter | Type              | Required | Description                   |
+| --------- | ----------------- | -------- | ----------------------------- |
+| action    | `"create"`       | yes      | —                            |
+| name      | string            | yes      | Sheet set name (must be unique) |
+| template  | string            | no       | Sheet set template path       |
+
+---
+
+## Domain Tools — QC Checks
+
+### Tool 23: `civil3d_qc`
+
+Performs quality control checks on Civil 3D objects.
+
+**Actions:**
+
+#### `check_alignment`
+
+Validates alignment geometry against design standards.
+
+| Parameter | Type                   | Required | Description    |
+| --------- | ---------------------- | -------- | -------------- |
+| action    | `"check_alignment"` | yes      | —             |
+| name      | string                 | yes      | Alignment name |
+
+#### `check_profile`
+
+Validates profile grades and K-values against design standards.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"check_profile"`  | yes      | —                    |
+| alignmentName | string               | yes      | Parent alignment name |
+| profileName   | string               | yes      | Profile name          |
+
+#### `check_corridor`
+
+Validates corridor build status and target mappings.
+
+| Parameter | Type                 | Required | Description   |
+| --------- | -------------------- | -------- | ------------- |
+| action    | `"check_corridor"` | yes      | —            |
+| name      | string               | yes      | Corridor name |
+
+#### `check_surface`
+
+Validates surface TIN triangles for errors.
+
+| Parameter | Type                 | Required | Description  |
+| --------- | -------------------- | -------- | ------------ |
+| action    | `"check_surface"`  | yes      | —           |
+| name      | string               | yes      | Surface name |
+
+---
+
+## Domain Tools — Quantity Takeoff
+
+### Tool 24: `civil3d_qty`
+
+Performs quantity takeoff calculations for earthwork, materials, and construction.
+
+**Actions:**
+
+#### `surface_volume`
+
+Calculates cut/fill volumes between two surfaces.
+
+| Parameter         | Type                    | Required | Description             |
+| ----------------- | ----------------------- | -------- | ----------------------- |
+| action            | `"surface_volume"`    | yes      | —                      |
+| baseSurface       | string                  | yes      | Base surface name       |
+| comparisonSurface | string                  | yes      | Comparison surface name |
+
+**Response data:**
+
+```
+{
+  cutVolume: number,
+  fillVolume: number,
+  netVolume: number,
+  units: { volume: string, area: string }
+}
+```
+
+#### `corridor_volumes`
+
+Calculates material volumes for a corridor.
+
+| Parameter | Type                     | Required | Description   |
+| --------- | ------------------------ | -------- | ------------- |
+| action    | `"corridor_volumes"`   | yes      | —            |
+| name      | string                   | yes      | Corridor name |
+
+#### `export_csv`
+
+Exports quantity takeoff data to CSV format.
+
+| Parameter   | Type                  | Required | Description                   |
+| ----------- | --------------------- | -------- | ----------------------------- |
+| action      | `"export_csv"`       | yes      | —                            |
+| filePath    | string                | yes      | Output file path              |
+| data        | object                | yes      | Quantity data to export       |
+
+---
+
+## Domain Tools — Hydrology
+
+### Tool 25: `civil3d_hydrology`
+
+Performs hydrology analysis including flow path tracing and watershed delineation.
+
+**Actions:**
+
+#### `list_capabilities`
+
+Returns available hydrology analysis capabilities.
+
+| Parameter | Type                    | Required | Description |
+| --------- | ----------------------- | -------- | ----------- |
+| action    | `"list_capabilities"` | yes      | —          |
+
+#### `trace_flow_path`
+
+Traces water flow path from a specified point on a surface.
+
+| Parameter   | Type                  | Required | Description                |
+| ----------- | --------------------- | -------- | -------------------------- |
+| action      | `"trace_flow_path"`  | yes      | —                           |
+| surfaceName | string                | yes      | Surface name                |
+| x           | number                | yes      | Start X coordinate          |
+| y           | number                | yes      | Start Y coordinate          |
+
+#### `delineate_watershed`
+
+Delineates watershed area for a specified point.
+
+| Parameter   | Type                     | Required | Description                |
+| ----------- | ------------------------ | -------- | -------------------------- |
+| action      | `"delineate_watershed"` | yes      | —                           |
+| surfaceName | string                   | yes      | Surface name                |
+| x           | number                   | yes      | Watershed outlet X coordinate |
+| y           | number                   | yes      | Watershed outlet Y coordinate |
+
+---
+
+## Domain Tools — Pipe Hydraulics
+
+### Tool 26: `civil3d_pipe_hydraulics`
+
+Performs hydraulic analysis on pipe networks.
+
+**Actions:**
+
+#### `calculate_hgl`
+
+Calculates Hydraulic Grade Line (HGL) for a pipe network.
+
+| Parameter   | Type                  | Required | Description   |
+| ----------- | --------------------- | -------- | ------------- |
+| action      | `"calculate_hgl"`    | yes      | —            |
+| networkName | string                | yes      | Network name  |
+
+#### `analyze_hydraulics`
+
+Performs full hydraulic capacity analysis.
+
+| Parameter   | Type                    | Required | Description   |
+| ----------- | ----------------------- | -------- | ------------- |
+| action      | `"analyze_hydraulics"` | yes      | —            |
+| networkName | string                  | yes      | Network name  |
+
+---
+
+## Domain Tools — Assembly Creation
+
+### Tool 27: `civil3d_assembly_create`
+
+Creates and manages assemblies and subassemblies for corridors.
+
+**Actions:**
+
+#### `create`
+
+Creates a new assembly at a specified location.
+
+| Parameter | Type                  | Required | Description                   |
+| --------- | --------------------- | -------- | ----------------------------- |
+| action    | `"create"`           | yes      | —                            |
+| name      | string                | yes      | Assembly name (must be unique) |
+| x         | number                | yes      | Insertion X coordinate        |
+| y         | number                | yes      | Insertion Y coordinate        |
+
+#### `add_subassembly`
+
+Adds a subassembly from the catalog to an existing assembly.
+
+| Parameter      | Type                  | Required | Description                   |
+| -------------- | --------------------- | -------- | ----------------------------- |
+| action         | `"add_subassembly"` | yes      | —                            |
+| assemblyName   | string                | yes      | Target assembly name          |
+| subassemblyName| string                | yes      | Subassembly name from catalog |
+| side           | `"left"`or `"right"`| yes      | Side of assembly              |
+
+---
+
+## Domain Tools — Sight Distance
+
+### Tool 28: `civil3d_sight_distance`
+
+Calculates sight distance for design compliance.
+
+**Actions:**
+
+#### `calculate`
+
+Calculates AASHTO sight distance for design speed.
+
+| Parameter  | Type     | Required | Description      |
+| ---------- | -------- | -------- | ---------------- |
+| action     | `"calculate"` | yes      | —               |
+| designSpeed| number   | yes      | Design speed (mph)|
+| type       | `"stopping"`or `"passing"`or `"decision"` | yes | Sight distance type |
+
+#### `check_compliance`
+
+Checks stopping sight distance compliance along an alignment.
+
+| Parameter     | Type                  | Required | Description           |
+| ------------- | --------------------- | -------- | --------------------- |
+| action        | `"check_compliance"` | yes      | —                    |
+| alignmentName | string                | yes      | Alignment name        |
+| designSpeed   | number                | yes      | Design speed (mph)    |
+
+---
+
+## Domain Tools — Cost Estimation
+
+### Tool 29: `civil3d_cost`
+
+Performs cost estimation for construction projects.
+
+**Actions:**
+
+#### `export_pay_items`
+
+Extracts quantities and exports as pay item schedule.
+
+| Parameter | Type                 | Required | Description                   |
+| --------- | -------------------- | -------- | ----------------------------- |
+| action    | `"export_pay_items"` | yes      | —                            |
+| filePath  | string               | yes      | Output file path (CSV/Excel) |
+
+#### `calculate_estimate`
+
+Generates construction cost estimate.
+
+| Parameter | Type                  | Required | Description                   |
+| --------- | --------------------- | -------- | ----------------------------- |
+| action    | `"calculate_estimate"`| yes      | —                            |
+| quantities| object                | yes      | Quantity data                 |
+| unitPrices| object                | yes      | Unit price data               |
+
+---
+
+## Domain Tools — Survey Processing
+
+### Tool 30: `civil3d_survey`
+
+Manages survey databases and figures.
+
+**Actions:**
+
+#### `list_databases`
+
+Returns all survey databases.
+
+| Parameter | Type                 | Required | Description |
+| --------- | -------------------- | -------- | ----------- |
+| action    | `"list_databases"`  | yes      | —          |
+
+#### `create_database`
+
+Creates a new survey database.
+
+| Parameter | Type                  | Required | Description                   |
+| --------- | --------------------- | -------- | ----------------------------- |
+| action    | `"create_database"`  | yes      | —                            |
+| name      | string                | yes      | Database name (must be unique) |
+
+#### `list_figures`
+
+Returns all survey figures in a database.
+
+| Parameter   | Type               | Required | Description     |
+| ----------- | ------------------ | -------- | --------------- |
+| action      | `"list_figures"`  | yes      | —              |
+| databaseName | string             | yes      | Database name   |
+
+#### `get_figure`
+
+Returns detailed figure data including vertices.
+
+| Parameter   | Type             | Required | Description   |
+| ----------- | ---------------- | -------- | ------------- |
+| action      | `"get_figure"`   | yes      | —            |
+| databaseName| string           | yes      | Database name |
+| figureName  | string           | yes      | Figure name  |
+
+---
+
+## Domain Tools — Standards Lookup
+
+### Tool 31: `civil3d_standards_lookup`
+
+Looks up Civil 3D standards, templates, and governance information.
+
+**Actions:**
+
+#### `lookup`
+
+Retrieves standards information for a specific domain.
+
+| Parameter | Type       | Required | Description                                    |
+| --------- | ---------- | -------- | ---------------------------------------------- |
+| action    | `"lookup"` | yes      | —                                             |
+| domain    | string     | yes      | Domain (e.g., "layers", "styles", "labels")   |
+| key       | string     | no       | Specific standard key to retrieve              |
+
+**Response data:**
+
+```
+{
+  domain: string,
+  standards: {
+    [key: string]: string | number | object
+  }
+}
+```
+
+---
+
+## Domain Tools — Detention & Stormwater
+
+### Tool 32: `civil3d_detention`
+
+Performs detention basin sizing and stage-storage analysis.
+
+**Actions:**
+
+#### `calculate_basin_size`
+
+Calculates required detention basin size to reduce peak runoff.
+
+| Parameter   | Type                     | Required | Description                |
+| ----------- | ------------------------ | -------- | -------------------------- |
+| action      | `"calculate_basin_size"`| yes      | —                           |
+| inflowRate  | number                   | yes      | Peak inflow rate (cfs)      |
+| outflowRate | number                   | yes      | Target outflow rate (cfs)   |
+| duration    | number                   | yes      | Storm duration (minutes)    |
+
+#### `stage_storage`
+
+Generates stage-storage-discharge table for a detention basin.
+
+| Parameter   | Type              | Required | Description                |
+| ----------- | ----------------- | -------- | -------------------------- |
+| action      | `"stage_storage"` | yes      | —                           |
+| surfaceName | string            | yes      | Basin surface name          |
+
+---
+
+## Domain Tools — Slope Analysis
+
+### Tool 33: `civil3d_slope`
+
+Performs slope geometry and stability analysis.
+
+**Actions:**
+
+#### `calculate_geometry`
+
+Calculates daylight line coordinates and slope geometry.
+
+| Parameter     | Type                  | Required | Description           |
+| ------------- | --------------------- | -------- | --------------------- |
+| action        | `"calculate_geometry"`| yes      | —                    |
+| alignmentName | string                | yes      | Alignment name        |
+| station       | number                | yes      | Station value         |
+| cutSlope      | number                | yes      | Cut slope ratio      |
+| fillSlope     | number                | yes      | Fill slope ratio     |
+
+#### `check_stability`
+
+Evaluates cut and fill slope stability.
+
+| Parameter     | Type                | Required | Description           |
+| ------------- | ------------------- | -------- | --------------------- |
+| action        | `"check_stability"` | yes      | —                    |
+| alignmentName | string              | yes      | Alignment name        |
+| designSpeed   | number              | yes      | Design speed (mph)    |
+
+---
+
+## Domain Tools — Parcel Editing
+
+### Tool 34: `civil3d_parcel_edit`
+
+Creates and modifies parcels.
+
+**Actions:**
+
+#### `create`
+
+Creates a parcel from polylines or feature lines.
+
+| Parameter | Type                  | Required | Description                   |
+| --------- | --------------------- | -------- | ----------------------------- |
+| action    | `"create"`           | yes      | —                            |
+| name      | string                | yes      | Parcel name (must be unique)   |
+| siteName  | string                | yes      | Site name                     |
+| objects   | string[]              | yes      | Object handles to use as boundary |
+
+#### `edit`
+
+Modifies parcel properties.
+
+| Parameter | Type       | Required | Description    |
+| --------- | ---------- | -------- | -------------- |
+| action    | `"edit"` | yes      | —             |
+| siteName  | string     | yes      | Site name     |
+| parcelName| string     | yes      | Parcel name   |
+| style     | string     | no       | Parcel style  |
+
+#### `lot_line_adjust`
+
+Adjusts lot lines to achieve target area.
+
+| Parameter   | Type                   | Required | Description                |
+| ----------- | ---------------------- | -------- | -------------------------- |
+| action      | `"lot_line_adjust"`   | yes      | —                           |
+| parcelName  | string                 | yes      | Parcel name                 |
+| targetArea  | number                 | yes      | Target area (sq ft or sq m) |
+
+---
+
+## Domain Tools — COGO
+
+### Tool 35: `civil3d_cogo`
+
+Performs coordinate geometry calculations.
+
+**Actions:**
+
+#### `inverse`
+
+Calculates bearing and distance between two points.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"inverse"`           | yes      | —                           |
+| x1        | number                | yes      | First point X coordinate    |
+| y1        | number                | yes      | First point Y coordinate    |
+| x2        | number                | yes      | Second point X coordinate   |
+| y2        | number                | yes      | Second point Y coordinate   |
+
+#### `traverse`
+
+Solves a traverse from a starting point.
+
+| Parameter | Type                            | Required | Description                  |
+| --------- | ------------------------------- | -------- | ---------------------------- |
+| action    | `"traverse"`                    | yes      | —                             |
+| courses   | `{ bearing: string, distance: number }[]` | yes | Array of bearing/distance courses |
+
+#### `curve_solve`
+
+Solves a horizontal curve given any two elements.
+
+| Parameter  | Type     | Required | Description                |
+| ---------- | -------- | -------- | -------------------------- |
+| action     | `"curve_solve"` | yes      | —                           |
+| radius     | number   | no       | Curve radius                |
+| delta      | number   | no       | Delta angle (degrees)       |
+| arcLength  | number   | no       | Arc length                  |
+| chord      | number   | no       | Chord length                |
+
+---
+
+## Domain Tools — Intersection Design
+
+### Tool 36: `civil3d_intersection`
+
+Creates and manages road intersections.
+
+**Actions:**
+
+#### `list`
+
+Returns all intersections in the drawing.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| action    | `"list"` | yes      | —          |
+
+#### `create`
+
+Creates an intersection between two alignments.
+
+| Parameter      | Type     | Required | Description                   |
+| -------------- | -------- | -------- | ----------------------------- |
+| action         | `"create"`| yes      | —                            |
+| primaryAlignment| string  | yes      | Primary alignment name        |
+| secondaryAlignment| string| yes      | Secondary alignment name      |
+| intersectionName| string | yes      | Intersection name (must be unique) |
+
+#### `get`
+
+Returns detailed properties of an intersection.
+
+| Parameter   | Type      | Required | Description     |
+| ----------- | --------- | -------- | --------------- |
+| action      | `"get"`   | yes      | —              |
+| name        | string    | yes      | Intersection name |
+
+---
+
+## Domain Tools — Superelevation
+
+### Tool 37: `civil3d_superelevation`
+
+Manages superelevation design for alignments.
+
+**Actions:**
+
+#### `get`
+
+Retrieves superelevation design data.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"get"`              | yes      | —                    |
+| alignmentName | string               | yes      | Alignment name        |
+
+#### `apply`
+
+Applies superelevation using AASHTO attainment method.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"apply"`            | yes      | —                    |
+| alignmentName | string               | yes      | Alignment name        |
+| maxSuperRate  | number               | yes      | Maximum superelevation rate (%) |
+| attainmentMethod | string           | yes      | AASHTO attainment method |
+
+#### `check_design`
+
+Validates superelevation rates and attainment lengths.
+
+| Parameter     | Type                  | Required | Description           |
+| ------------- | --------------------- | -------- | --------------------- |
+| action        | `"check_design"`      | yes      | —                    |
+| alignmentName | string                | yes      | Alignment name        |
+| designSpeed   | number                | yes      | Design speed (mph)    |
+
+---
+
+## Domain Tools — Profile Editing
+
+### Tool 38: `civil3d_profile_edit`
+
+Modifies layout profiles with PVI and curve operations.
+
+**Actions:**
+
+#### `add_pvi`
+
+Adds a PVI (Point of Vertical Intersection) to a layout profile.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"add_pvi"`          | yes      | —                    |
+| alignmentName | string               | yes      | Alignment name        |
+| profileName   | string               | yes      | Profile name          |
+| station       | number               | yes      | Station value         |
+| elevation     | number               | yes      | Elevation value       |
+
+#### `add_curve`
+
+Adds a parabolic vertical curve at a PVI.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"add_curve"`         | yes      | —                    |
+| alignmentName | string               | yes      | Alignment name        |
+| profileName   | string               | yes      | Profile name          |
+| station       | number               | yes      | PVI station           |
+| length        | number               | yes      | Curve length          |
+
+#### `set_grade`
+
+Sets the grade of a tangent entity.
+
+| Parameter     | Type                 | Required | Description           |
+| ------------- | -------------------- | -------- | --------------------- |
+| action        | `"set_grade"`        | yes      | —                    |
+| alignmentName | string               | yes      | Alignment name        |
+| profileName   | string               | yes      | Profile name          |
+| station       | number               | yes      | Station on tangent    |
+| grade         | number               | yes      | New grade (%)         |
+
+---
+
+## Domain Tools — Time of Concentration
+
+### Tool 39: `civil3d_time_of_concentration`
+
+Calculates time of concentration and generates hydrographs.
+
+**Actions:**
+
+#### `calculate`
+
+Calculates Tc using standard methods.
+
+| Parameter   | Type                     | Required | Description                |
+| ----------- | ------------------------ | -------- | -------------------------- |
+| action      | `"calculate"`            | yes      | —                           |
+| method      | string                   | yes      | Tc calculation method       |
+| flowLength  | number                   | yes      | Flow path length (ft)       |
+| slope       | number                   | yes      | Average slope (%)           |
+
+#### `generate_hydrograph`
+
+Generates SCS hydrograph for a watershed.
+
+| Parameter   | Type                  | Required | Description                |
+| ----------- | --------------------- | -------- | -------------------------- |
+| action      | `"generate_hydrograph"`| yes      | —                           |
+| tc          | number                | yes      | Time of concentration (min) |
+| area        | number                | yes      | Watershed area (acres)     |
+| rainfall    | number                | yes      | Rainfall depth (inches)    |
+
+---
+
+## Domain Tools — Storm & Sanitary Analysis
+
+### Tool 40: `civil3d_stm`
+
+Manages Storm and Sanitary Analysis (SSA) workflows.
+
+**Actions:**
+
+#### `export`
+
+Exports Civil 3D data to SSA STM file format.
+
+| Parameter   | Type        | Required | Description                |
+| ----------- | ----------- | -------- | -------------------------- |
+| action      | `"export"`  | yes      | —                           |
+| filePath    | string      | yes      | Output STM file path        |
+
+#### `import`
+
+Imports SSA STM file data into Civil 3D.
+
+| Parameter   | Type        | Required | Description                |
+| ----------- | ----------- | -------- | -------------------------- |
+| action      | `"import"`  | yes      | —                           |
+| filePath    | string      | yes      | Input STM file path         |
+
+---
+
+## Domain Tools — Catchment
+
+### Tool 41: `civil3d_catchment`
+
+Manages catchments and catchment groups.
+
+**Actions:**
+
+#### `list_groups`
+
+Returns all catchment groups in the drawing.
+
+| Parameter | Type                | Required | Description |
+| --------- | ------------------- | -------- | ----------- |
+| action    | `"list_groups"`    | yes      | —          |
+
+#### `list`
+
+Returns all catchments in a group.
+
+| Parameter   | Type      | Required | Description     |
+| ----------- | --------- | -------- | --------------- |
+| action      | `"list"`  | yes      | —              |
+| groupName   | string    | no       | Group name     |
+
+#### `get_properties`
+
+Returns detailed catchment properties.
+
+| Parameter   | Type               | Required | Description   |
+| ----------- | ------------------ | -------- | ------------- |
+| action      | `"get_properties"` | yes      | —            |
+| catchmentName| string             | yes      | Catchment name|
+
+---
+
+## Domain Tools — Section Views
+
+### Tool 42: `civil3d_section_view`
+
+Creates and manages section views.
+
+**Actions:**
+
+#### `create`
+
+Creates section views for a sample line group.
+
+| Parameter            | Type                  | Required | Description                   |
+| -------------------- | --------------------- | -------- | ----------------------------- |
+| action               | `"create"`            | yes      | —                            |
+| sampleLineGroupName  | string                | yes      | Sample line group name        |
+| insertionPoint       | `{ x: number, y: number }` | yes | Insertion point coordinates |
+| styleName            | string                | no       | Section view style            |
+
+#### `list`
+
+Returns all section views in the drawing.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| action    | `"list"` | yes      | —          |
+
+---
+
+## Domain Tools — Alignment Editing
+
+### Tool 43: `civil3d_alignment_edit`
+
+Modifies alignment geometry with tangent, curve, and spiral operations.
+
+**Actions:**
+
+#### `add_tangent`
+
+Appends a fixed tangent entity to an alignment.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"add_tangent"`       | yes      | —                           |
+| name      | string                | yes      | Alignment name              |
+| x1        | number                | yes      | Start X coordinate          |
+| y1        | number                | yes      | Start Y coordinate          |
+| x2        | number                | yes      | End X coordinate            |
+| y2        | number                | yes      | End Y coordinate            |
+
+#### `add_curve`
+
+Appends a fixed horizontal curve to an alignment.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"add_curve"`         | yes      | —                           |
+| name      | string                | yes      | Alignment name              |
+| radius    | number                | yes      | Curve radius                 |
+| delta     | number                | yes      | Delta angle (degrees)       |
+
+#### `add_spiral`
+
+Appends a spiral (transition curve) to an alignment.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"add_spiral"`        | yes      | —                           |
+| name      | string                | yes      | Alignment name              |
+| length    | number                | yes      | Spiral length               |
+
+---
+
+## Domain Tools — Corridor Editing
+
+### Tool 44: `civil3d_corridor_edit`
+
+Modifies corridor regions and target mappings.
+
+**Actions:**
+
+#### `add_region`
+
+Adds a new region to a corridor baseline.
+
+| Parameter    | Type                 | Required | Description                |
+| ------------ | -------------------- | -------- | -------------------------- |
+| action       | `"add_region"`       | yes      | —                           |
+| corridorName | string               | yes      | Corridor name               |
+| baselineName | string               | yes      | Baseline name               |
+| startStation | number               | yes      | Region start station        |
+| endStation   | number               | yes      | Region end station          |
+| assemblyName | string               | yes      | Assembly name for region    |
+
+#### `set_target`
+
+Sets a target mapping for a subassembly.
+
+| Parameter      | Type                 | Required | Description                |
+| -------------- | -------------------- | -------- | -------------------------- |
+| action         | `"set_target"`       | yes      | —                           |
+| corridorName   | string               | yes      | Corridor name               |
+| subassemblyName| string              | yes      | Subassembly name            |
+| targetType     | string               | yes      | Target type (surface, alignment, profile) |
+| targetName     | string               | yes      | Target object name          |
+
+---
+
+## Domain Tools — Drawing Primitives
+
+### Tool 45: `civil3d_primitive`
+
+Creates basic AutoCAD primitives.
+
+**Actions:**
+
+#### `create_polyline`
+
+Creates a 2D polyline in model space.
+
+| Parameter | Type                            | Required | Description                |
+| --------- | ------------------------------- | -------- | -------------------------- |
+| action    | `"create_polyline"`             | yes      | —                           |
+| points    | `{ x: number, y: number }[]`    | yes      | Array of 2D points         |
+| layer     | string                          | no       | Layer name                  |
+
+#### `create_3dpolyline`
+
+Creates a 3D polyline in model space.
+
+| Parameter | Type                                | Required | Description                |
+| --------- | ----------------------------------- | -------- | -------------------------- |
+| action    | `"create_3dpolyline"`               | yes      | —                           |
+| points    | `{ x: number, y: number, z: number }[]` | yes | Array of 3D points         |
+| layer     | string                              | no       | Layer name                  |
+
+#### `create_line`
+
+Creates a line segment between two points.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"create_line"`      | yes      | —                           |
+| x1        | number                | yes      | Start X coordinate          |
+| y1        | number                | yes      | Start Y coordinate          |
+| x2        | number                | yes      | End X coordinate            |
+| y2        | number                | yes      | End Y coordinate            |
+
+#### `create_text`
+
+Creates DBText (single-line text) in model space.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"create_text"`       | yes      | —                           |
+| text      | string                | yes      | Text string                 |
+| x         | number                | yes      | Insertion X coordinate      |
+| y         | number                | yes      | Insertion Y coordinate      |
+| height    | number                | no       | Text height                 |
+
+#### `create_mtext`
+
+Creates MText (multi-line text) in model space.
+
+| Parameter | Type                  | Required | Description                |
+| --------- | --------------------- | -------- | -------------------------- |
+| action    | `"create_mtext"`      | yes      | —                           |
+| text      | string                | yes      | Text string                 |
+| x         | number                | yes      | Insertion X coordinate      |
+| y         | number                | yes      | Insertion Y coordinate      |
+| width     | number                | no       | Text width                  |
+
+---
+
+## Domain Tools — Pressure Network Components
+
+### Tool 46: `civil3d_pressure_network_components`
+
+Manages pressure network pipes, fittings, and appurtenances.
+
+**Actions:**
+
+#### `add_pipe`
+
+Adds a pressure pipe segment to a network.
+
+| Parameter   | Type                  | Required | Description                |
+| ----------- | --------------------- | -------- | -------------------------- |
+| action      | `"add_pipe"`          | yes      | —                           |
+| networkName | string                | yes      | Network name                |
+| startPoint  | `{ x: number, y: number, z: number }` | yes | Start coordinates |
+| endPoint    | `{ x: number, y: number, z: number }` | yes | End coordinates |
+| partName    | string                | yes      | Pipe part name from catalog |
+
+#### `add_fitting`
+
+Adds a pressure fitting (elbow, tee, reducer, cap).
+
+| Parameter   | Type                  | Required | Description                |
+| ----------- | --------------------- | -------- | -------------------------- |
+| action      | `"add_fitting"`       | yes      | —                           |
+| networkName | string                | yes      | Network name                |
+| x           | number                | yes      | X coordinate                |
+| y           | number                | yes      | Y coordinate                |
+| z           | number                | yes      | Z coordinate                |
+| partName    | string                | yes      | Fitting part name           |
+
+#### `add_appurtenance`
+
+Adds a pressure appurtenance (valve, hydrant, meter).
+
+| Parameter   | Type                  | Required | Description                |
+| ----------- | --------------------- | -------- | -------------------------- |
+| action      | `"add_appurtenance"`  | yes      | —                           |
+| networkName | string                | yes      | Network name                |
+| x           | number                | yes      | X coordinate                |
+| y           | number                | yes      | Y coordinate                |
+| partName    | string                | yes      | Appurtenance part name      |
+
+#### `resize_pipe`
+
+Changes pressure pipe size to a different catalog entry.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"resize_pipe"`      | yes      | —                           |
+| networkName | string               | yes      | Network name                |
+| pipeName    | string               | yes      | Pipe name                   |
+| newSize     | string               | yes      | New size from catalog       |
+
+---
+
+## Domain Tools — Plan Production Details
+
+### Tool 47: `civil3d_sheet`
+
+Manages individual sheets within sheet sets.
+
+**Actions:**
+
+#### `add`
+
+Adds a new sheet to an existing sheet set.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"add"`              | yes      | —                           |
+| sheetSetName| string               | yes      | Sheet set name              |
+| layoutName  | string               | yes      | Layout name                 |
+| sheetNumber | number               | yes      | Sheet number                |
+
+#### `get_properties`
+
+Returns full properties of a specific sheet.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"get_properties"`   | yes      | —                           |
+| sheetSetName| string               | yes      | Sheet set name              |
+| sheetName   | string               | yes      | Sheet name                  |
+
+#### `set_title_block`
+
+Sets or updates title block template on a sheet.
+
+| Parameter    | Type                 | Required | Description                |
+| ------------ | -------------------- | -------- | -------------------------- |
+| action       | `"set_title_block"`  | yes      | —                           |
+| sheetSetName | string               | yes      | Sheet set name              |
+| sheetName    | string               | yes      | Sheet name                  |
+| titleBlock   | string               | yes      | Title block name            |
+
+#### `publish_pdf`
+
+Publishes sheet layouts to PDF.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"publish_pdf"`      | yes      | —                           |
+| sheetSetName| string               | yes      | Sheet set name              |
+| sheetNames  | string[]             | no       | Specific sheets to publish  |
+| filePath    | string               | yes      | Output PDF file path        |
+
+---
+
+## Domain Tools — Additional QC
+
+### Tool 48: `civil3d_qc_extended`
+
+Extended quality control checks.
+
+**Actions:**
+
+#### `check_labels`
+
+Checks for missing labels and style standard violations.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"check_labels"`     | yes      | —                           |
+| objectType| string               | no       | Object type to check        |
+
+#### `check_drawing_standards`
+
+Audits drawing for layer naming, lineweights, colors.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"check_drawing_standards"` | yes | —                     |
+
+#### `fix_drawing_standards`
+
+Automatically fixes common drawing standard violations.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"fix_drawing_standards"` | yes | —                      |
+
+#### `generate_report`
+
+Generates comprehensive QC report.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"generate_report"`   | yes      | —                           |
+| filePath  | string               | yes      | Output report file path      |
+
+---
+
+## Domain Tools — Extended Quantity Takeoff
+
+### Tool 49: `civil3d_qty_extended`
+
+Extended quantity takeoff calculations.
+
+**Actions:**
+
+#### `corridor_volumes`
+
+Calculates subassembly material volumes by region.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"corridor_volumes"` | yes      | —                           |
+| corridorName| string              | yes      | Corridor name               |
+| regionName  | string               | no       | Specific region name        |
+
+#### `alignment_lengths`
+
+Calculates total length for one or more alignments.
+
+| Parameter      | Type      | Required | Description                |
+| -------------- | --------- | -------- | -------------------------- |
+| action         | `"alignment_lengths"` | yes | —                           |
+| alignmentNames | string[]  | yes      | Array of alignment names     |
+
+#### `point_count_by_group`
+
+Counts COGO points per point group.
+
+| Parameter | Type       | Required | Description |
+| --------- | ---------- | -------- | ----------- |
+| action    | `"point_count_by_group"` | yes | —          |
+
+#### `material_list_get`
+
+Retrieves material list defined on a corridor.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"material_list_get"` | yes      | —                           |
+| corridorName| string               | yes      | Corridor name               |
+
+#### `earthwork_summary`
+
+Generates running earthwork cut/fill summary.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"earthwork_summary"` | yes      | —                           |
+
+---
+
+## Domain Tools — Pipe Design Automation
+
+### Tool 50: `civil3d_pipe_design`
+
+Automates gravity pipe network design.
+
+**Actions:**
+
+#### `size_network`
+
+Sizes gravity-network pipes from Manning full-flow capacity.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"size_network"`     | yes      | —                           |
+| networkName | string               | yes      | Network name                |
+| designFlow  | number               | yes      | Design flow rate (cfs)      |
+| slope       | number               | yes      | Pipe slope (%)              |
+
+#### `automate_profile_view`
+
+Automates gravity-pipe profile-view setup.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"automate_profile_view"` | yes | —                       |
+| networkName | string              | yes      | Network name                |
+| alignmentName | string             | yes      | Alignment name              |
+
+---
+
+## Domain Tools — Extended Grading
+
+### Tool 51: `civil3d_grading_extended`
+
+Extended grading operations.
+
+**Actions:**
+
+#### `list_gradings`
+
+Lists all grading objects within a grading group.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"list_gradings"`    | yes      | —                           |
+| groupName   | string               | yes      | Grading group name          |
+
+#### `get_grading`
+
+Returns detailed properties of a grading object.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"get_grading"`      | yes      | —                           |
+| groupName   | string               | yes      | Grading group name          |
+| gradingName | string              | yes      | Grading object name         |
+
+#### `create_grading`
+
+Creates a new grading from a feature line.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"create_grading"`   | yes      | —                           |
+| groupName   | string               | yes      | Grading group name          |
+| featureLineName| string           | yes      | Feature line name           |
+| criteriaName| string              | yes      | Grading criteria name       |
+
+#### `delete_grading`
+
+Deletes a grading object.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"delete_grading"`   | yes      | —                           |
+| groupName   | string               | yes      | Grading group name          |
+| gradingName | string               | yes      | Grading object name         |
+
+#### `list_criteria`
+
+Lists all available grading criteria sets.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"list_criteria"`    | yes      | —                           |
+
+#### `create_feature_line`
+
+Creates a new feature line from 3D points.
+
+| Parameter | Type                                | Required | Description                |
+| --------- | ----------------------------------- | -------- | -------------------------- |
+| action    | `"create_feature_line"`            | yes      | —                           |
+| points    | `{ x: number, y: number, z: number }[]` | yes | Array of 3D points |
+
+---
+
+## Domain Tools — Point Groups
+
+### Tool 52: `civil3d_point_group`
+
+Manages point groups and point group operations.
+
+**Actions:**
+
+#### `create`
+
+Creates a new point group with filter criteria.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"create"`           | yes      | —                           |
+| name        | string               | yes      | Point group name (must be unique) |
+| includePattern | string          | no       | Include pattern (e.g., "100-*") |
+| excludePattern | string          | no       | Exclude pattern              |
+
+#### `update`
+
+Updates filter criteria and description of a point group.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"update"`           | yes      | —                           |
+| name        | string               | yes      | Point group name            |
+| includePattern | string          | no       | New include pattern          |
+| excludePattern | string          | no       | New exclude pattern          |
+
+#### `delete`
+
+Deletes a point group (points are NOT deleted).
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"delete"`            | yes      | —                           |
+| name      | string               | yes      | Point group name            |
+
+#### `export_points`
+
+Exports COGO points from a point group.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"export_points"`     | yes      | —                           |
+| groupName | string               | yes      | Point group name            |
+| filePath  | string               | yes      | Output file path            |
+| format    | string               | yes      | Format (pnezd, penz, xyzd, xyz, csv) |
+
+#### `transform_points`
+
+Transforms points by translation, rotation, and/or scale.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"transform_points"`  | yes      | —                           |
+| pointNumbers | number[]          | yes      | Array of point numbers       |
+| translationX | number           | no       | X translation                |
+| translationY | number           | no       | Y translation                |
+| rotation  | number               | no       | Rotation angle (degrees)     |
+| scaleX    | number               | no       | X scale factor               |
+| scaleY    | number               | no       | Y scale factor               |
+
+---
+
+## Domain Tools — Extended Data Shortcuts
+
+### Tool 53: `civil3d_data_shortcut_extended`
+
+Extended data shortcut operations.
+
+**Actions:**
+
+#### `create`
+
+Creates a data shortcut for a Civil 3D object.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"create"`           | yes      | —                           |
+| objectName  | string               | yes      | Object name                 |
+| objectType | string               | yes      | Object type (surface, alignment, profile, pipe_network) |
+
+#### `promote`
+
+Promotes a data shortcut reference to a full editable object.
+
+| Parameter   | Type                 | Required | Description                |
+| ----------- | -------------------- | -------- | -------------------------- |
+| action      | `"promote"`          | yes      | —                           |
+| objectName  | string               | yes      | Shortcut object name        |
+
+---
+
+## Domain Tools — Extended Parcel
+
+### Tool 54: `civil3d_parcel_extended`
+
+Extended parcel operations.
+
+**Actions:**
+
+#### `report`
+
+Generates parcel report with coordinate and unit settings.
+
+| Parameter | Type                 | Required | Description                |
+| --------- | -------------------- | -------- | -------------------------- |
+| action    | `"report"`           | yes      | —                           |
+| siteName  | string               | yes      | Site name                   |
+| parcelName| string               | no       | Specific parcel name (optional) |
+| filePath  | string               | yes      | Output report file path     |
+
+---
+
 ## Summary — Tool Count
 
-| #  | Tool Name                     | Actions                                                                                 | Category       |
-| -- | ----------------------------- | --------------------------------------------------------------------------------------- | -------------- |
-| 1  | `civil3d_drawing`           | info, save, undo, redo, settings                                                        | System         |
-| 2  | `civil3d_health`            | (single action)                                                                         | System         |
-| 3  | `civil3d_job`               | status, cancel                                                                          | System         |
-| 4  | `civil3d_coordinate_system` | info, transform                                                                         | System         |
-| 5  | `civil3d_surface`           | list, get, get_elevation, get_elevation_along, get_statistics, create, delete           | Surface        |
-| 6  | `civil3d_surface_edit`      | add_points, add_breakline, add_boundary, extract_contours, compute_volume               | Surface        |
-| 7  | `civil3d_alignment`         | list, get, station_to_point, point_to_station, create, delete                           | Alignment      |
-| 8  | `civil3d_profile`           | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete | Profile        |
-| 9  | `civil3d_corridor`          | list, get, rebuild, get_surfaces, get_feature_lines, compute_volumes                    | Corridor       |
-| 10 | `civil3d_pipe_network`      | list, get, get_pipe, get_structure, check_interference                                  | Pipe Network   |
-| 11 | `civil3d_pipe_network_edit` | create, add_pipe, add_structure                                                         | Pipe Network   |
-| 12 | `civil3d_point`             | list, get, create, list_groups, import, delete                                          | Points         |
-| 13 | `civil3d_section`           | list_sample_lines, get_section_data, create_sample_lines                                | Sections       |
-| 14 | `civil3d_data_shortcut`     | list, sync, create_reference                                                            | Data Shortcuts |
-| 15 | `civil3d_style`             | list, get                                                                               | Styles         |
-| 16 | `civil3d_label`             | list, add, list_styles                                                                  | Labels         |
-| 17 | `civil3d_feature_line`      | list, get, export_as_polyline                                                           | Feature Lines  |
-| 18 | `civil3d_parcel`            | list_sites, list, get                                                                   | Parcels        |
-| 19 | `civil3d_assembly`          | list, get                                                                               | Assemblies     |
+> **Note:** This specification document covers the foundational tool architecture. The actual implementation includes 180+ tools across all Civil 3D domains. See README.md for the complete tool catalog.
 
-**Total: 19 tools exposing 78 actions**
+| #  | Tool Name                     | Actions                                                                                 | Category              |
+| -- | ----------------------------- | --------------------------------------------------------------------------------------- | --------------------- |
+| 1  | `civil3d_drawing`           | info, save, undo, redo, settings                                                        | System               |
+| 2  | `civil3d_health`            | (single action)                                                                         | System               |
+| 3  | `civil3d_job`               | status, cancel                                                                          | System               |
+| 4  | `civil3d_coordinate_system` | info, transform                                                                         | System               |
+| 5  | `civil3d_surface`           | list, get, get_elevation, get_elevation_along, get_statistics, create, delete           | Surface              |
+| 6  | `civil3d_surface_edit`      | add_points, add_breakline, add_boundary, extract_contours, compute_volume               | Surface              |
+| 7  | `civil3d_alignment`         | list, get, station_to_point, point_to_station, create, delete                           | Alignment            |
+| 8  | `civil3d_profile`           | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete | Profile              |
+| 9  | `civil3d_corridor`          | list, get, rebuild, get_surfaces, get_feature_lines, compute_volumes                    | Corridor             |
+| 10 | `civil3d_pipe_network`      | list, get, get_pipe, get_structure, check_interference                                  | Pipe Network         |
+| 11 | `civil3d_pipe_network_edit` | create, add_pipe, add_structure                                                         | Pipe Network         |
+| 12 | `civil3d_point`             | list, get, create, list_groups, import, delete                                          | Points               |
+| 13 | `civil3d_section`           | list_sample_lines, get_section_data, create_sample_lines                                | Sections             |
+| 14 | `civil3d_data_shortcut`     | list, sync, create_reference                                                            | Data Shortcuts       |
+| 15 | `civil3d_style`             | list, get                                                                               | Styles               |
+| 16 | `civil3d_label`             | list, add, list_styles                                                                  | Labels               |
+| 17 | `civil3d_feature_line`      | list, get, export_as_polyline                                                           | Feature Lines        |
+| 18 | `civil3d_parcel`            | list_sites, list, get                                                                   | Parcels              |
+| 19 | `civil3d_assembly`          | list, get                                                                               | Assemblies           |
+| 20 | `civil3d_pressure_network`  | list, get, create, delete                                                               | Pressure Networks    |
+| 21 | `civil3d_grading`           | list_groups, get_group, create_group, delete_group                                      | Grading              |
+| 22 | `civil3d_sheet_set`         | list, get, create                                                                       | Plan Production      |
+| 23 | `civil3d_qc`                | check_alignment, check_profile, check_corridor, check_surface                             | QC Checks            |
+| 24 | `civil3d_qty`               | surface_volume, corridor_volumes, export_csv                                             | Quantity Takeoff     |
+| 25 | `civil3d_hydrology`         | list_capabilities, trace_flow_path, delineate_watershed                                  | Hydrology            |
+| 26 | `civil3d_pipe_hydraulics`   | calculate_hgl, analyze_hydraulics                                                       | Pipe Hydraulics      |
+| 27 | `civil3d_assembly_create`   | create, add_subassembly                                                                 | Assembly Creation    |
+| 28 | `civil3d_sight_distance`    | calculate, check_compliance                                                             | Sight Distance       |
+| 29 | `civil3d_cost`              | export_pay_items, calculate_estimate                                                    | Cost Estimation      |
+| 30 | `civil3d_survey`            | list_databases, create_database, list_figures, get_figure                                | Survey Processing    |
+| 31 | `civil3d_standards_lookup`  | lookup                                                                                  | Standards Lookup     |
+| 32 | `civil3d_detention`         | calculate_basin_size, stage_storage                                                     | Detention & Stormwater|
+| 33 | `civil3d_slope`             | calculate_geometry, check_stability                                                     | Slope Analysis       |
+| 34 | `civil3d_parcel_edit`       | create, edit, lot_line_adjust                                                           | Parcel Editing       |
+| 35 | `civil3d_cogo`              | inverse, traverse, curve_solve                                                           | COGO                 |
+| 36 | `civil3d_intersection`      | list, create, get                                                                       | Intersection Design  |
+| 37 | `civil3d_superelevation`    | get, apply, check_design                                                                 | Superelevation       |
+| 38 | `civil3d_profile_edit`      | add_pvi, add_curve, set_grade                                                            | Profile Editing      |
+| 39 | `civil3d_time_of_concentration`| calculate, generate_hydrograph                                                      | Time of Concentration|
+| 40 | `civil3d_stm`              | export, import                                                                          | SSA                  |
+| 41 | `civil3d_catchment`        | list_groups, list, get_properties                                                      | Catchment            |
+| 42 | `civil3d_section_view`     | create, list                                                                            | Section Views        |
+| 43 | `civil3d_alignment_edit`   | add_tangent, add_curve, add_spiral                                                       | Alignment Editing    |
+| 44 | `civil3d_corridor_edit`    | add_region, set_target                                                                  | Corridor Editing     |
+| 45 | `civil3d_primitive`        | create_polyline, create_3dpolyline, create_line, create_text, create_mtext                 | Drawing Primitives   |
+| 46 | `civil3d_pressure_network_components`| add_pipe, add_fitting, add_appurtenance, resize_pipe                              | Pressure Network Components|
+| 47 | `civil3d_sheet`            | add, get_properties, set_title_block, publish_pdf                                       | Plan Production Details|
+| 48 | `civil3d_qc_extended`      | check_labels, check_drawing_standards, fix_drawing_standards, generate_report              | Additional QC        |
+| 49 | `civil3d_qty_extended`     | corridor_volumes, alignment_lengths, point_count_by_group, material_list_get, earthwork_summary| Extended Quantity Takeoff|
+| 50 | `civil3d_pipe_design`      | size_network, automate_profile_view                                                      | Pipe Design Automation|
+| 51 | `civil3d_grading_extended`  | list_gradings, get_grading, create_grading, delete_grading, list_criteria, create_feature_line| Extended Grading|
+| 52 | `civil3d_point_group`      | create, update, delete, export_points, transform_points                                     | Point Groups         |
+| 53 | `civil3d_data_shortcut_extended`| create, promote                                                                     | Extended Data Shortcuts|
+| 54 | `civil3d_parcel_extended`  | report                                                                                  | Extended Parcel      |
+
+**Specification Total: 54 tools exposing 175+ actions**
+**Implementation Total: 180+ tools across all Civil 3D domains**
 
 ---
 

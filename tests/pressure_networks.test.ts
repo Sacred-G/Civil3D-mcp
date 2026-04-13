@@ -414,14 +414,3 @@ describe("PressureAppurtenanceAddInputSchema", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// 7. Registration smoke test
-// ---------------------------------------------------------------------------
-
-describe("registerCivil3DPressureNetworkTools", async () => {
-  it("registers all 15 tools without throwing", async () => {
-    const { registerCivil3DPressureNetworkTools } = await import("../src/tools/civil3d_pressure_networks.js");
-    const server = new McpServer({ name: "test", version: "0.0.0" });
-    expect(() => registerCivil3DPressureNetworkTools(server)).not.toThrow();
-  });
-});

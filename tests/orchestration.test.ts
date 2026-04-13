@@ -50,6 +50,14 @@ describe("orchestration routing", () => {
     expect(routed.extractedParams.comparisonSurface).toBe("FG");
   });
 
+  it("routes workflow-style surface comparison requests", () => {
+    const routed = routeIntent("run surface comparison workflow between surfaces EG and FG");
+
+    expect(routed.match.intent).toBe("workflow_surface_comparison_report");
+    expect(routed.extractedParams.baseSurface).toBe("EG");
+    expect(routed.extractedParams.comparisonSurface).toBe("FG");
+  });
+
   it("routes grid-based surface sampling requests", () => {
     const routed = routeIntent("sample surface EG with grid spacing 25");
 
@@ -126,10 +134,70 @@ describe("orchestration routing", () => {
     expect(routed.extractedParams.outputPath).toBe("C:/temp/pay-items.csv");
   });
 
+  it("routes project startup workflow requests and extracts template/save paths", () => {
+    const routed = routeIntent('project startup template="C:/templates/civil3d.dwt" save as="C:/projects/startup.dwg"');
+
+    expect(routed.match.intent).toBe("workflow_project_startup");
+    expect(routed.extractedParams.templatePath).toBe("C:/templates/civil3d.dwt");
+    expect(routed.extractedParams.saveAs).toBe("C:/projects/startup.dwg");
+  });
+
+  it("routes data shortcut reference workflow requests and extracts project fields", () => {
+    const routed = routeIntent('reference data shortcut project folder="C:/Projects/Roadway" shortcut name=FG shortcut type=surface');
+
+    expect(routed.match.intent).toBe("workflow_data_shortcut_reference_sync");
+    expect(routed.extractedParams.projectFolder).toBe("C:/Projects/Roadway");
+    expect(routed.extractedParams.shortcutName).toBe("FG");
+    expect(routed.extractedParams.shortcutType).toBe("surface");
+  });
+
   it("routes material cost estimate requests to the cost-estimation intent", () => {
     const routed = routeIntent("estimate material cost");
 
     expect(routed.match.intent).toBe("estimate_material_cost");
+  });
+
+  it("derives assembly discovery routes from the live tool catalog", () => {
+    const routed = routeIntent("list assemblies");
+
+    expect(routed.match.toolName).toBe("civil3d_assembly");
+    expect(routed.match.action).toBe("list");
+    expect(routed.match.source).toBe("derived");
+  });
+
+  it("matches exact tool-name requests for uncataloged tools", () => {
+    const routed = routeIntent("run civil3d_pipe_network");
+
+    expect(routed.match.toolName).toBe("civil3d_pipe_network");
+    expect(routed.match.source).toBe("derived");
+  });
+
+  it("assigns required fields to derived pressure-network routes", () => {
+    const routed = routeIntent("run civil3d_pressure_network_get_info");
+
+    expect(routed.match.toolName).toBe("civil3d_pressure_network_get_info");
+    expect(routed.match.requiredFields).toEqual(["name"]);
+  });
+
+  it("assigns required fields to derived DEM import routes", () => {
+    const routed = routeIntent("run civil3d_surface_create_from_dem");
+
+    expect(routed.match.toolName).toBe("civil3d_surface_create_from_dem");
+    expect(routed.match.requiredFields).toEqual(["name", "filePath"]);
+  });
+
+  it("extracts pressure-network fields from natural language", () => {
+    const routed = routeIntent("get pressure network name=WM-1 parts list=Standard Pressure");
+
+    expect(routed.extractedParams.networkName).toBe("WM-1");
+    expect(routed.extractedParams.partsList).toBe("Standard Pressure");
+  });
+
+  it("extracts 3D point inputs from natural language", () => {
+    const routed = routeIntent("add pressure pipe network name=WM-1 part name=8in PVC start point=0,0,100 end point=100,0,98");
+
+    expect(routed.extractedParams.startPoint).toEqual({ x: 0, y: 0, z: 100 });
+    expect(routed.extractedParams.endPoint).toEqual({ x: 100, y: 0, z: 98 });
   });
 });
 
@@ -215,6 +283,23 @@ describe("orchestration workflow planning", () => {
     expect(plan.title).toBe("Material cost estimate workflow");
     expect(plan.missingFields).toEqual(["payItems"]);
     expect(plan.clarificationQuestions).toContain("Please provide the pay item definitions with unit prices for the cost estimate.");
+  });
+
+  it("builds a project startup workflow plan from a natural-language startup request", () => {
+    const routed = routeIntent("project startup");
+    const plan = buildWorkflowPlan(routed, routed.extractedParams, createProjectContext());
+
+    expect(plan.title).toBe("Project startup workflow");
+    expect(plan.steps[0].toolName).toBe("civil3d_health");
+  });
+
+  it("asks for missing project-folder shortcut inputs in the data shortcut reference workflow", () => {
+    const routed = routeIntent("reference data shortcut");
+    const plan = buildWorkflowPlan(routed, routed.extractedParams, createProjectContext());
+
+    expect(plan.title).toBe("Data shortcut reference workflow");
+    expect(plan.missingFields).toEqual(["projectFolder", "shortcutName", "shortcutType"]);
+    expect(plan.clarificationQuestions).toContain("Which project folder should be used for the data shortcut reference?");
   });
 });
 
