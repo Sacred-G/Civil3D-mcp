@@ -15,6 +15,7 @@
 
   <p>
     <a href="#quick-start">Quick Start</a> •
+    <a href="./docs/USER_MANUAL.md">User Manual</a> •
     <a href="#autodesk-help-in-chat">Autodesk Help</a> •
     <a href="#installation">Installation</a> •
     <a href="./docs/DEPLOYMENT.md">Deployment</a> •
@@ -45,7 +46,7 @@ This is the **MCP server** (TypeScript). You also need the **Civil 3D .NET plugi
 - **New:** `civil3d_help` searches the locally installed Autodesk Civil 3D help,
   returns cited topics with screenshots, and surfaces matching tutorial videos in chat.
 - The default MCP surface is compact: 34 public tools cover every domain. The
-  complete 219-tool surface can be enabled when a client needs specialized aliases.
+  complete 206-entry catalog can be enabled when a client needs specialized aliases.
 - Native workflow handlers cover major QC, grading, hydrology, plan-production,
   and data-shortcut flows instead of relying only on client-side orchestration.
 - Claude Code can be registered with a single project-scoped command that
@@ -156,7 +157,7 @@ For a source-based or Claude Code installation:
 
 ## Features
 
-- **Compact default MCP surface** with 34 public tools; all 219 registered
+- **Compact default MCP surface** with 34 public tools; all 206 cataloged
   routes remain internally callable or available as opt-in aliases
 - **Local Autodesk help in chat** — version-matched topics, screenshots,
   diagrams, citations, and playable Civil 3D tutorial videos
@@ -164,15 +165,15 @@ For a source-based or Claude Code installation:
 - **Full road design pipeline** — alignments, profiles, corridors, cross-sections, superelevation
 - **Surface analysis** — elevation bands, slope distribution, aspect, watershed, cut/fill volumes
 - **Pipe & pressure network** design, validation, and hydraulic analysis
-- **Plan production** — sheet sets, Plan/Profile sheets, PDF export
+- **Plan production** — existing sheet-set inspection, Plan/Profile updates, views, and PDF export
 - **QC checks** — alignment, profile, corridor, surface, pipe network, drawing standards
-- **Quantity takeoff** — earthwork, corridor materials, pipe lengths, parcel areas, CSV export
+- **Quantity takeoff** — earthwork, pipe lengths, parcel areas, and CSV export
 - **Cost estimation** — pay items, material costs, construction estimates
 - **Hydrology** — flow path tracing, watershed delineation, Rational Method runoff, time of concentration
 - **Grading** — feature lines, grading groups, grading criteria, surface generation
-- **COGO/Survey** — inverse, traverse, curve solve, survey figures, LandXML import
+- **COGO/Survey** — inverse, traverse, curve solve, survey databases, observations, and figure inspection
 - **Storm & Sanitary Analysis (SSA)** integration and detention basin sizing
-- **Intersection design** and corridor target mapping
+- **Intersection inspection** and corridor target mapping
 - **Sight distance** calculations and AASHTO stopping sight distance checks
 - **Assembly/subassembly** creation and editing
 
@@ -199,8 +200,8 @@ names for actions already available through a canonical domain tool.
 | Surface | Exposed tools | How to call an operation |
 |---|---:|---|
 | Default MCP client | 34 | Call a canonical domain tool and provide `action`. |
-| MCP client with aliases enabled | 219 | Use either canonical tools or specialized alias names. |
-| HTTP `/execute` and orchestration | 219 | All registered routes remain internally callable in either mode. |
+| MCP client with aliases enabled | 206 | Use either canonical tools or specialized alias names. |
+| HTTP `/execute` and orchestration | 206 | All registered routes remain internally callable in either mode. |
 
 For example, these calls are equivalent:
 
@@ -445,7 +446,7 @@ Restart your client. When you see the **hammer icon**, the MCP connection is liv
 
 ---
 
-## Tool Reference (217 catalog entries)
+## Tool Reference (206 catalog entries)
 
 The generated, release-checked inventory is [docs/tools.generated.md](./docs/tools.generated.md).
 It includes both canonical tools and specialized aliases. Canonical rows list
@@ -1001,7 +1002,7 @@ failure cannot remain silent.
 | `GET` | `/health/plugin` | Native plugin health and drawing telemetry. |
 | `GET` | `/health/queue` | Host queue and background-job health. |
 | `GET` | `/health/version` | Package, MCP SDK, and Node dependency versions without probing Civil 3D. |
-| `GET` | `/tools` | Full internal route catalog (219 names), independent of compact MCP exposure. |
+| `GET` | `/tools` | Full internal route catalog (206 names), independent of compact MCP exposure. |
 | `POST` | `/execute` | `{ "tool": "<name>", "parameters": { ... } }` — invokes any registered tool or legacy alias. |
 
 ### Example: enable the shared-secret token
@@ -1091,6 +1092,7 @@ use the default loopback endpoint.
 
 | Doc | Description |
 |---|---|
+| [USER_MANUAL.md](./docs/USER_MANUAL.md) | End-user manual, daily workflows, prompt examples, approvals, local Autodesk help, and best practices |
 | [DEPLOYMENT.md](./docs/DEPLOYMENT.md) | Full deployment: Docker, npm, env vars, registry autoload |
 | [tools.generated.md](./docs/tools.generated.md) | Release-checked canonical and alias catalog generated from the runtime manifest |
 | [tools.md](./docs/tools.md) | Extended parameter and workflow reference |
