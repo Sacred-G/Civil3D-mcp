@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { withApplicationConnection } from "../utils/ConnectionManager.js";
+import { Civil3DRpcError } from "../utils/SocketClient.js";
 import type { ToolCapability } from "./toolMetadata.js";
 
 type JsonObject = Record<string, unknown>;
@@ -84,7 +85,17 @@ export function hasApprovalRisk(target: ApprovalTarget): boolean {
 }
 
 export async function getActiveDrawingFingerprint(): Promise<string> {
-  const drawingInfo = await withApplicationConnection((client) => client.sendCommand("getDrawingInfo", {}));
+  const drawingInfo = await withApplicationConnection(async (client) => {
+    // Ask the ungated health endpoint before touching drawing state. Older
+    // plugin builds never answer getDrawingInfo when no document is open (the
+    // request wedges the host execution gate), so surface NO_DRAWING here
+    // instead of waiting out CIVIL3D_COMMAND_TIMEOUT.
+    const health = await client.sendCommand("getCivil3DHealth", {});
+    if (health && typeof health === "object" && (health as JsonObject).drawingLoaded === false) {
+      throw new Civil3DRpcError("No active drawing is open in Civil 3D.", "CIVIL3D.NO_DRAWING", -32001);
+    }
+    return await client.sendCommand("getDrawingInfo", {});
+  });
   return createHash("sha256").update(stableJson(drawingInfo)).digest("hex");
 }
 

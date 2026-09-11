@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- With no document open, drawing-dependent requests hung and wedged the
+  plugin's execution gate; they now fail fast with `CIVIL3D.NO_DRAWING`, and
+  `civil3d_drawing new` works from zero documents.
+
 ## v1.2.1 — 2026-07-14
 
 ### Production readiness
