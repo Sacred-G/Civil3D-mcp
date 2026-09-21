@@ -244,4 +244,16 @@ public static class CivilObjectUtils
       ["fullDescription"] = point.FullDescription,
     };
   }
+
+  /// <summary>
+  /// Triangle count for a surface, or null when the surface is not a TIN.
+  ///
+  /// NumberOfTriangles is exposed on the TIN-specific properties, NOT on
+  /// GetGeneralProperties(). Reflecting it off the general properties always
+  /// yielded null, and a `?? 0` fallback then reported every healthy TIN as
+  /// having no triangles. Callers must treat null as "unknown / not a TIN"
+  /// rather than as zero.
+  /// </summary>
+  public static int? GetTriangleCount(CivilSurface surface) =>
+    surface is TinSurface tinSurface ? tinSurface.GetTinProperties().NumberOfTriangles : null;
 }
