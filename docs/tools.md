@@ -187,7 +187,7 @@ Checks the status of long-running asynchronous operations (corridor rebuilds, la
 
 ### Tool 4: `civil3d_coordinate_system`
 
-Provides coordinate system information and performs coordinate transformations.
+Reads or sets the drawing coordinate system and performs coordinate transformations.
 
 **Actions:**
 
@@ -212,6 +212,29 @@ Returns the drawing's coordinate system configuration.
   falseEasting: number | null,
   falseNorthing: number | null,
   scaleFactor: number | null
+}
+```
+
+#### `set`
+
+Assigns a coordinate system code to the active drawing (`UnitZoneSettings.CoordinateSystemCode`). Requires an approval token. Unknown codes fail with `CIVIL3D.INVALID_INPUT` and leave the drawing unchanged.
+
+| Parameter | Type      | Required | Description                                     |
+| --------- | --------- | -------- | ----------------------------------------------- |
+| action    | `"set"` | yes      | —                                              |
+| code      | string    | yes      | Coordinate system code, e.g.`"FL83-WF"`        |
+
+**Response data:**
+
+```
+{
+  code: string,
+  previousCode: string | null,
+  description: string | null,
+  zone: string | null,
+  datum: string | null,
+  projection: string | null,
+  unit: string | null
 }
 ```
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { GENERATED_TOOL_CATALOG_ENTRIES, MIGRATED_DOMAIN_DEFINITIONS } from "../src/tools/toolManifest.js";
 import { TOOL_CATALOG } from "../src/tools/tool_catalog.js";
+import { isApprovalRequired } from "../src/tools/approvalPolicy.js";
 
 describe("domain manifest migration", () => {
   it("registers unique exposure names across migrated domains", () => {
@@ -440,6 +441,16 @@ describe("domain manifest migration", () => {
 
     expect(coordinateSystem).toBeDefined();
     expect(coordinateSystem!.operations).toContain("transform");
+    expect(coordinateSystem!.operations).toContain("set");
+    const coordinateSystemDefinition = MIGRATED_DOMAIN_DEFINITIONS.find((definition) => definition.domain === "coordinate_system");
+    const setAction = coordinateSystemDefinition!.actions.set;
+    expect(setAction.pluginMethods).toEqual(["setCoordinateSystem"]);
+    expect(setAction.safeForRetry).toBe(false);
+    expect(setAction.requiresActiveDrawing).toBe(true);
+    expect(isApprovalRequired({ toolName: "civil3d_coordinate_system", action: "set", capabilities: setAction.capabilities, safeForRetry: setAction.safeForRetry })).toBe(true);
+    expect(setAction.inputSchema.safeParse({ action: "set", code: "FL83-WF" }).success).toBe(true);
+    expect(setAction.inputSchema.safeParse({ action: "set", code: "   " }).success).toBe(false);
+    expect(setAction.inputSchema.safeParse({ action: "set" }).success).toBe(false);
 
     expect(job).toBeDefined();
     expect(job!.operations).toContain("start");

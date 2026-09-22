@@ -28,7 +28,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_assembly_create` | assembly | — | createAssembly | no |
 | `civil3d_assembly_edit` | assembly | — | editAssembly | no |
 | `civil3d_subassembly_create` | assembly | — | createSubassembly | no |
-| `civil3d_coordinate_system` | coordinate_system | info, transform | getCoordinateSystemInfo, transformCoordinates | yes |
+| `civil3d_coordinate_system` | coordinate_system | info, set, transform | getCoordinateSystemInfo, setCoordinateSystem, transformCoordinates | no |
 | `civil3d_corridor` | corridor | list, get, rebuild, get_surfaces, get_feature_lines, compute_volumes, summary, target_mapping_get, target_mapping_set, region_add, region_delete | listCorridors, getCorridor, rebuildCorridor, getCorridorSurfaces, getCorridorFeatureLines, computeCorridorVolumes, getCorridorTargetMappings, setCorridorTargetMappings, addCorridorRegion, deleteCorridorRegion | no |
 | `civil3d_corridor_region_add` | corridor | — | addCorridorRegion | no |
 | `civil3d_corridor_region_delete` | corridor | — | deleteCorridorRegion | no |

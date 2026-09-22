@@ -13,6 +13,7 @@ public static class CommandDispatcher
       "getProjectContext" => DrawingCommands.GetProjectContextAsync(parameters),
       "getDrawingSettings" => DrawingCommands.GetDrawingSettingsAsync(),
       "getCoordinateSystemInfo" => CoordinateSystemCommands.GetCoordinateSystemInfoAsync(),
+      "setCoordinateSystem" => CoordinateSystemCommands.SetCoordinateSystemAsync(parameters),
       "transformCoordinates" => CoordinateSystemCommands.TransformCoordinatesAsync(parameters),
       "corridorQcReportWorkflow" => WorkflowCommands.CorridorQcReportWorkflowAsync(parameters),
       "surfaceComparisonReportWorkflow" => WorkflowCommands.SurfaceComparisonReportWorkflowAsync(parameters),
