@@ -244,26 +244,42 @@ public static class ProfileEditCommands
       var bandSetId = LookupUtils.GetProfileViewBandSetId(
         civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "bandSet"));
 
-      // ProfileView.Create(profileViewName, alignmentId, styleId, insertionPoint)
-      // or ProfileView.Create(profileViewName, alignmentId, insertionPoint, styleId, bandSetId)
-      var profileViewType = typeof(ProfileView);
-      var pvId = (ObjectId?)(
-        CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, insertionPoint, styleId, bandSetId)
-        ?? CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, styleId, insertionPoint)
-        ?? CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, insertionPoint));
+      // Every ProfileView.Create overload begins with either the alignment's
+      // ObjectId or a CivilDocument -- none of them takes the view name first.
+      // The previous reflection attempt probed three name-first signatures, so
+      // it never matched anything and always reported "returned null". Several
+      // of the real overloads also return ObjectIdCollection rather than
+      // ObjectId, which a blind (ObjectId?) cast would have discarded anyway.
+      //
+      // Call the typed API instead: the five-argument form when we resolved
+      // both a style and a band set, otherwise the minimal form plus a rename,
+      // with whichever of the two was supplied applied on its own.
+      var both = !styleId.IsNull && !bandSetId.IsNull;
+      var pvId = both
+        ? ProfileView.Create(alignment.ObjectId, insertionPoint, profileViewName, bandSetId, styleId)
+        : ProfileView.Create(alignment.ObjectId, insertionPoint);
 
-      if (pvId == null || pvId.Value.IsNull)
+      if (pvId.IsNull)
       {
         throw new JsonRpcDispatchException(
           "CIVIL3D.TRANSACTION_FAILED",
-          "ProfileView.Create returned null — this Civil 3D version may require a different API signature.");
+          $"ProfileView.Create did not produce a profile view for alignment '{alignmentName}'.");
       }
 
       var profileView = CivilObjectUtils.GetRequiredObject<ProfileView>(
-        transaction, pvId.Value, OpenMode.ForRead);
+        transaction, pvId, both ? OpenMode.ForRead : OpenMode.ForWrite);
+      if (!both)
+      {
+        profileView.Name = profileViewName;
+        if (!styleId.IsNull)
+        {
+          profileView.StyleId = styleId;
+        }
+        if (!bandSetId.IsNull)
+        {
+          profileView.Bands.ImportBandSetStyle(bandSetId);
+        }
+      }
 
       return new Dictionary<string, object?>
       {
