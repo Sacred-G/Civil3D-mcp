@@ -164,6 +164,21 @@ describe("Tool Catalog", () => {
       "acad_create_text",
       "acad_create_3dpolyline",
       "acad_create_mtext",
+      "acad_create_mleader",
+      "acad_list_text_entities",
+      "acad_list_polyline_entities",
+      "acad_list_block_references",
+      "acad_list_shape_entities",
+      "acad_update_text_content",
+      "acad_update_block_reference",
+      "acad_erase_entity",
+      "acad_attach_xref",
+      "acad_create_or_update_layer",
+      "acad_purge_unused",
+      "acad_audit_drawing",
+      "acad_insert_block_reference",
+      "acad_list_open_documents",
+      "acad_set_active_document",
     ];
 
     for (const toolName of requiredTools) {

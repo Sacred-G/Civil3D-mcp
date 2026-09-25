@@ -347,7 +347,7 @@ bridge port (default `3000`).
 
 ### 2 — Build & Load the C# Plugin
 
-**Prerequisites:** Civil 3D 2026, .NET 8 SDK, and licensed local Civil 3D managed
+**Prerequisites:** Civil 3D 2026, .NET 10 SDK, and licensed local Civil 3D managed
 API assemblies. Autodesk binaries are intentionally not tracked or published by
 this repository.
 
@@ -355,7 +355,7 @@ this repository.
 $refs = "C:\Program Files\Autodesk\AutoCAD 2026\C3D"
 dotnet build .\Civil3D-MCP-Plugin\Civil3DMcpPlugin.csproj -c Release `
   /p:Civil3DReferencesPath="$refs"
-# Output: Civil3D-MCP-Plugin\bin\Release\net8.0-windows\Civil3DMcpPlugin.dll
+# Output: Civil3D-MCP-Plugin\bin\Release\net10.0-windows\Civil3DMcpPlugin.dll
 ```
 
 An untracked `C_References` directory remains the local fallback when

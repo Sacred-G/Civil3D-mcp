@@ -431,12 +431,27 @@ describe("domain manifest migration", () => {
     expect(geometry).toBeDefined();
     expect(geometry!.operations).toContain("cogo_inverse");
     expect(geometry!.operations).toContain("create_mtext");
+    expect(geometry!.operations).toContain("create_mleader");
+    expect(geometry!.operations).toContain("list_text_entities");
+    expect(geometry!.operations).toContain("list_polyline_entities");
+    expect(geometry!.operations).toContain("list_block_references");
+    expect(geometry!.operations).toContain("list_shape_entities");
+    expect(geometry!.operations).toContain("update_text_content");
+    expect(geometry!.operations).toContain("update_block_reference");
+    expect(geometry!.operations).toContain("erase_entity");
+    expect(geometry!.operations).toContain("attach_xref");
+    expect(geometry!.operations).toContain("create_or_update_layer");
+    expect(geometry!.operations).toContain("purge_unused");
+    expect(geometry!.operations).toContain("audit_drawing");
+    expect(geometry!.operations).toContain("insert_block_reference");
     expect(geometry!.safeForRetry).toBe(false);
 
     expect(drawing).toBeDefined();
     expect(drawing!.operations).toContain("info");
     expect(drawing!.operations).toContain("selected_objects_info");
     expect(drawing!.operations).toContain("list_object_types");
+    expect(drawing!.operations).toContain("list_open_documents");
+    expect(drawing!.operations).toContain("set_active_document");
 
     expect(coordinateSystem).toBeDefined();
     expect(coordinateSystem!.operations).toContain("transform");
@@ -571,5 +586,23 @@ describe("domain manifest migration", () => {
     expect(docs!.operations).toContain("orchestrate");
     expect(orchestrate).toBeDefined();
     expect(orchestrate!.domain).toBe("docs");
+  });
+
+  it("accepts paper-space targeting for text creation actions", () => {
+    const geometry = MIGRATED_DOMAIN_DEFINITIONS.find((definition) => definition.domain === "geometry");
+    const schema = geometry!.actions.create_text.inputSchema;
+    const base = { action: "create_text", text: "REV 3", x: 30, y: 3 };
+
+    expect(schema.safeParse(base).success).toBe(true);
+    expect(schema.safeParse({ ...base, space: "paper", layout: "PLAN" }).success).toBe(true);
+    expect(schema.safeParse({ ...base, space: "all" }).success).toBe(false);
+
+    const mtext = geometry!.actions.create_mtext.inputSchema;
+    expect(mtext.safeParse({ action: "create_mtext", text: "NOTE", x: 1, y: 2, space: "paper", layout: "PLAN" }).success).toBe(true);
+
+    const mleader = geometry!.actions.create_mleader.inputSchema;
+    const leader = { action: "create_mleader", text: "TEE", leaderPointX: 1, leaderPointY: 2, textPointX: 3, textPointY: 4 };
+    expect(mleader.safeParse({ ...leader, space: "paper" }).success).toBe(true);
+    expect(mleader.safeParse({ ...leader, space: "all" }).success).toBe(false);
   });
 });

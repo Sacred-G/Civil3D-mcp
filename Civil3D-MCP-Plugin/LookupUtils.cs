@@ -23,6 +23,59 @@ public static class LookupUtils
     return database.Clayer;
   }
 
+  public static ObjectId GetOrLoadLinetypeId(Database database, Transaction transaction, string linetypeName)
+  {
+    if (string.Equals(linetypeName, "ByLayer", StringComparison.OrdinalIgnoreCase))
+    {
+      return database.ByLayerLinetype;
+    }
+
+    if (string.Equals(linetypeName, "ByBlock", StringComparison.OrdinalIgnoreCase))
+    {
+      return database.ByBlockLinetype;
+    }
+
+    var linetypeTable = CivilObjectUtils.GetRequiredObject<LinetypeTable>(transaction, database.LinetypeTableId, OpenMode.ForRead);
+    if (linetypeTable.Has(linetypeName))
+    {
+      return linetypeTable[linetypeName];
+    }
+
+    try
+    {
+      database.LoadLineTypeFile(linetypeName, "acad.lin");
+    }
+    catch
+    {
+      try
+      {
+        database.LoadLineTypeFile(linetypeName, "acadiso.lin");
+      }
+      catch
+      {
+        // fall through to the not-found check below
+      }
+    }
+
+    linetypeTable = CivilObjectUtils.GetRequiredObject<LinetypeTable>(transaction, database.LinetypeTableId, OpenMode.ForRead);
+    if (linetypeTable.Has(linetypeName))
+    {
+      return linetypeTable[linetypeName];
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Linetype '{linetypeName}' could not be found or loaded from acad.lin/acadiso.lin.");
+  }
+
+  public static string? GetLinetypeName(Transaction transaction, ObjectId linetypeId)
+  {
+    if (linetypeId.IsNull)
+    {
+      return null;
+    }
+
+    return (transaction.GetObject(linetypeId, OpenMode.ForRead) as LinetypeTableRecord)?.Name;
+  }
+
   public static ObjectId GetSiteId(CivilDocument civilDoc, Transaction transaction, string? siteName)
   {
     if (string.IsNullOrWhiteSpace(siteName))

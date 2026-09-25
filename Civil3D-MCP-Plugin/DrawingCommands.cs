@@ -150,6 +150,65 @@ public static class DrawingCommands
     });
   }
 
+  public static Task<object?> ListOpenDocumentsAsync()
+  {
+    return CivilExecution.ExecuteInCommandContextAsync<object?>(() =>
+    {
+      var activeDocument = App.DocumentManager.MdiActiveDocument;
+      var documents = new List<Dictionary<string, object?>>();
+
+      foreach (Document document in App.DocumentManager)
+      {
+        documents.Add(new Dictionary<string, object?>
+        {
+          ["name"] = document.Name,
+          ["filePath"] = document.Database?.Filename,
+          ["isActive"] = ReferenceEquals(document, activeDocument),
+        });
+      }
+
+      return Task.FromResult<object?>(new Dictionary<string, object?>
+      {
+        ["documents"] = documents,
+      });
+    });
+  }
+
+  public static Task<object?> SetActiveDocumentAsync(JsonObject? parameters)
+  {
+    var match = PluginRuntime.GetRequiredString(parameters, "match");
+
+    return CivilExecution.ExecuteInCommandContextAsync<object?>(() =>
+    {
+      Document? target = null;
+      foreach (Document document in App.DocumentManager)
+      {
+        var name = document.Name ?? string.Empty;
+        var filePath = document.Database?.Filename ?? string.Empty;
+        if (name.IndexOf(match, StringComparison.OrdinalIgnoreCase) >= 0 ||
+            filePath.IndexOf(match, StringComparison.OrdinalIgnoreCase) >= 0)
+        {
+          target = document;
+          break;
+        }
+      }
+
+      if (target == null)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"No open document matches '{match}'. Use listOpenDocuments to see what's currently open.");
+      }
+
+      App.DocumentManager.MdiActiveDocument = target;
+
+      return Task.FromResult<object?>(new Dictionary<string, object?>
+      {
+        ["name"] = target.Name,
+        ["filePath"] = target.Database?.Filename,
+        ["activated"] = true,
+      });
+    });
+  }
+
   public static Task<object?> UndoDrawingAsync(JsonObject? parameters)
   {
     var steps = PluginRuntime.GetOptionalInt(parameters, "steps") ?? 1;

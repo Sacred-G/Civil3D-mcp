@@ -27,7 +27,7 @@ and Civil 3D plugin installation.
 | Node.js | 18 or later | Required to run the MCP server |
 | npm | 8 or later | Comes with Node.js |
 | Autodesk Civil 3D | 2026 | Supported and live-validated plugin host |
-| .NET 8 SDK | 8.0 | Required to build the C# plugin |
+| .NET 10 SDK | 10.0 | Required to build the C# plugin |
 | Docker (optional) | 20+ | Only needed for container deployment |
 
 ---
@@ -202,18 +202,18 @@ The C# plugin (`Civil3D-MCP-Plugin/`) runs inside Civil 3D and acts as the bridg
 ### Build the plugin
 
 ```powershell
-# Requires .NET 8 SDK and licensed Civil 3D 2026 managed references
+# Requires .NET 10 SDK and licensed Civil 3D 2026 managed references
 cd Civil3D-MCP-Plugin
 dotnet build -c Release /p:Civil3DReferencesPath="C:\Program Files\Autodesk\AutoCAD 2026\C3D"
 ```
 
-The output DLL is in `Civil3D-MCP-Plugin/bin/Release/net8.0-windows/`.
+The output DLL is in `Civil3D-MCP-Plugin/bin/Release/net10.0-windows/`.
 
 ### Load into Civil 3D
 
 1. Open Autodesk Civil 3D.
 2. At the command prompt, type `NETLOAD` and press Enter.
-3. Browse to `Civil3D-MCP-Plugin/bin/Release/net8.0-windows/Civil3DMcpPlugin.dll`.
+3. Browse to `Civil3D-MCP-Plugin/bin/Release/net10.0-windows/Civil3DMcpPlugin.dll`.
 4. Click **Open**. The plugin registers its RPC server and starts listening.
 
 > **Auto-load on startup:** Add the plugin to the `APPLOAD` startup suite (Tools → Load Application → Startup Suite) so it loads automatically when Civil 3D opens.
