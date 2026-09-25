@@ -3,6 +3,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import { registerTools } from "./tools/register.js";
 import { startHttpBridge } from "./httpBridge.js";
 import { createLogger } from "./utils/logger.js";
+import { stripSchemaDialectOnSend } from "./utils/schemaDialect.js";
 import { APP_VERSION } from "./version.js";
 
 const log = createLogger("MCP");
@@ -16,7 +17,7 @@ async function main() {
   await registerTools(server);
   const httpServer = startHttpBridge();
 
-  const transport = new StdioServerTransport();
+  const transport = stripSchemaDialectOnSend(new StdioServerTransport());
   await server.connect(transport);
   log.info("Civil 3D MCP Server started");
 
