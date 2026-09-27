@@ -1347,7 +1347,7 @@ Adds a label to a Civil 3D object at a specified location.
 | action     | `"add"`                    | yes      | —                                                                                    |
 | objectType | string                       | yes      | Object type                                                                           |
 | objectName | string                       | yes      | Object name                                                                           |
-| labelType  | string                       | yes      | Label type (varies by object:`"station"`,`"elevation"`,`"slope"`,`"contour"`) |
+| labelType  | string                       | yes      | Alignment `"label_set"` (labelStyle = label set name), `"station"`, `"curves"` (one label per arc); profile `"station"` (profile label sets cannot be set through the .NET API); surface `"spot_elevation"`; pipe and structure `"plan"` or `"profile"` (one label in each profile view that shows the part) |
 | labelStyle | string                       | no       | Label style name. Uses default if omitted                                             |
 | station    | number                       | no       | Station for alignment/profile labels                                                  |
 | point      | `{ x: number, y: number }` | no       | Location for surface labels                                                           |
