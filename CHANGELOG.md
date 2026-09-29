@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Read-only geometry reads, written to support a Civil 3D-Revit bridge. None
+  of these is approval-gated (`query`/`inspect`, `safeForRetry`):
+  - `getSurfaceTinVertices` (`civil3d_surface get_tin_vertices`): the vertices
+    of a TIN surface's visible triangles (or a grid surface's visible points),
+    optionally clipped to a plan polygon. Over `maxPoints` (default 50,000,
+    hard cap 100,000) they are decimated deterministically: sorted by X then Y,
+    with an even stride. Coordinates are rounded to 6 decimals to keep the
+    largest response near 6 MB. TIN volume surfaces are rejected clearly.
+  - `getParcelGeometry` (`civil3d_parcel get_geometry`): real parcel boundary
+    from the typed curve API (base curve, then `GetGeCurve`, then `Explode`)
+    with line/arc segments, bulges, a densified polygon, perimeter and area
+    computed including arcs. Parcels with holes return the outer loop only.
+    `reportParcels` still uses its reflection path.
+  - `getDrawingUnits` (`civil3d_drawing units`): raw INSUNITS and its name, a
+    `lengthUnit` that keeps `USSurveyFeet` distinct from `Feet`, metres per
+    unit, the Civil 3D drawing unit settings (Feet/Meters and the
+    imperial-to-metric foot), angular units, and a consistency warning when
+    INSUNITS and Civil 3D disagree.
+  - `getPipeNetwork`/`getPipe` pipes gain `startPoint`, `endPoint`,
+    `startInvert`, `endInvert`, `startCrown`, `endCrown`, `innerDiameter`,
+    `outerDiameter`, `innerHeight`, `outerHeight`, `wallThickness`,
+    `crossSectionalShape` and `length2d` (additive; inverts are centreline
+    minus inner height / 2).
+  - `getDrawingInfo` and `getCoordinateSystemInfo` gain an additive
+    `lengthUnit`; `linearUnits` keeps its old values.
+  - Host-independent `BridgeMath.cs` (arcs, bulge areas, chaining,
+    point-in-polygon, stride decimation, unit resolution) with an offline
+    harness, `npm run test:bridge-math`. Verified live against Civil 3D 2027.
+
+### Fixed
+
+- `getPipeNetwork` (`civil3d_pipe get`) failed with CivilException "Retrieve
+  attribute failed" on networks whose style, parts list, or reference
+  surface/alignment attributes are unset (seen on the Civil 3D 2027 Pipe
+  Networks-3 tutorial drawing), although each pipe and structure read fine on
+  its own. Those network attributes, and part-family-specific pipe attributes,
+  are now read defensively and reported as `null`.
+- The host executor rethrew captured exceptions with `throw ex`, which dropped
+  the original stack from the plugin log; it now uses `ExceptionDispatchInfo`.
+
 ## v1.2.1 — 2026-07-14
 
 ### Production readiness

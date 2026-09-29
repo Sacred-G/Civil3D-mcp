@@ -58,6 +58,87 @@ public static class DrawingCommands
       BuildDrawingInfo(doc, civilDoc, database, transaction));
   }
 
+  /// <summary>
+  /// getDrawingUnits: raw INSUNITS plus Civil 3D's own drawing unit settings,
+  /// resolved to one explicit length unit that keeps US survey feet distinct
+  /// from international feet (the legacy linearUnits field reports both as "feet").
+  /// </summary>
+  public static Task<object?> GetDrawingUnitsAsync()
+  {
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+      BuildDrawingUnits(civilDoc, database));
+  }
+
+  internal static Dictionary<string, object?> BuildDrawingUnits(CivilDocument civilDoc, Database database)
+  {
+    var insunits = database.Insunits;
+    var insunitsName = insunits.ToString();
+    var civil = ReadCivilUnitSettings(civilDoc);
+    var resolution = BridgeMath.ResolveLengthUnit(insunitsName, civil.drawingUnits, civil.imperialToMetric);
+    var warnings = new List<string>(resolution.Warnings);
+    if (civil.error != null)
+    {
+      warnings.Add($"Civil 3D drawing unit settings could not be read: {civil.error}");
+    }
+
+    var metersPerUnit = BridgeMath.MetersPerUnit(resolution.LengthUnit);
+    var aunits = (int)database.Aunits;
+
+    return new Dictionary<string, object?>
+    {
+      ["insunits"] = (int)insunits,
+      ["insunitsName"] = insunitsName,
+      ["lengthUnit"] = resolution.LengthUnit,
+      ["lengthUnitSource"] = resolution.LengthUnitSource,
+      ["isUsSurveyFoot"] = resolution.LengthUnit == "USSurveyFeet",
+      ["metersPerUnit"] = metersPerUnit,
+      ["mmPerUnit"] = metersPerUnit * 1000.0,
+      ["linearUnits"] = CivilObjectUtils.LinearUnits(database),
+      ["civilLinearUnit"] = civil.drawingUnits,
+      ["civilImperialToMetricConversion"] = civil.imperialToMetric,
+      ["civilLengthUnit"] = resolution.CivilLengthUnit,
+      ["civilAngularUnit"] = civil.angularUnits,
+      ["civilDrawingScale"] = civil.drawingScale,
+      ["civilMatchAutoCADVariables"] = civil.matchAutoCadVariables,
+      ["angularUnit"] = CivilObjectUtils.AngularUnits((short)aunits),
+      ["aunits"] = aunits,
+      ["auprec"] = (int)database.Auprec,
+      ["lunits"] = (int)database.Lunits,
+      ["luprec"] = (int)database.Luprec,
+      ["angbase"] = database.Angbase,
+      ["angdirClockwise"] = database.Angdir,
+      ["coordinateSystem"] = ReadCoordinateSystemCode(civilDoc),
+      ["unitsConsistent"] = resolution.UnitsConsistent,
+      ["warnings"] = warnings,
+    };
+  }
+
+  /// <summary>The resolved length unit ("Feet", "USSurveyFeet", "Meters", ...) for additive lengthUnit fields.</summary>
+  internal static string? ResolveLengthUnit(CivilDocument civilDoc, Database database)
+  {
+    var civil = ReadCivilUnitSettings(civilDoc);
+    return BridgeMath.ResolveLengthUnit(database.Insunits.ToString(), civil.drawingUnits, civil.imperialToMetric).LengthUnit;
+  }
+
+  private static (string? drawingUnits, string? imperialToMetric, string? angularUnits, double? drawingScale, bool? matchAutoCadVariables, string? error) ReadCivilUnitSettings(CivilDocument civilDoc)
+  {
+    try
+    {
+      var unitZone = civilDoc.Settings.DrawingSettings.UnitZoneSettings;
+      return (
+        unitZone.DrawingUnits.ToString(),
+        unitZone.ImperialToMetricConversion.ToString(),
+        unitZone.AngularUnits.ToString(),
+        unitZone.DrawingScale,
+        unitZone.MatchAutoCADVariables,
+        null);
+    }
+    catch (Exception exception)
+    {
+      return (null, null, null, null, null, exception.Message);
+    }
+  }
+
   public static Task<object?> GetProjectContextAsync(JsonObject? parameters)
   {
     var requestedLimit = PluginRuntime.GetOptionalInt(parameters, "selectedObjectLimit") ?? 25;
@@ -207,6 +288,9 @@ public static class DrawingCommands
       ["filePath"] = database.Filename,
       ["coordinateSystem"] = coordinateSystemCode,
       ["linearUnits"] = CivilObjectUtils.LinearUnits(database),
+      // Additive: linearUnits reports US survey feet as "feet"; lengthUnit
+      // keeps them apart ("Feet", "USSurveyFeet", "Meters", ...).
+      ["lengthUnit"] = ResolveLengthUnit(civilDoc, database),
       ["angularUnits"] = angularUnits,
       ["unsavedChanges"] = unsavedChanges,
       ["objectCounts"] = new Dictionary<string, object?>
@@ -295,22 +379,37 @@ public static class DrawingCommands
     return count;
   }
 
-  // Single-field coordinate system code (for getDrawingInfo).
+  // Single-field coordinate system code (for getDrawingInfo and
+  // getDrawingUnits). Returns the raw stored code without looking it up in
+  // the coordinate-system library, so a stale or unsupported code cannot fail
+  // an otherwise unrelated read.
   private static string? ReadCoordinateSystemCode(CivilDocument civilDoc)
   {
-    return ReadCoordinateSystemFields(civilDoc).code;
+    var code = civilDoc.Settings.DrawingSettings.UnitZoneSettings.CoordinateSystemCode;
+    return string.IsNullOrWhiteSpace(code) ? null : code;
   }
 
   private static (string? code, string? zone, string? datum, string? verticalDatum) ReadCoordinateSystemFields(CivilDocument civilDoc)
   {
-    var unitZone = civilDoc.Settings.DrawingSettings.UnitZoneSettings;
-    var code = unitZone.CoordinateSystemCode;
-    if (string.IsNullOrWhiteSpace(code))
+    var code = ReadCoordinateSystemCode(civilDoc);
+    if (code is null)
     {
       return (null, null, null, null);
     }
 
-    var coordinateSystem = SettingsUnitZone.GetCoordinateSystemByCode(code);
-    return (code, coordinateSystem.Category, coordinateSystem.Datum, null);
+    // The library lookup fails for a code the installed coordinate-system
+    // library does not know (stale or custom); keep the raw code and leave the
+    // derived fields null instead of failing the whole settings read.
+    try
+    {
+      var coordinateSystem = SettingsUnitZone.GetCoordinateSystemByCode(code);
+      return coordinateSystem is null
+        ? (code, null, null, null)
+        : (code, coordinateSystem.Category, coordinateSystem.Datum, null);
+    }
+    catch (Exception exception) when (exception is not JsonRpcDispatchException)
+    {
+      return (code, null, null, null);
+    }
   }
 }

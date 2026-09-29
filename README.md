@@ -854,6 +854,24 @@ one or more operations; alias rows show an em dash in the **Operations** column.
 </details>
 
 <details>
+<summary><strong>Geometry reads (actions on existing tools)</strong></summary>
+
+Read-only and never approval-gated. They were written for a Civil 3D-Revit bridge that calls the plugin methods
+directly; these MCP actions expose the same data. All coordinates are drawing coordinates in drawing units.
+
+| Tool / action | Plugin method | Description |
+|------|------|-------------|
+| `civil3d_surface` `get_tin_vertices` | `getSurfaceTinVertices` | `{name, boundary?: [{x,y}] (≥3 points), maxPoints?}` → `{surfaceName, surfaceType: "TIN"\|"Grid", vertices: [{x,y,z}], totalVertexCount, returnedVertexCount, truncated, decimation, boundaryApplied, units, lengthUnit, ...}`. TIN vertices come from visible triangles only (points hidden by boundaries are excluded); grid surfaces return their visible grid points; TIN volume surfaces are rejected with `CIVIL3D.INVALID_INPUT`. Over `maxPoints` (default 50,000, max 100,000) the vertices are sorted by X, Y and decimated with an even stride, so the same surface always returns the same subset. Coordinates are rounded to 6 decimals, which keeps 100,000 vertices near 6 MB, under the 8 MiB `CIVIL3D_MAX_RESPONSE_BYTES` default. |
+| `civil3d_parcel` `get_geometry` | `getParcelGeometry` | `{siteName, parcelName, maxArcSegmentAngle? (degrees, default 5)}` → `{name, vertices: [{x,y}], closed: true, boundaryVertices: [{x,y,bulge}], segments: [{type: "line"\|"arc", start, end, bulge, length, center?, radius?, sweepAngleDeg?}], area, perimeter, computedArea, geometrySource, units, lengthUnit, notes}`. Reads the boundary through the typed curve API (the parcel's base curve, then `GetGeCurve`, then `Explode`), never reflection. `vertices` is the polygon with arcs densified and the closing point not repeated; `boundaryVertices` are the true vertices with AutoCAD bulges (`tan(sweep/4)`, positive = counter-clockwise). `perimeter` and `computedArea` are computed from the segments, including arcs; `area` is Civil 3D's own value. Parcels with holes (for example a road right-of-way) return only the outer loop; interior loops are not returned, and the resulting difference between `computedArea` and `area` is reported in `notes`. |
+| `civil3d_drawing` `units` | `getDrawingUnits` | `{}` → `{insunits (raw INSUNITS int), insunitsName, lengthUnit ("Feet", "USSurveyFeet", "Meters", ...), lengthUnitSource, isUsSurveyFoot, metersPerUnit, mmPerUnit, linearUnits (legacy), civilLinearUnit ("Feet"\|"Meters"), civilImperialToMetricConversion ("InternationalFoot"\|"UsSurveyFoot"), civilLengthUnit, civilAngularUnit, angularUnit, aunits, lunits, luprec, ..., unitsConsistent, warnings}`. `lengthUnit` follows INSUNITS and falls back to the Civil 3D drawing settings when INSUNITS is Undefined; a disagreement between the two (for example INSUNITS Feet while Civil 3D converts with the US survey foot) sets `unitsConsistent: false` with a warning. |
+| `civil3d_pipe` `get` | `getPipeNetwork` | Each pipe now also has `startPoint`/`endPoint` `{x,y,z}` (centreline), `startInvert`/`endInvert` and `startCrown`/`endCrown` (centreline ∓ inner height / 2; when the part does not report an inner height, the inner diameter is used only for a circular section, otherwise the height, inverts and crowns are `null`), `innerDiameter`, `outerDiameter`, `innerHeight`, `outerHeight`, `wallThickness`, `crossSectionalShape` and `length2d`. Existing fields are unchanged. `get_pipe` (`getPipe`) returns the same pipe fields. |
+
+`getDrawingInfo` (`civil3d_drawing info`) and `getCoordinateSystemInfo` (`civil3d_coordinate_system`) also gain a
+`lengthUnit` field. Their `linearUnits` field still reports both kinds of feet as `"feet"`.
+
+</details>
+
+<details>
 <summary><strong>Parcel Editing (4 tools)</strong></summary>
 
 | Tool | Description |

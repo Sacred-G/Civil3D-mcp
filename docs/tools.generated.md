@@ -44,7 +44,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_docs` | docs | list_tool_capabilities, orchestrate | — | yes |
 | `civil3d_orchestrate` | docs | — | — | yes |
 | `list_tool_capabilities` | docs | — | — | yes |
-| `civil3d_drawing` | drawing | info, new, save, undo, redo, settings, selected_objects_info, list_object_types | getDrawingInfo, newDrawing, saveDrawing, undoDrawing, redoDrawing, getDrawingSettings, getSelectedCivilObjectsInfo, listCivilObjectTypes | no |
+| `civil3d_drawing` | drawing | info, new, save, undo, redo, settings, units, selected_objects_info, list_object_types | getDrawingInfo, newDrawing, saveDrawing, undoDrawing, redoDrawing, getDrawingSettings, getDrawingUnits, getSelectedCivilObjectsInfo, listCivilObjectTypes | no |
 | `get_drawing_info` | drawing | — | getDrawingInfo | yes |
 | `get_selected_civil_objects_info` | drawing | — | getSelectedCivilObjectsInfo | yes |
 | `list_civil_object_types` | drawing | — | listCivilObjectTypes | yes |
@@ -81,7 +81,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_stm` | hydrology | list_ssa_capabilities, export_stm, import_stm, open_storm_sanitary_analysis | listSsaCapabilities, exportStm, importStm, openStormSanitaryAnalysis | no |
 | `civil3d_time_of_concentration` | hydrology | list_tc_methods, calculate_tc, generate_hydrograph | listTcMethods, calculateTimeOfConcentration, generateHydrograph | yes |
 | `civil3d_job` | job | start, status, cancel | startJob, getJobStatus, cancelJob | no |
-| `civil3d_parcel` | parcel | list_sites, list, get, create, edit, lot_line_adjust, report | listParcelSites, listParcels, getParcel, createParcel, editParcel, adjustParcelLotLine, reportParcels | no |
+| `civil3d_parcel` | parcel | list_sites, list, get, get_geometry, create, edit, lot_line_adjust, report | listParcelSites, listParcels, getParcel, getParcelGeometry, createParcel, editParcel, adjustParcelLotLine, reportParcels | no |
 | `civil3d_parcel_create` | parcel | — | createParcel | no |
 | `civil3d_parcel_edit` | parcel | — | editParcel | no |
 | `civil3d_parcel_lot_line_adjust` | parcel | — | adjustParcelLotLine | no |
@@ -180,7 +180,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_standards` | standards | label_list, label_add, label_list_styles, style_list, style_get, lookup, check_labels, check_drawing_standards, fix_drawing_standards | listLabels, addLabel, listLabelStyles, listStyles, getStyle, qcCheckLabels, qcCheckDrawingStandards, qcFixDrawingStandards | no |
 | `civil3d_standards_lookup` | standards | — | — | yes |
 | `civil3d_style` | standards | list, get | listStyles, getStyle | yes |
-| `civil3d_surface` | surface | list, get, get_elevation, get_elevation_along, get_statistics, create, delete, add_points, add_breakline, add_boundary, extract_contours, compute_volume, volume_calculate, volume_report, volume_by_region, analyze_slope, analyze_elevation, analyze_directions, watershed_add, contour_interval_set, statistics_get, sample_elevations, create_from_dem, comparison_workflow, drainage_workflow | listSurfaces, getSurface, getSurfaceElevation, getSurfaceElevationsAlong, getSurfaceStatistics, createSurface, deleteSurface, addSurfacePoints, addSurfaceBreakline, addSurfaceBoundary, extractSurfaceContours, computeSurfaceVolume, calculateSurfaceVolume, getSurfaceVolumeReport, calculateSurfaceVolumeByRegion, analyzeSurfaceSlope, analyzeSurfaceElevation, analyzeSurfaceDirections, addSurfaceWatershed, setSurfaceContourInterval, getSurfaceStatisticsDetailed, sampleSurfaceElevations, createSurfaceFromDem, traceHydrologyFlowPath, estimateHydrologyRunoff | no |
+| `civil3d_surface` | surface | list, get, get_elevation, get_elevation_along, get_statistics, create, delete, add_points, add_breakline, add_boundary, extract_contours, compute_volume, volume_calculate, volume_report, volume_by_region, analyze_slope, analyze_elevation, analyze_directions, watershed_add, contour_interval_set, statistics_get, sample_elevations, get_tin_vertices, create_from_dem, comparison_workflow, drainage_workflow | listSurfaces, getSurface, getSurfaceElevation, getSurfaceElevationsAlong, getSurfaceStatistics, createSurface, deleteSurface, addSurfacePoints, addSurfaceBreakline, addSurfaceBoundary, extractSurfaceContours, computeSurfaceVolume, calculateSurfaceVolume, getSurfaceVolumeReport, calculateSurfaceVolumeByRegion, analyzeSurfaceSlope, analyzeSurfaceElevation, analyzeSurfaceDirections, addSurfaceWatershed, setSurfaceContourInterval, getSurfaceStatisticsDetailed, sampleSurfaceElevations, getSurfaceTinVertices, createSurfaceFromDem, traceHydrologyFlowPath, estimateHydrologyRunoff | no |
 | `civil3d_surface_analyze_directions` | surface | — | analyzeSurfaceDirections | yes |
 | `civil3d_surface_analyze_elevation` | surface | — | analyzeSurfaceElevation | yes |
 | `civil3d_surface_analyze_slope` | surface | — | analyzeSurfaceSlope | yes |

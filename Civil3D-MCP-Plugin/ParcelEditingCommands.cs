@@ -327,6 +327,276 @@ public static class ParcelEditingCommands
   }
 
   // -------------------------------------------------------------------------
+  // getParcelGeometry
+  // -------------------------------------------------------------------------
+
+  private const double DefaultMaxArcSegmentAngleDegrees = 5.0;
+
+  /// <summary>
+  /// Read-only: the parcel's real boundary through the typed curve API (no
+  /// reflection). Returns the true vertices with bulges, the line/arc
+  /// segments, and a densified polygon (arcs split so no step sweeps more
+  /// than maxArcSegmentAngle degrees) that callers can use directly.
+  /// </summary>
+  public static Task<object?> GetParcelGeometryAsync(JsonObject? parameters)
+  {
+    var siteName = PluginRuntime.GetRequiredString(parameters, "siteName");
+    var parcelName = PluginRuntime.GetRequiredString(parameters, "parcelName");
+    var maxArcSegmentAngle = PluginRuntime.GetOptionalDouble(parameters, "maxArcSegmentAngle") ?? DefaultMaxArcSegmentAngleDegrees;
+    if (!double.IsFinite(maxArcSegmentAngle) || maxArcSegmentAngle < 0.1 || maxArcSegmentAngle > 90)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "maxArcSegmentAngle must be between 0.1 and 90 degrees.");
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var site = FindSiteByName(civilDoc, transaction, siteName);
+      var parcel = FindParcelByName(site, transaction, parcelName, OpenMode.ForRead);
+      var notes = new List<string>();
+      var (segments, source) = ReadParcelBoundary(parcel, notes);
+      if (segments == null)
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.API_ERROR",
+          $"Could not read the boundary of parcel '{parcel.Name}' in site '{site.Name}': {string.Join(" ", notes)}");
+      }
+
+      var signedArea = BridgeMath.SignedArea(segments);
+      var computedArea = Math.Abs(signedArea);
+      var computedPerimeter = BridgeMath.Perimeter(segments);
+      var reportedArea = parcel.Area;
+      if (reportedArea > 0 && Math.Abs(computedArea - reportedArea) > reportedArea * 0.001)
+      {
+        notes.Add($"The area computed from the boundary ({computedArea:G10}) differs from the parcel's reported area ({reportedArea:G10}) by more than 0.1%.");
+      }
+
+      var densified = BridgeMath.Densify(segments, maxArcSegmentAngle * Math.PI / 180.0);
+      Point3d? centroid = null;
+      try { centroid = parcel.Centroid; } catch { /* optional */ }
+
+      return new Dictionary<string, object?>
+      {
+        ["siteName"] = site.Name,
+        ["name"] = parcel.Name,
+        ["handle"] = CivilObjectUtils.GetHandle(parcel),
+        ["number"] = GetParcelNumber(parcel),
+        ["vertices"] = densified.Select(p => new Dictionary<string, object?> { ["x"] = p.X, ["y"] = p.Y }).ToList(),
+        ["closed"] = true,
+        ["orientation"] = signedArea >= 0 ? "ccw" : "cw",
+        ["boundaryVertices"] = segments.Select(s => new Dictionary<string, object?> { ["x"] = s.X0, ["y"] = s.Y0, ["bulge"] = s.Bulge }).ToList(),
+        ["segments"] = segments.Select(ToSegmentData).ToList(),
+        ["hasArcs"] = segments.Any(s => s.IsArc),
+        ["maxArcSegmentAngle"] = maxArcSegmentAngle,
+        ["area"] = reportedArea,
+        ["perimeter"] = computedPerimeter,
+        ["computedArea"] = computedArea,
+        ["reportedPerimeter"] = GetParcelPerimeter(parcel),
+        ["centroid"] = centroid is Point3d c ? new Dictionary<string, object?> { ["x"] = c.X, ["y"] = c.Y } : null,
+        ["geometrySource"] = source,
+        ["units"] = CivilObjectUtils.LinearUnits(database),
+        ["lengthUnit"] = DrawingCommands.ResolveLengthUnit(civilDoc, database),
+        ["notes"] = notes,
+      };
+    });
+  }
+
+  private static Dictionary<string, object?> ToSegmentData(BridgeMath.Segment segment)
+  {
+    var data = new Dictionary<string, object?>
+    {
+      ["type"] = segment.IsArc ? "arc" : "line",
+      ["start"] = new Dictionary<string, object?> { ["x"] = segment.X0, ["y"] = segment.Y0 },
+      ["end"] = new Dictionary<string, object?> { ["x"] = segment.X1, ["y"] = segment.Y1 },
+      ["bulge"] = segment.Bulge,
+      ["length"] = BridgeMath.SegmentLength(segment),
+    };
+    if (segment.IsArc)
+    {
+      var arc = BridgeMath.GetArc(segment);
+      data["center"] = new Dictionary<string, object?> { ["x"] = arc.CenterX, ["y"] = arc.CenterY };
+      data["radius"] = arc.Radius;
+      data["sweepAngleDeg"] = arc.SweepRadians * 180.0 / Math.PI;
+    }
+
+    return data;
+  }
+
+  /// <summary>
+  /// Tries, in order: the parcel's base curve, the parcel as an AutoCAD curve
+  /// (GetGeCurve), and exploding the parcel into lines/arcs. The first source
+  /// that yields one closed chain wins; failures are recorded in notes.
+  /// </summary>
+  private static (List<BridgeMath.Segment>? segments, string source) ReadParcelBoundary(Parcel parcel, List<string> notes)
+  {
+    try
+    {
+      var baseCurve = parcel.BaseCurve;
+      if (baseCurve != null)
+      {
+        try
+        {
+          var chained = ChainOrNote(SegmentsFromCurve(baseCurve), "baseCurve", notes);
+          if (chained != null) return (chained, $"baseCurve:{baseCurve.GetType().Name}");
+        }
+        finally
+        {
+          // BaseCurve hands back a non-database-resident copy; free it.
+          if (baseCurve.ObjectId.IsNull && !baseCurve.IsDisposed) baseCurve.Dispose();
+        }
+      }
+      else
+      {
+        notes.Add("baseCurve: none.");
+      }
+    }
+    catch (Exception exception)
+    {
+      notes.Add($"baseCurve: {exception.Message}");
+    }
+
+    try
+    {
+      if ((object)parcel is Curve parcelCurve)
+      {
+        using var geCurve = parcelCurve.GetGeCurve();
+        var chained = ChainOrNote(SegmentsFromGeCurve(geCurve), "geCurve", notes);
+        if (chained != null) return (chained, "geCurve");
+      }
+    }
+    catch (Exception exception)
+    {
+      notes.Add($"geCurve: {exception.Message}");
+    }
+
+    var exploded = new DBObjectCollection();
+    try
+    {
+      parcel.Explode(exploded);
+      var segments = new List<BridgeMath.Segment>();
+      foreach (Autodesk.AutoCAD.DatabaseServices.DBObject item in exploded)
+      {
+        if (item is Curve curve)
+        {
+          segments.AddRange(SegmentsFromCurve(curve));
+        }
+      }
+
+      var chained = ChainOrNote(segments, "explode", notes);
+      if (chained != null) return (chained, "explode");
+    }
+    catch (Exception exception)
+    {
+      notes.Add($"explode: {exception.Message}");
+    }
+    finally
+    {
+      foreach (Autodesk.AutoCAD.DatabaseServices.DBObject item in exploded)
+      {
+        if (!item.IsDisposed) item.Dispose();
+      }
+    }
+
+    return (null, "none");
+  }
+
+  private static List<BridgeMath.Segment>? ChainOrNote(List<BridgeMath.Segment> segments, string source, List<string> notes)
+  {
+    var chained = BridgeMath.ChainClosed(segments, BridgeMath.ChainTolerance(segments));
+    if (chained == null)
+    {
+      notes.Add($"{source}: {segments.Count} segment(s) did not form one closed boundary.");
+    }
+
+    return chained;
+  }
+
+  private static List<BridgeMath.Segment> SegmentsFromCurve(Curve curve)
+  {
+    if (curve is Polyline polyline)
+    {
+      var segments = new List<BridgeMath.Segment>();
+      var count = polyline.NumberOfVertices;
+      var last = polyline.Closed ? count : count - 1;
+      for (var i = 0; i < last; i++)
+      {
+        var p0 = polyline.GetPoint2dAt(i);
+        var p1 = polyline.GetPoint2dAt((i + 1) % count);
+        segments.Add(new BridgeMath.Segment(p0.X, p0.Y, p1.X, p1.Y, polyline.GetBulgeAt(i)));
+      }
+
+      return segments;
+    }
+
+    if (curve is Line line)
+    {
+      return [new BridgeMath.Segment(line.StartPoint.X, line.StartPoint.Y, line.EndPoint.X, line.EndPoint.Y, 0)];
+    }
+
+    if (curve is Arc arc)
+    {
+      var sweep = arc.EndAngle - arc.StartAngle;
+      while (sweep <= 0) sweep += 2 * Math.PI;
+      var sign = arc.Normal.Z >= 0 ? 1.0 : -1.0;
+      return [new BridgeMath.Segment(arc.StartPoint.X, arc.StartPoint.Y, arc.EndPoint.X, arc.EndPoint.Y, BridgeMath.BulgeFromSweep(sign * sweep))];
+    }
+
+    using var geCurve = curve.GetGeCurve();
+    return SegmentsFromGeCurve(geCurve);
+  }
+
+  private static List<BridgeMath.Segment> SegmentsFromGeCurve(Curve3d geCurve)
+  {
+    var segments = new List<BridgeMath.Segment>();
+    switch (geCurve)
+    {
+      case CompositeCurve3d composite:
+        foreach (var child in composite.GetCurves())
+        {
+          segments.AddRange(SegmentsFromGeCurve(child));
+        }
+
+        break;
+      case LineSegment3d lineSegment:
+        segments.Add(new BridgeMath.Segment(lineSegment.StartPoint.X, lineSegment.StartPoint.Y, lineSegment.EndPoint.X, lineSegment.EndPoint.Y, 0));
+        break;
+      case CircularArc3d circularArc:
+      {
+        var sweep = circularArc.EndAngle - circularArc.StartAngle;
+        var sign = circularArc.Normal.Z >= 0 ? 1.0 : -1.0;
+        var start = circularArc.StartPoint;
+        if (sweep >= 2 * Math.PI - 1e-9)
+        {
+          // Full circle: split into two half circles so both chords are non-zero.
+          var center = circularArc.Center;
+          var opposite = new Point2d(2 * center.X - start.X, 2 * center.Y - start.Y);
+          segments.Add(new BridgeMath.Segment(start.X, start.Y, opposite.X, opposite.Y, sign));
+          segments.Add(new BridgeMath.Segment(opposite.X, opposite.Y, start.X, start.Y, sign));
+        }
+        else
+        {
+          var end = circularArc.EndPoint;
+          segments.Add(new BridgeMath.Segment(start.X, start.Y, end.X, end.Y, BridgeMath.BulgeFromSweep(sign * sweep)));
+        }
+
+        break;
+      }
+      default:
+      {
+        // Unexpected curve type: approximate with a fine polyline.
+        var samples = geCurve.GetSamplePoints(64).Select(sample => sample.Point).ToArray();
+        for (var i = 1; i < samples.Length; i++)
+        {
+          segments.Add(new BridgeMath.Segment(samples[i - 1].X, samples[i - 1].Y, samples[i].X, samples[i].Y, 0));
+        }
+
+        break;
+      }
+    }
+
+    return segments;
+  }
+
+  // -------------------------------------------------------------------------
   // Helpers
   // -------------------------------------------------------------------------
 

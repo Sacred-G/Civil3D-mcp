@@ -53,7 +53,7 @@ public static class CivilExecution
 
       if (capturedException != null)
       {
-        throw capturedException;
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(capturedException).Throw();
       }
 
       return result!;
@@ -81,7 +81,7 @@ public static class CivilExecution
 
       if (capturedException != null)
       {
-        throw capturedException;
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(capturedException).Throw();
       }
 
       return result!;

@@ -42,11 +42,55 @@ const ParcelDetailResponseSchema = z.object({
   style: z.string().optional(),
 }).passthrough();
 
+/** getParcelGeometry: real boundary through the typed curve API (arcs densified; bulges reported). */
+export const ParcelGeometryArgsSchema = z.object({
+  action: z.literal("get_geometry"),
+  siteName: z.string().min(1),
+  parcelName: z.string().min(1),
+  maxArcSegmentAngle: z.number().min(0.1).max(90).optional()
+    .describe("Arc densification: maximum sweep in degrees per densified step (default 5)."),
+});
+
+const PlanPointSchema = z.object({ x: z.number(), y: z.number() });
+
+export const ParcelGeometryResponseSchema = z.object({
+  siteName: z.string(),
+  name: z.string(),
+  handle: z.string().optional(),
+  number: z.number().optional(),
+  vertices: z.array(PlanPointSchema).min(3),
+  closed: z.literal(true),
+  orientation: z.enum(["ccw", "cw"]).optional(),
+  boundaryVertices: z.array(PlanPointSchema.extend({ bulge: z.number() })),
+  segments: z.array(z.object({
+    type: z.enum(["line", "arc"]),
+    start: PlanPointSchema,
+    end: PlanPointSchema,
+    bulge: z.number(),
+    length: z.number(),
+    center: PlanPointSchema.optional(),
+    radius: z.number().optional(),
+    sweepAngleDeg: z.number().optional(),
+  }).passthrough()),
+  hasArcs: z.boolean(),
+  maxArcSegmentAngle: z.number().optional(),
+  area: z.number(),
+  perimeter: z.number(),
+  computedArea: z.number().optional(),
+  reportedPerimeter: z.number().nullable().optional(),
+  centroid: PlanPointSchema.nullable().optional(),
+  geometrySource: z.string(),
+  units: z.string().optional(),
+  lengthUnit: z.string().nullable().optional(),
+  notes: z.array(z.string()).optional(),
+}).passthrough();
+
 const canonicalParcelInputShape = {
   action: z.enum([
     "list_sites",
     "list",
     "get",
+    "get_geometry",
     "create",
     "edit",
     "lot_line_adjust",
@@ -69,6 +113,7 @@ const canonicalParcelInputShape = {
   overwrite: z.boolean().optional(),
   includeCoordinates: z.boolean().optional(),
   units: z.enum(["sqft", "acres", "sqm", "ha"]).optional(),
+  maxArcSegmentAngle: z.number().min(0.1).max(90).optional(),
 };
 
 const ParcelListSitesArgsSchema = z.object({
@@ -167,6 +212,22 @@ export const PARCEL_DOMAIN_DEFINITION: DomainToolDefinition = {
         }),
       ),
     },
+    get_geometry: {
+      action: "get_geometry",
+      inputSchema: ParcelGeometryArgsSchema,
+      responseSchema: ParcelGeometryResponseSchema,
+      capabilities: ["query", "inspect"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["getParcelGeometry"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("getParcelGeometry", {
+          siteName: args.siteName,
+          parcelName: args.parcelName,
+          ...(args.maxArcSegmentAngle !== undefined ? { maxArcSegmentAngle: args.maxArcSegmentAngle } : {}),
+        }),
+      ),
+    },
     create: {
       action: "create",
       inputSchema: ParcelCreateArgsSchema,
@@ -247,9 +308,9 @@ export const PARCEL_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_parcel",
       displayName: "Civil 3D Parcel",
-      description: "Reads, creates, edits, adjusts, and reports Civil 3D parcel and site data through a single domain tool.",
+      description: "Reads (including real boundary geometry with arcs), creates, edits, adjusts, and reports Civil 3D parcel and site data through a single domain tool.",
       inputShape: canonicalParcelInputShape,
-      supportedActions: ["list_sites", "list", "get", "create", "edit", "lot_line_adjust", "report"],
+      supportedActions: ["list_sites", "list", "get", "get_geometry", "create", "edit", "lot_line_adjust", "report"],
       resolveAction: (rawArgs) => ({
         action: String(rawArgs.action ?? ""),
         args: rawArgs,

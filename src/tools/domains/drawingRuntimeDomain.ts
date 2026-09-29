@@ -2,11 +2,46 @@ import { z } from "zod";
 import { withApplicationConnection } from "../../utils/ConnectionManager.js";
 import type { DomainToolDefinition } from "../domainRuntime.js";
 
-const DrawingInfoResponseSchema = z.object({ fileName: z.string().optional(), filePath: z.string().optional(), coordinateSystem: z.string().nullable().optional(), linearUnits: z.enum(["feet", "meters", "other"]).optional(), angularUnits: z.enum(["degrees", "radians", "grads"]).optional(), unsavedChanges: z.boolean().optional(), objectCounts: z.object({ surfaces: z.number().optional(), alignments: z.number().optional(), profiles: z.number().optional(), corridors: z.number().optional(), pipeNetworks: z.number().optional(), points: z.number().optional(), parcels: z.number().optional() }).optional(), drawingName: z.string().optional(), projectName: z.string().nullable().optional(), units: z.string().optional() });
+const DrawingInfoResponseSchema = z.object({ fileName: z.string().optional(), filePath: z.string().optional(), coordinateSystem: z.string().nullable().optional(), linearUnits: z.enum(["feet", "meters", "other"]).optional(), lengthUnit: z.string().nullable().optional(), angularUnits: z.enum(["degrees", "radians", "grads"]).optional(), unsavedChanges: z.boolean().optional(), objectCounts: z.object({ surfaces: z.number().optional(), alignments: z.number().optional(), profiles: z.number().optional(), corridors: z.number().optional(), pipeNetworks: z.number().optional(), points: z.number().optional(), parcels: z.number().optional() }).optional(), drawingName: z.string().optional(), projectName: z.string().nullable().optional(), units: z.string().optional() });
 const DrawingSettingsResponseSchema = z.object({ coordinateSystem: z.string().nullable().optional(), coordinateZone: z.string().nullable().optional(), datum: z.string().nullable().optional(), scaleFactor: z.number().optional(), elevationReference: z.string().nullable().optional(), defaultLayer: z.string().optional(), defaultStyles: z.object({ surface: z.string().optional(), alignment: z.string().optional(), profile: z.string().optional(), corridor: z.string().optional(), pipeNetwork: z.string().optional() }).optional() });
 const SelectedCivilObjectsResponseSchema = z.array(z.object({ handle: z.string(), objectType: z.string(), name: z.string().optional(), description: z.string().optional() }));
 const CivilObjectTypesResponseSchema = z.array(z.string());
 const GenericResponseSchema = z.object({}).passthrough();
+
+/**
+ * getDrawingUnits. `lengthUnit` is the AutoCAD UnitsValue name from INSUNITS
+ * ("Feet", "USSurveyFeet", "Meters", ...), falling back to the Civil 3D
+ * drawing settings when INSUNITS is Undefined. Unlike the legacy
+ * `linearUnits` ("feet" | "meters" | "other"), it keeps US survey feet
+ * distinct from international feet.
+ */
+export const DrawingUnitsResponseSchema = z.object({
+  insunits: z.number().int(),
+  insunitsName: z.string(),
+  lengthUnit: z.string().nullable(),
+  lengthUnitSource: z.enum(["INSUNITS", "civil3dDrawingSettings", "unknown"]),
+  isUsSurveyFoot: z.boolean(),
+  metersPerUnit: z.number().nullable(),
+  mmPerUnit: z.number().nullable(),
+  linearUnits: z.enum(["feet", "meters", "other"]),
+  civilLinearUnit: z.string().nullable().optional(),
+  civilImperialToMetricConversion: z.string().nullable().optional(),
+  civilLengthUnit: z.string().nullable().optional(),
+  civilAngularUnit: z.string().nullable().optional(),
+  civilDrawingScale: z.number().nullable().optional(),
+  civilMatchAutoCADVariables: z.boolean().nullable().optional(),
+  angularUnit: z.string().optional(),
+  aunits: z.number().int().optional(),
+  auprec: z.number().int().optional(),
+  lunits: z.number().int().optional(),
+  luprec: z.number().int().optional(),
+  angbase: z.number().optional(),
+  angdirClockwise: z.boolean().optional(),
+  coordinateSystem: z.string().nullable().optional(),
+  unitsConsistent: z.boolean(),
+  warnings: z.array(z.string()),
+}).passthrough();
+export const DrawingUnitsArgsSchema = z.object({ action: z.literal("units") });
 
 const DrawingInfoArgs = z.object({ action: z.literal("info") });
 const DrawingNewArgs = z.object({ action: z.literal("new"), templatePath: z.string().optional() });
@@ -25,12 +60,13 @@ export const DRAWING_RUNTIME_DOMAIN_DEFINITION: DomainToolDefinition = {
     save: { action: "save", inputSchema: DrawingSaveArgs, responseSchema: GenericResponseSchema, capabilities: ["edit", "manage"], requiresActiveDrawing: false, safeForRetry: false, pluginMethods: ["saveDrawing"], execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("saveDrawing", { saveAs: args.saveAs, overwrite: args.overwrite ?? false })) },
     undo: { action: "undo", inputSchema: DrawingUndoArgs, responseSchema: GenericResponseSchema, capabilities: ["edit", "manage"], requiresActiveDrawing: true, safeForRetry: false, pluginMethods: ["undoDrawing"], execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("undoDrawing", { steps: args.steps ?? 1 })) },
     redo: { action: "redo", inputSchema: DrawingRedoArgs, responseSchema: GenericResponseSchema, capabilities: ["edit", "manage"], requiresActiveDrawing: true, safeForRetry: false, pluginMethods: ["redoDrawing"], execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("redoDrawing", { steps: args.steps ?? 1 })) },
+    units: { action: "units", inputSchema: DrawingUnitsArgsSchema, responseSchema: DrawingUnitsResponseSchema, capabilities: ["query", "inspect"], requiresActiveDrawing: true, safeForRetry: true, pluginMethods: ["getDrawingUnits"], execute: async () => await withApplicationConnection(async (appClient) => await appClient.sendCommand("getDrawingUnits", {})) },
     settings: { action: "settings", inputSchema: DrawingSettingsArgs, responseSchema: DrawingSettingsResponseSchema, capabilities: ["query", "inspect"], requiresActiveDrawing: false, safeForRetry: true, pluginMethods: ["getDrawingSettings"], execute: async () => await withApplicationConnection(async (appClient) => await appClient.sendCommand("getDrawingSettings", {})) },
     selected_objects_info: { action: "selected_objects_info", inputSchema: SelectedObjectsArgs, responseSchema: SelectedCivilObjectsResponseSchema, capabilities: ["query", "inspect"], requiresActiveDrawing: true, safeForRetry: true, pluginMethods: ["getSelectedCivilObjectsInfo"], execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("getSelectedCivilObjectsInfo", { limit: args.limit || 100 })) },
     list_object_types: { action: "list_object_types", inputSchema: ObjectTypesArgs, responseSchema: CivilObjectTypesResponseSchema, capabilities: ["query", "inspect"], requiresActiveDrawing: false, safeForRetry: true, pluginMethods: ["listCivilObjectTypes"], execute: async () => await withApplicationConnection(async (appClient) => await appClient.sendCommand("listCivilObjectTypes", {})) },
   },
   exposures: [
-    { toolName: "civil3d_drawing", displayName: "Civil 3D Drawing", description: "Reads drawing state, settings, selection context, and document operations through a single domain tool.", inputShape: { action: z.enum(["info", "new", "save", "undo", "redo", "settings", "selected_objects_info", "list_object_types"]), templatePath: z.string().optional(), saveAs: z.string().optional(), overwrite: z.boolean().optional(), steps: z.number().int().min(1).max(10).optional(), limit: z.number().optional() }, supportedActions: ["info", "new", "save", "undo", "redo", "settings", "selected_objects_info", "list_object_types"], resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }) },
+    { toolName: "civil3d_drawing", displayName: "Civil 3D Drawing", description: "Reads drawing state, settings, units (INSUNITS and Civil 3D unit settings, distinguishing US survey feet from international feet), selection context, and document operations through a single domain tool.", inputShape: { action: z.enum(["info", "new", "save", "undo", "redo", "settings", "units", "selected_objects_info", "list_object_types"]), templatePath: z.string().optional(), saveAs: z.string().optional(), overwrite: z.boolean().optional(), steps: z.number().int().min(1).max(10).optional(), limit: z.number().optional() }, supportedActions: ["info", "new", "save", "undo", "redo", "settings", "units", "selected_objects_info", "list_object_types"], resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }) },
     { toolName: "get_drawing_info", displayName: "Get Drawing Info", description: "Retrieves basic information about the active Civil 3D drawing.", inputShape: {}, supportedActions: ["info"], resolveAction: () => ({ action: "info", args: { action: "info" } }) },
     { toolName: "get_selected_civil_objects_info", displayName: "Get Selected Civil Objects Info", description: "Gets basic properties of currently selected Civil 3D objects.", inputShape: { limit: z.number().optional() }, supportedActions: ["selected_objects_info"], resolveAction: (rawArgs) => ({ action: "selected_objects_info", args: { action: "selected_objects_info", ...rawArgs } }) },
     { toolName: "list_civil_object_types", displayName: "List Civil Object Types", description: "Lists major Civil 3D object types available in the current context.", inputShape: {}, supportedActions: ["list_object_types"], resolveAction: () => ({ action: "list_object_types", args: { action: "list_object_types" } }) },

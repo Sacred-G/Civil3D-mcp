@@ -954,6 +954,197 @@ public static class SurfaceCommands
     });
   }
 
+  // ─── getSurfaceTinVertices ──────────────────────────────────────────────
+
+  /// <summary>Default vertex cap when the caller does not pass maxPoints.</summary>
+  public const int TinVerticesDefaultMaxPoints = 50_000;
+
+  /// <summary>
+  /// Hard vertex cap. A vertex serialises to roughly 50-60 bytes at 6
+  /// decimals, so 100,000 vertices stay near 6 MB: inside the Node server's
+  /// default 8 MiB response limit (CIVIL3D_MAX_RESPONSE_BYTES).
+  /// </summary>
+  public const int TinVerticesMaxPoints = 100_000;
+
+  private const int TinVertexDecimals = 6;
+
+  /// <summary>
+  /// Read-only: the actual vertices of a TIN surface (or the grid points of a
+  /// grid surface), optionally clipped to a plan polygon, with deterministic
+  /// decimation when there are more than maxPoints. TIN vertices are taken
+  /// from visible triangles only, so points hidden by boundaries are excluded.
+  /// </summary>
+  public static Task<object?> GetSurfaceTinVerticesAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    var maxPoints = PluginRuntime.GetOptionalInt(parameters, "maxPoints") ?? TinVerticesDefaultMaxPoints;
+    if (maxPoints < 1 || maxPoints > TinVerticesMaxPoints)
+    {
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        $"maxPoints must be between 1 and {TinVerticesMaxPoints}; got {maxPoints}.");
+    }
+
+    var boundary = ParseOptionalPlanPolygon(parameters, "boundary");
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, name, OpenMode.ForRead);
+      List<(double X, double Y, double Z)> points;
+      int surfaceVertexCount;
+      string vertexSource;
+      switch (surface)
+      {
+        case TinSurface tin:
+          points = CollectVisibleTinVertices(tin);
+          surfaceVertexCount = tin.Vertices.Count;
+          vertexSource = "tin_visible_triangles";
+          break;
+        case GridSurface grid:
+          points = CollectGridVertices(grid);
+          surfaceVertexCount = grid.Vertices.Count;
+          vertexSource = "grid_visible_points";
+          break;
+        default:
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.INVALID_INPUT",
+            $"Surface '{surface.Name}' is a {MapSurfaceType(surface)} surface; getSurfaceTinVertices supports TIN and grid surfaces only. " +
+            "Use sampleSurfaceElevations for other surface types.");
+      }
+
+      if (boundary != null)
+      {
+        var minX = boundary.Min(p => p.X);
+        var maxX = boundary.Max(p => p.X);
+        var minY = boundary.Min(p => p.Y);
+        var maxY = boundary.Max(p => p.Y);
+        points = points
+          .Where(p => p.X >= minX && p.X <= maxX && p.Y >= minY && p.Y <= maxY && BridgeMath.PointInPolygon(p.X, p.Y, boundary))
+          .ToList();
+      }
+
+      // Sort so the decimation does not depend on the host's enumeration order.
+      points.Sort((a, b) =>
+      {
+        var byX = a.X.CompareTo(b.X);
+        if (byX != 0) return byX;
+        var byY = a.Y.CompareTo(b.Y);
+        return byY != 0 ? byY : a.Z.CompareTo(b.Z);
+      });
+
+      var total = points.Count;
+      var indices = BridgeMath.StrideIndices(total, maxPoints);
+      var truncated = total > maxPoints;
+      var vertices = new List<Dictionary<string, object?>>(indices.Length);
+      foreach (var index in indices)
+      {
+        var p = points[index];
+        vertices.Add(new Dictionary<string, object?>
+        {
+          ["x"] = Math.Round(p.X, TinVertexDecimals),
+          ["y"] = Math.Round(p.Y, TinVertexDecimals),
+          ["z"] = Math.Round(p.Z, TinVertexDecimals),
+        });
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["surfaceName"] = surface.Name,
+        ["surfaceHandle"] = CivilObjectUtils.GetHandle(surface),
+        ["surfaceType"] = MapSurfaceType(surface),
+        ["vertexSource"] = vertexSource,
+        ["vertices"] = vertices,
+        ["totalVertexCount"] = total,
+        ["returnedVertexCount"] = vertices.Count,
+        ["surfaceVertexCount"] = surfaceVertexCount,
+        ["truncated"] = truncated,
+        ["maxPoints"] = maxPoints,
+        ["decimation"] = truncated ? "stride" : "none",
+        ["decimationStride"] = truncated ? (double)total / maxPoints : 1.0,
+        ["boundaryApplied"] = boundary != null,
+        ["coordinateDecimals"] = TinVertexDecimals,
+        ["units"] = CivilObjectUtils.LinearUnits(database),
+        ["lengthUnit"] = DrawingCommands.ResolveLengthUnit(civilDoc, database),
+      };
+    });
+  }
+
+  private static List<(double X, double Y, double Z)> CollectVisibleTinVertices(TinSurface tin)
+  {
+    // A vertex belongs to the visible surface when it is a corner of at least
+    // one visible triangle. Shared corners are de-duplicated by exact XY.
+    var seen = new HashSet<(double, double)>();
+    var points = new List<(double X, double Y, double Z)>();
+    foreach (TinSurfaceTriangle triangle in tin.GetTriangles(false))
+    {
+      AddTinVertex(triangle.Vertex1.Location, seen, points);
+      AddTinVertex(triangle.Vertex2.Location, seen, points);
+      AddTinVertex(triangle.Vertex3.Location, seen, points);
+    }
+
+    return points;
+  }
+
+  private static void AddTinVertex(Point3d location, HashSet<(double, double)> seen, List<(double X, double Y, double Z)> points)
+  {
+    if (seen.Add((location.X, location.Y)))
+    {
+      points.Add((location.X, location.Y, location.Z));
+    }
+  }
+
+  private static List<(double X, double Y, double Z)> CollectGridVertices(GridSurface grid)
+  {
+    var points = new List<(double X, double Y, double Z)>();
+    foreach (GridSurfaceVertex vertex in grid.GetVertices(false))
+    {
+      var location = vertex.Location;
+      points.Add((location.X, location.Y, location.Z));
+    }
+
+    return points;
+  }
+
+  /// <summary>Optional plan polygon parameter: [{x,y}, ...] with at least 3 finite points.</summary>
+  internal static List<(double X, double Y)>? ParseOptionalPlanPolygon(JsonObject? parameters, string name)
+  {
+    var node = PluginRuntime.GetParameter(parameters, name) as JsonNode;
+    if (node == null)
+    {
+      return null;
+    }
+
+    if (node is not JsonArray array)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"'{name}' must be an array of {{x, y}} points.");
+    }
+
+    var polygon = new List<(double X, double Y)>();
+    foreach (var item in array)
+    {
+      if (item is not JsonObject point || point["x"] == null || point["y"] == null)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Every '{name}' point needs numeric x and y.");
+      }
+
+      var x = point["x"]!.GetValue<double>();
+      var y = point["y"]!.GetValue<double>();
+      if (!double.IsFinite(x) || !double.IsFinite(y))
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"'{name}' coordinates must be finite numbers.");
+      }
+
+      polygon.Add((x, y));
+    }
+
+    if (polygon.Count < 3)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"'{name}' needs at least 3 points.");
+    }
+
+    return polygon;
+  }
+
   // ─── Private helpers for new methods ────────────────────────────────────
 
   private static bool IsPointInPolygon(double x, double y, Point2dCollection polygon)

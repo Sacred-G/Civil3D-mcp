@@ -4,7 +4,7 @@ import type { DomainToolDefinition } from "../domainRuntime.js";
 
 const InfoArgs = z.object({ action: z.literal("info") });
 const TransformArgs = z.object({ action: z.literal("transform"), fromSystem: z.enum(["drawing", "geographic"]), toSystem: z.enum(["drawing", "geographic"]), x: z.number(), y: z.number(), z: z.number().optional() });
-const InfoResponseSchema = z.object({ name: z.string().nullable(), zone: z.string().nullable(), datum: z.string().nullable(), projection: z.string().nullable(), linearUnits: z.string(), centralMeridian: z.number().nullable(), falseEasting: z.number().nullable(), falseNorthing: z.number().nullable(), scaleFactor: z.number().nullable() });
+const InfoResponseSchema = z.object({ name: z.string().nullable(), zone: z.string().nullable(), datum: z.string().nullable(), projection: z.string().nullable(), linearUnits: z.string(), lengthUnit: z.string().nullable().optional(), centralMeridian: z.number().nullable(), falseEasting: z.number().nullable(), falseNorthing: z.number().nullable(), scaleFactor: z.number().nullable() });
 const TransformResponseSchema = z.object({ x: z.number(), y: z.number(), z: z.number().optional() }).passthrough();
 
 export const COORDINATE_SYSTEM_DOMAIN_DEFINITION: DomainToolDefinition = {

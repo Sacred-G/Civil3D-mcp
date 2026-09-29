@@ -398,10 +398,14 @@ public static class PipeNetworkCommands
     {
       ["name"] = network.Name,
       ["handle"] = CivilObjectUtils.GetHandle(network),
-      ["partsList"] = ResolveObjectName(transaction, network.PartsListId),
-      ["style"] = network.StyleName,
-      ["referenceSurface"] = ResolveObjectName(transaction, network.ReferenceSurfaceId),
-      ["referenceAlignment"] = ResolveObjectName(transaction, network.ReferenceAlignmentId),
+      // Network-level attributes throw CivilException "Retrieve attribute failed"
+      // when unset (live on Civil 3D 2027, Pipe Networks-3 tutorial drawing: every
+      // pipe and structure read fine on its own, but the whole getPipeNetwork call
+      // failed), so read them defensively.
+      ["partsList"] = SafeText(() => ResolveObjectName(transaction, network.PartsListId)),
+      ["style"] = SafeText(() => network.StyleName),
+      ["referenceSurface"] = SafeText(() => ResolveObjectName(transaction, network.ReferenceSurfaceId)),
+      ["referenceAlignment"] = SafeText(() => ResolveObjectName(transaction, network.ReferenceAlignmentId)),
       ["pipes"] = pipes,
       ["structures"] = structures,
     };
@@ -409,6 +413,23 @@ public static class PipeNetworkCommands
 
   private static Dictionary<string, object?> ToPipeData(Pipe pipe, Transaction transaction)
   {
+    var start = pipe.StartPoint;
+    var end = pipe.EndPoint;
+    // The managed Pipe API has no invert property. StartPoint/EndPoint are
+    // centreline points, so invert = centreline - inner height / 2.
+    // Part-family-specific properties (outer size, wall thickness, shape) are
+    // read defensively: Civil 3D throws CivilException "Retrieve attribute
+    // failed" for attributes a part does not define, and one bad attribute
+    // should not fail the whole network read.
+    // When InnerHeight is unavailable, InnerDiameterOrWidth is a valid height
+    // only for a circular section; for any other (or unreadable) shape the
+    // height, inverts and crowns are left null rather than guessed.
+    var shape = SafeText(() => pipe.CrossSectionalShape.ToString());
+    double? innerHeight = SafeDouble(() => pipe.InnerHeight) is > 0 and var h
+      ? h
+      : string.Equals(shape, "Circular", StringComparison.Ordinal) ? pipe.InnerDiameterOrWidth : null;
+    var halfHeight = innerHeight / 2.0;
+
     return new Dictionary<string, object?>
     {
       ["name"] = pipe.Name,
@@ -419,12 +440,39 @@ public static class PipeNetworkCommands
       ["diameter"] = pipe.InnerDiameterOrWidth,
       ["slope"] = pipe.Slope,
       ["material"] = pipe.Material,
-      ["centerlineStartElevation"] = pipe.StartPoint.Z,
-      ["centerlineEndElevation"] = pipe.EndPoint.Z,
+      ["centerlineStartElevation"] = start.Z,
+      ["centerlineEndElevation"] = end.Z,
       ["invertIn"] = null,
       ["invertOut"] = null,
-      ["invertNote"] = "The Civil 3D 2026 managed Pipe API does not expose endpoint invert elevations directly; centerline elevations are returned instead.",
+      ["invertNote"] = "The managed Pipe API does not expose invert elevations directly; startInvert/endInvert are derived as centerline elevation minus innerHeight/2.",
+      // Additive plan/3D geometry (used by the Civil 3D-Revit bridge).
+      ["startPoint"] = new Dictionary<string, object?> { ["x"] = start.X, ["y"] = start.Y, ["z"] = start.Z },
+      ["endPoint"] = new Dictionary<string, object?> { ["x"] = end.X, ["y"] = end.Y, ["z"] = end.Z },
+      ["startInvert"] = start.Z - halfHeight,
+      ["endInvert"] = end.Z - halfHeight,
+      ["startCrown"] = start.Z + halfHeight,
+      ["endCrown"] = end.Z + halfHeight,
+      ["invertSource"] = innerHeight is null ? null : "centerline - innerHeight/2",
+      ["innerDiameter"] = pipe.InnerDiameterOrWidth,
+      ["outerDiameter"] = SafeDouble(() => pipe.OuterDiameterOrWidth),
+      ["innerHeight"] = innerHeight,
+      ["outerHeight"] = SafeDouble(() => pipe.OuterHeight),
+      ["wallThickness"] = SafeDouble(() => pipe.WallThickness),
+      ["crossSectionalShape"] = shape,
+      ["length2d"] = SafeDouble(() => pipe.Length2D),
     };
+  }
+
+  private static double? SafeDouble(Func<double> getter)
+  {
+    try { return getter(); }
+    catch (Autodesk.Civil.CivilException) { return null; }
+  }
+
+  private static string? SafeText(Func<string?> getter)
+  {
+    try { return getter(); }
+    catch (Autodesk.Civil.CivilException) { return null; }
   }
 
   private static Dictionary<string, object?> ToStructureData(Structure structure, Transaction transaction)

@@ -44,6 +44,8 @@ public static class CoordinateSystemCommands
         ["datum"] = datum,
         ["projection"] = projection,
         ["linearUnits"] = CivilObjectUtils.LinearUnits(database),
+        // Additive: distinguishes USSurveyFeet from Feet (linearUnits does not).
+        ["lengthUnit"] = DrawingCommands.ResolveLengthUnit(civilDoc, database),
         ["centralMeridian"] = null,
         ["falseEasting"] = null,
         ["falseNorthing"] = null,

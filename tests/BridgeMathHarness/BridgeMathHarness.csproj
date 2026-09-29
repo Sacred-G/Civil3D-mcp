@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- BridgeMath.cs is host-independent by design so the geometry and unit
+       resolution behind getSurfaceTinVertices, getParcelGeometry and
+       getDrawingUnits can be exercised here without Civil 3D. -->
+  <ItemGroup>
+    <Compile Include="..\..\Civil3D-MCP-Plugin\BridgeMath.cs" Link="BridgeMath.cs" />
+  </ItemGroup>
+</Project>

@@ -12,6 +12,7 @@ public static class CommandDispatcher
       "getDrawingInfo" => DrawingCommands.GetDrawingInfoAsync(),
       "getProjectContext" => DrawingCommands.GetProjectContextAsync(parameters),
       "getDrawingSettings" => DrawingCommands.GetDrawingSettingsAsync(),
+      "getDrawingUnits" => DrawingCommands.GetDrawingUnitsAsync(),
       "getCoordinateSystemInfo" => CoordinateSystemCommands.GetCoordinateSystemInfoAsync(),
       "transformCoordinates" => CoordinateSystemCommands.TransformCoordinatesAsync(parameters),
       "corridorQcReportWorkflow" => WorkflowCommands.CorridorQcReportWorkflowAsync(parameters),
@@ -83,6 +84,7 @@ public static class CommandDispatcher
       "setSurfaceContourInterval" => SurfaceCommands.SetSurfaceContourIntervalAsync(parameters),
       "getSurfaceStatisticsDetailed" => SurfaceCommands.GetSurfaceStatisticsDetailedAsync(parameters),
       "sampleSurfaceElevations" => SurfaceCommands.SampleSurfaceElevationsAsync(parameters),
+      "getSurfaceTinVertices" => SurfaceCommands.GetSurfaceTinVerticesAsync(parameters),
       "createSurfaceFromDem" => SurfaceCommands.CreateSurfaceFromDemAsync(parameters),
       "listSampleLineGroups" => SectionCommands.ListSampleLineGroupsAsync(parameters),
       "getSectionData" => SectionCommands.GetSectionDataAsync(parameters),
@@ -121,6 +123,7 @@ public static class CommandDispatcher
       "getIntersection" => IntersectionCommands.GetIntersectionAsync(parameters),
       "listParcels" => ParcelEditingCommands.ListParcelsAsync(parameters),
       "getParcel" => ParcelEditingCommands.GetParcelAsync(parameters),
+      "getParcelGeometry" => ParcelEditingCommands.GetParcelGeometryAsync(parameters),
       "listParcelSites" => ParcelEditingCommands.ListParcelSitesAsync(),
       // Pipe networks (gravity)
       "listPipeNetworks" => PipeNetworkCommands.ListPipeNetworksAsync(),
