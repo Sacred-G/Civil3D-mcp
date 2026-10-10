@@ -206,6 +206,7 @@ const canonicalSurfaceInputShape = {
     "volume_calculate",
     "volume_report",
     "volume_by_region",
+    "volume_to_datum",
     "analyze_slope",
     "analyze_elevation",
     "analyze_directions",
@@ -234,6 +235,7 @@ const canonicalSurfaceInputShape = {
   method: z.enum(["tin_volume", "average_end_area", "prismoidal"]).optional(),
   format: z.enum(["summary", "detailed"]).optional(),
   boundary: z.array(Point2DSchema).optional(),
+  datum: z.number().optional(),
   ranges: z.array(z.object({ min: z.number(), max: z.number() })).optional(),
   numRanges: z.number().int().optional(),
   depthThreshold: z.number().positive().optional(),
@@ -347,6 +349,13 @@ const SurfaceVolumeByRegionArgsSchema = z.object({
   action: z.literal("volume_by_region"),
   baseSurface: z.string(),
   comparisonSurface: z.string(),
+  boundary: z.array(Point2DSchema).min(3),
+});
+
+const SurfaceVolumeToDatumArgsSchema = z.object({
+  action: z.literal("volume_to_datum"),
+  name: z.string(),
+  datum: z.number(),
   boundary: z.array(Point2DSchema).min(3),
 });
 
@@ -665,6 +674,22 @@ export const SURFACE_DOMAIN_DEFINITION: DomainToolDefinition = {
         }),
       ),
     },
+    volume_to_datum: {
+      action: "volume_to_datum",
+      inputSchema: SurfaceVolumeToDatumArgsSchema,
+      responseSchema: GenericSurfaceResponseSchema,
+      capabilities: ["query", "analyze"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["calculateSurfaceVolumeToDatum"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("calculateSurfaceVolumeToDatum", {
+          name: args.name,
+          datum: args.datum,
+          boundary: args.boundary,
+        }),
+      ),
+    },
     analyze_slope: {
       action: "analyze_slope",
       inputSchema: SurfaceAnalyzeSlopeArgsSchema,
@@ -941,6 +966,7 @@ export const SURFACE_DOMAIN_DEFINITION: DomainToolDefinition = {
         "volume_calculate",
         "volume_report",
         "volume_by_region",
+        "volume_to_datum",
         "analyze_slope",
         "analyze_elevation",
         "analyze_directions",

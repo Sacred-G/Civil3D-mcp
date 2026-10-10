@@ -523,6 +523,61 @@ public static class SurfaceCommands
     });
   }
 
+  // Volume between one surface and a flat datum inside a polygon, from Civil 3D's own bounded-volume
+  // calculation (the Volumes Dashboard's "bounded volumes"), not a sampled grid. Useful when there is
+  // no second surface: a pond bottom, a stockpile above its base, earth above a design elevation.
+  public static Task<object?> CalculateSurfaceVolumeToDatumAsync(JsonObject? parameters)
+  {
+    var surfaceName = PluginRuntime.GetRequiredString(parameters, "name");
+    var datum = PluginRuntime.GetOptionalDouble(parameters, "datum")
+      ?? throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "calculateSurfaceVolumeToDatum requires 'datum' (an elevation).");
+    var boundary = ParseRequiredPoint2dArray(parameters, "boundary", "calculateSurfaceVolumeToDatum requires at least 3 boundary points.");
+    if (boundary.Count < 3)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "calculateSurfaceVolumeToDatum requires at least 3 boundary points.");
+    }
+
+    var polygon = new Point3dCollection();
+    foreach (Point2d point in boundary)
+    {
+      polygon.Add(new Point3d(point.X, point.Y, 0.0));
+    }
+    if (!polygon[0].IsEqualTo(polygon[polygon.Count - 1]))
+    {
+      polygon.Add(polygon[0]);
+    }
+
+    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var surface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, surfaceName, OpenMode.ForRead);
+      SurfaceVolumeInfo info;
+      try
+      {
+        info = surface.GetBoundedVolumes(polygon, datum);
+      }
+      catch (ArgumentException ex)
+      {
+        // Civil 3D: "Unable to calculate volume, possibly illegal bounding polygon."
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Civil 3D could not compute a bounded volume for this boundary (it must be a simple, non-self-crossing polygon): {ex.Message}");
+      }
+
+      var units = CivilObjectUtils.LinearUnits(database);
+      return new Dictionary<string, object?>
+      {
+        ["name"] = surfaceName,
+        ["datum"] = datum,
+        ["cutVolume"] = info.Cut,
+        ["fillVolume"] = info.Fill,
+        ["netVolume"] = info.Net,
+        ["regionBoundaryPointCount"] = boundary.Count,
+        ["units"] = new Dictionary<string, object?>
+        {
+          ["volume"] = $"{units}^3",
+        },
+      };
+    });
+  }
+
   public static Task<object?> AnalyzeSurfaceSlopeAsync(JsonObject? parameters)
   {
     var name = PluginRuntime.GetRequiredString(parameters, "name");
