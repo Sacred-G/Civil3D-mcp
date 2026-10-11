@@ -1347,10 +1347,12 @@ Adds a label to a Civil 3D object at a specified location.
 | action     | `"add"`                    | yes      | —                                                                                    |
 | objectType | string                       | yes      | Object type                                                                           |
 | objectName | string                       | yes      | Object name                                                                           |
-| labelType  | string                       | yes      | Alignment `"label_set"` (labelStyle = label set name), `"station"`, `"curves"` (one label per arc); profile `"station"` (profile label sets cannot be set through the .NET API); surface `"spot_elevation"`; pipe and structure `"plan"` or `"profile"` (one label in each profile view that shows the part) |
+| labelType  | string                       | yes      | Alignment `"label_set"` (labelStyle = label set name; replaces the alignment's existing label groups), `"station"`, `"curves"` (one label per arc, including arcs inside compound curves such as spiral-curve-spiral); profile `"station"` (profile label sets cannot be set through the .NET API); surface `"spot_elevation"`; pipe and structure `"plan"` or `"profile"` (one label in each profile view that shows the part) |
 | labelStyle | string                       | no       | Label style name. Uses default if omitted                                             |
 | station    | number                       | no       | Station for alignment/profile labels                                                  |
 | point      | `{ x: number, y: number }` | no       | Location for surface labels                                                           |
+
+Alignment `"label_set"` returns `labelGroups`, the alignment's label group count after the import (0 means the set applied nothing). Pipe and structure labels return `handle` (the first label), `handles` (all of them), `created` (their count) and `skipped`: with several profile views, a profile view part that lies in none of them is skipped rather than labelled in the wrong view. If no profile label could be created, the call fails with an error instead.
 
 #### `list_styles`
 
