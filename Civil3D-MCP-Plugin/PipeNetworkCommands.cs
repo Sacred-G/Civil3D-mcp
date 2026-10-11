@@ -251,7 +251,7 @@ public static class PipeNetworkCommands
         {
           ["name"] = CivilObjectUtils.GetName(partsList),
         ["handle"] = partsList is AcDbObject dbObject ? CivilObjectUtils.GetHandle(dbObject) : null,
-          ["parts"] = EnumeratePartNames(partsList).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name).ToList(),
+          ["parts"] = EnumeratePartNames(partsList, transaction).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(name => name).ToList(),
         })
         .ToList();
 
@@ -674,28 +674,86 @@ public static class PipeNetworkCommands
     }
   }
 
-  private static IEnumerable<string> EnumeratePartNames(object partsList)
+  /// <summary>
+  /// Part family and part size names in a parts list.
+  ///
+  /// This used to probe for member names "PartFamilies", "PipeFamilies",
+  /// "StructureFamilies" and "PartFamilySet". PartsList exposes none of them --
+  /// it has PartFamilyCount and an ObjectId indexer -- so every probe returned
+  /// nothing and pipe_catalog_list reported an empty "parts" array for every
+  /// parts list. That left callers with no way to discover a valid partName,
+  /// even though add_pipe and add_structure require one.
+  ///
+  /// Uses the same walk as add_pipe / add_structure (EnumeratePartSizes), and
+  /// lists exactly the names FindPartForNetwork accepts: every size name, plus
+  /// the family name for a family with a single size.
+  /// </summary>
+  private static IEnumerable<string> EnumeratePartNames(object partsList, Transaction transaction)
   {
-    foreach (var collectionName in new[] { "PartFamilies", "PipeFamilies", "StructureFamilies", "PartFamilySet" })
+    if (partsList is not PartsList typedPartsList)
     {
-      var collection = GetNamedMemberValue(partsList, collectionName);
-      foreach (var item in EnumerateNamedObjects(collection))
-      {
-        var familyName = CivilObjectUtils.GetName(item);
-        if (!string.IsNullOrWhiteSpace(familyName))
-        {
-          yield return familyName!;
-        }
+      yield break;
+    }
 
-        foreach (var child in EnumerateNamedObjects(GetNamedMemberValue(item, "PartSizeFilter") ?? GetNamedMemberValue(item, "PartSizes") ?? GetNamedMemberValue(item, "SizeDataRecords")))
+    foreach (var domain in new[] { DomainType.Pipe, DomainType.Structure })
+    {
+      foreach (var part in EnumeratePartSizes(typedPartsList, domain, transaction))
+      {
+        if (!string.IsNullOrWhiteSpace(part.SizeName))
         {
-          var childName = CivilObjectUtils.GetName(child) ?? CivilObjectUtils.GetStringProperty(child, "Description");
-          if (!string.IsNullOrWhiteSpace(childName))
-          {
-            yield return childName!;
-          }
+          yield return part.SizeName!;
+        }
+        if (part.SingleSize && !string.IsNullOrWhiteSpace(part.FamilyName))
+        {
+          yield return part.FamilyName;
         }
       }
+    }
+  }
+
+  private readonly record struct PartSizeEntry(ObjectId FamilyId, string FamilyName, ObjectId SizeId, string? SizeName, bool SingleSize);
+
+  /// <summary>
+  /// Every size of every family of one domain in a parts list:
+  /// PartsList.GetPartFamilyIdsByDomain(domain), then PartFamily.PartSizeCount
+  /// with the family's indexer; a size's name is its Name, else its
+  /// Description. A family that can no longer be opened (erased or stale id)
+  /// is skipped, so one bad entry does not hide the rest of the list.
+  /// </summary>
+  private static IEnumerable<PartSizeEntry> EnumeratePartSizes(PartsList partsList, DomainType domain, Transaction transaction)
+  {
+    foreach (ObjectId familyId in partsList.GetPartFamilyIdsByDomain(domain))
+    {
+      var family = TryOpenPartFamily(transaction, familyId);
+      if (family == null)
+      {
+        continue;
+      }
+
+      for (var index = 0; index < family.PartSizeCount; index++)
+      {
+        var sizeId = family[index];
+        var size = transaction.GetObject(sizeId, OpenMode.ForRead);
+        var sizeName = CivilObjectUtils.GetName(size) ?? CivilObjectUtils.GetStringProperty(size, "Description");
+        yield return new PartSizeEntry(familyId, family.Name, sizeId, sizeName, family.PartSizeCount == 1);
+      }
+    }
+  }
+
+  private static PartFamily? TryOpenPartFamily(Transaction transaction, ObjectId familyId)
+  {
+    if (familyId.IsNull || familyId.IsErased || !familyId.IsValid)
+    {
+      return null;
+    }
+
+    try
+    {
+      return transaction.GetObject(familyId, OpenMode.ForRead) as PartFamily;
+    }
+    catch (Autodesk.AutoCAD.Runtime.Exception)
+    {
+      return null;
     }
   }
 
@@ -725,18 +783,11 @@ public static class PipeNetworkCommands
     }
 
     var partsList = CivilObjectUtils.GetRequiredObject<PartsList>(transaction, network.PartsListId, OpenMode.ForRead);
-    foreach (ObjectId familyId in partsList.GetPartFamilyIdsByDomain(domain))
+    foreach (var part in EnumeratePartSizes(partsList, domain, transaction))
     {
-      var family = CivilObjectUtils.GetRequiredObject<PartFamily>(transaction, familyId, OpenMode.ForRead);
-      for (var index = 0; index < family.PartSizeCount; index++)
-      {
-        var sizeId = family[index];
-        var size = transaction.GetObject(sizeId, OpenMode.ForRead);
-        var sizeName = CivilObjectUtils.GetName(size) ?? CivilObjectUtils.GetStringProperty(size, "Description");
-        if (string.Equals(sizeName, partName, StringComparison.OrdinalIgnoreCase)
-          || (family.PartSizeCount == 1 && string.Equals(family.Name, partName, StringComparison.OrdinalIgnoreCase)))
-          return new NetworkPartIds(familyId, sizeId);
-      }
+      if (string.Equals(part.SizeName, partName, StringComparison.OrdinalIgnoreCase)
+        || (part.SingleSize && string.Equals(part.FamilyName, partName, StringComparison.OrdinalIgnoreCase)))
+        return new NetworkPartIds(part.FamilyId, part.SizeId);
     }
 
     throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Exact {domain} size '{partName}' was not found in the parts list for network '{network.Name}'.");

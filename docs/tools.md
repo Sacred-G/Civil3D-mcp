@@ -560,13 +560,18 @@ Converts drawing X/Y coordinates to the nearest station and offset on an alignme
 
 #### `create`
 
-Creates a new alignment from a set of points.
+Creates a new alignment from a set of points, or by tracing an existing polyline.
+Give exactly one of `points` or `polylineHandle`.
 
-| Parameter | Type                            | Required | Description                                               |
-| --------- | ------------------------------- | -------- | --------------------------------------------------------- |
-| action    | `"create"`                    | yes      | —                                                        |
-| name      | string                          | yes      | Alignment name (must be unique)                           |
-| points    | `{ x: number, y: number }[]`  | yes      | Array of pass-through points defining the horizontal path |
+| Parameter      | Type                            | Required | Description                                               |
+| -------------- | ------------------------------- | -------- | --------------------------------------------------------- |
+| action         | `"create"`                    | yes      | —                                                        |
+| name           | string                          | yes      | Alignment name (must be unique)                           |
+| points         | `{ x: number, y: number }[]`  | one of   | Array of pass-through points defining the horizontal path (at least 2) |
+| polylineHandle | string                          | one of   | Handle of an existing polyline to trace exactly, arcs included. The polyline is kept |
+| curveRadius    | number (> 0)                    | no       | Insert a curve of exactly this radius at every interior PI (where two tangents meet at an angle; existing arcs are kept as they are) |
+| radii          | `(number \| null)[]`            | no       | One radius per interior PI in station order, instead of `curveRadius`; `null`, or a PI past the end of the list, stays sharp |
+| addCurves      | boolean                         | no       | Let Civil 3D fit curves at the drawing's default radius. Default: `true` with `points`, `false` with `polylineHandle`; ignored when `curveRadius` or `radii` is given |
 | type      | `"centerline"`or `"offset"` | no       | Default:`"centerline"`                                  |
 | site      | string                          | no       | Site name. Uses default if omitted                        |
 | style     | string                          | no       | Style name. Uses drawing default if omitted               |
