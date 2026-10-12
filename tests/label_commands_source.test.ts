@@ -39,29 +39,22 @@ describe("label_add source guards (LabelCommands.cs)", () => {
     }
   });
 
-  it("finishes the profile view part scan before creating labels", () => {
-    const scan = blockAfter("private static List<(ObjectId PartId, ObjectId ProfileViewId)> FindProfileViewParts(");
-    expect(scan).not.toMatch(/\byield\b/);
-    // Iterating the scan directly would create labels mid-enumeration.
-    expect(source).not.toMatch(/\bin\s+FindProfileViewParts\((?![^\n]*\.ToList\(\))/);
+  it("labels every profile view that shows the part, with the part's ProfileViewPart", () => {
+    // Civil 3D 2026 keeps one ProfileViewPart per part, shared by all its views,
+    // with placeholder extents (live 2026-10-11): matching views by extents
+    // labelled only the first view.
+    expect(source).not.toContain(".GeometricExtents");
+    const profile = blockAfter("private static IReadOnlyList<ObjectId> CreateProfileLabels(");
+    expect(profile).toContain("part.GetProfileViewsDisplayingMe()");
+    expect(profile).toContain("candidates.Add(part.ProfileViewPartId)");
+    expect(profile).toMatch(/foreach \(ObjectId profileViewId in profileViewIds\)/);
+    expect(profile).toContain("skipped++");
+    // The model-space scan is a fallback after a refused attempt, and a list.
+    expect(profile.indexOf("FindProfileViewParts(")).toBeGreaterThan(profile.indexOf("TryCreateProfileLabel("));
+    expect(blockAfter("private static List<ObjectId> FindProfileViewParts(")).not.toMatch(/\byield\b/);
     for (const creator of ["CreatePipeLabels(", "CreateStructureLabels("]) {
-      const body = blockAfter(`private static IReadOnlyList<ObjectId> ${creator}`);
-      const scanAt = body.indexOf("FindProfileViewParts(");
-      const createAt = body.search(/(PipeProfileLabel|StructureProfileLabel)\.Create\(/);
-      expect(scanAt).toBeGreaterThanOrEqual(0);
-      expect(createAt).toBeGreaterThan(scanAt);
-      expect(body).toContain("throw NoProfileViewPartError(");
+      expect(blockAfter(`private static IReadOnlyList<ObjectId> ${creator}`)).toContain("CreateProfileLabels(transaction, ");
     }
-  });
-
-  it("skips a part that lies in no profile view instead of pairing it with the first", () => {
-    const scan = blockAfter("private static List<(ObjectId PartId, ObjectId ProfileViewId)> FindProfileViewParts(");
-    expect(scan).not.toContain("var profileViewId = profileViewIds[0];");
-    expect(scan).toContain("skipped++");
-    // GeometricExtents throws on null extents; it is only read through the guard.
-    const guard = blockAfter("private static bool TryGetExtents(");
-    expect(source.split(".GeometricExtents").length - 1).toBe(1);
-    expect(guard).toContain(".GeometricExtents");
   });
 
   it("reports the alignment's label group count after label_set", () => {

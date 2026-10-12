@@ -1352,7 +1352,7 @@ Adds a label to a Civil 3D object at a specified location.
 | station    | number                       | no       | Station for alignment/profile labels                                                  |
 | point      | `{ x: number, y: number }` | no       | Location for surface labels                                                           |
 
-Alignment `"label_set"` returns `labelGroups`, the alignment's label group count after the import (0 means the set applied nothing). Pipe and structure labels return `handle` (the first label), `handles` (all of them), `created` (their count) and `skipped`: with several profile views, a profile view part that lies in none of them is skipped rather than labelled in the wrong view. If no profile label could be created, the call fails with an error instead.
+Alignment `"label_set"` returns `labelGroups`, the alignment's label group count after the import (0 means the set applied nothing). Pipe and structure labels return `handle` (the first label), `handles` (all of them), `created` (their count) and `skipped` (profile views that accepted none of the part's profile view parts; normally 0). A `profile` label is created in every profile view that shows the part. If no profile label could be created, the call fails with an error instead.
 
 #### `list_styles`
 

@@ -600,20 +600,8 @@ public static class LabelCommands
     skipped = 0;
     if (string.Equals(labelType, "profile", StringComparison.OrdinalIgnoreCase))
     {
-      var profileViewIds = pipe.GetProfileViewsDisplayingMe();
-      var parts = FindProfileViewParts(transaction, pipe, profileViewIds, out skipped);
-      if (parts.Count == 0)
-      {
-        throw NoProfileViewPartError("Pipe", pipe.Name, profileViewIds.Count, skipped);
-      }
-
-      var labelIds = new List<ObjectId>();
-      foreach (var (partId, profileViewId) in parts)
-      {
-        labelIds.Add(Autodesk.Civil.DatabaseServices.PipeProfileLabel.Create(partId, profileViewId, 0.5, styleId));
-      }
-
-      return labelIds;
+      return CreateProfileLabels(transaction, pipe, "Pipe",
+        (partId, profileViewId) => Autodesk.Civil.DatabaseServices.PipeProfileLabel.Create(partId, profileViewId, 0.5, styleId), out skipped);
     }
 
     if (string.Equals(labelType, "plan", StringComparison.OrdinalIgnoreCase))
@@ -624,117 +612,103 @@ public static class LabelCommands
     throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Pipe labelType must be 'plan' or 'profile', not '{labelType}'.");
   }
 
-  // Profile labels are attached to the part's ProfileViewPart (its drawn
-  // representation inside a profile view), not to the pipe or structure itself;
-  // passing the model part fails with "An ObjectId of type ProfileViewPart is
-  // expected". Part.ProfileViewPartId names only one ProfileViewPart, but a part
-  // has one per profile view, so scan model space for every
-  // ProfileViewPart.ModelPartId == part and match each one to the profile view
-  // whose extents contain it. The scan is finished (returned as a list) before
-  // any label is created, so model space is never appended to while it is being
-  // enumerated. With several views, a part whose extents are invalid or whose
-  // centre lies in no view is skipped and counted, not paired with the wrong
-  // view (Create would throw and roll back every label).
-  private static List<(ObjectId PartId, ObjectId ProfileViewId)> FindProfileViewParts(Transaction transaction, Entity modelPart, ObjectIdCollection profileViewIds, out int skipped)
+  // Profile labels hang off the part's ProfileViewPart (the part as drawn in
+  // profile views), not the pipe or structure itself: passing the model part
+  // fails with "An ObjectId of type ProfileViewPart is expected". Civil 3D 2026
+  // keeps ONE ProfileViewPart per part, shared by every profile view that shows
+  // it, with placeholder extents ((0,0)-(1,0), seen live 2026-10-11 with two
+  // views), so views cannot be told apart by extents. Each profile view in
+  // GetProfileViewsDisplayingMe is therefore labelled with Part.ProfileViewPartId;
+  // when a view refuses it (Create checks that the ProfileViewPart belongs to the
+  // view, as it would in a release that keeps one per view), the part's other
+  // ProfileViewParts in model space are tried. A view that accepts none of them
+  // is skipped and counted.
+  private static IReadOnlyList<ObjectId> CreateProfileLabels(
+    Transaction transaction, Autodesk.Civil.DatabaseServices.Part part, string kind,
+    Func<ObjectId, ObjectId, ObjectId> create, out int skipped)
   {
-    var parts = new List<(ObjectId PartId, ObjectId ProfileViewId)>();
     skipped = 0;
+    var profileViewIds = part.GetProfileViewsDisplayingMe();
     if (profileViewIds.Count == 0)
     {
-      return parts;
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"{kind} '{part.Name}' is not drawn in any profile view, so it has no profile to label.");
     }
 
-    // A view whose extents cannot be read contains nothing.
-    var views = new List<(ObjectId Id, Extents3d Extents)>();
-    if (profileViewIds.Count > 1)
+    var candidates = new List<ObjectId>();
+    if (!part.ProfileViewPartId.IsNull)
     {
-      foreach (ObjectId viewId in profileViewIds)
-      {
-        if (TryGetExtents((Entity)transaction.GetObject(viewId, OpenMode.ForRead), out var viewExtents))
-        {
-          views.Add((viewId, viewExtents));
-        }
-      }
+      candidates.Add(part.ProfileViewPartId);
     }
 
-    var modelSpaceId = SymbolUtilityServices.GetBlockModelSpaceId(modelPart.Database);
-    var modelSpace = (BlockTableRecord)transaction.GetObject(modelSpaceId, OpenMode.ForRead);
-    var partClass = Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(Autodesk.Civil.DatabaseServices.ProfileViewPart));
-
-    foreach (ObjectId entityId in modelSpace)
+    var scanned = false;
+    string? lastError = null;
+    var labelIds = new List<ObjectId>();
+    foreach (ObjectId profileViewId in profileViewIds)
     {
-      if (!entityId.ObjectClass.IsDerivedFrom(partClass))
+      var labelId = TryCreateProfileLabel(candidates, profileViewId, create, ref lastError);
+      if (labelId.IsNull && !scanned)
       {
-        continue;
+        // Scanned only after an attempt failed, and finished (a list) before the
+        // next label is created: model space is never appended to mid-enumeration.
+        scanned = true;
+        var more = FindProfileViewParts(transaction, part).Where(id => !candidates.Contains(id)).ToList();
+        candidates.AddRange(more);
+        labelId = TryCreateProfileLabel(more, profileViewId, create, ref lastError);
       }
 
-      var viewPart = (Autodesk.Civil.DatabaseServices.ProfileViewPart)transaction.GetObject(entityId, OpenMode.ForRead);
-      if (viewPart.ModelPartId != modelPart.ObjectId)
-      {
-        continue;
-      }
-
-      if (profileViewIds.Count == 1)
-      {
-        parts.Add((entityId, profileViewIds[0]));
-        continue;
-      }
-
-      var profileViewId = ObjectId.Null;
-      if (TryGetExtents(viewPart, out var extents))
-      {
-        var center = extents.MinPoint + (extents.MaxPoint - extents.MinPoint) / 2.0;
-        foreach (var (viewId, viewExtents) in views)
-        {
-          if (center.X >= viewExtents.MinPoint.X && center.X <= viewExtents.MaxPoint.X
-            && center.Y >= viewExtents.MinPoint.Y && center.Y <= viewExtents.MaxPoint.Y)
-          {
-            profileViewId = viewId;
-            break;
-          }
-        }
-      }
-
-      if (profileViewId == ObjectId.Null)
+      if (labelId.IsNull)
       {
         skipped++;
         continue;
       }
 
-      parts.Add((entityId, profileViewId));
+      labelIds.Add(labelId);
+    }
+
+    if (labelIds.Count == 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", candidates.Count == 0
+        ? $"Civil 3D lists {profileViewIds.Count} profile view(s) displaying {kind.ToLowerInvariant()} '{part.Name}', but it has no profile view part, so no profile label was created."
+        : $"{kind} '{part.Name}' is drawn in {profileViewIds.Count} profile view(s), but Civil 3D accepted none of its {candidates.Count} profile view part(s) for them, so no profile label was created{(lastError == null ? "." : $" (last error: {lastError}).")}");
+    }
+
+    return labelIds;
+  }
+
+  private static ObjectId TryCreateProfileLabel(
+    IEnumerable<ObjectId> candidates, ObjectId profileViewId, Func<ObjectId, ObjectId, ObjectId> create, ref string? lastError)
+  {
+    foreach (var partId in candidates)
+    {
+      try
+      {
+        return create(partId, profileViewId);
+      }
+      catch (Exception exception) when (exception is not JsonRpcDispatchException)
+      {
+        lastError = exception.Message;
+      }
+    }
+
+    return ObjectId.Null;
+  }
+
+  // Every ProfileViewPart in model space that draws this part.
+  private static List<ObjectId> FindProfileViewParts(Transaction transaction, Autodesk.Civil.DatabaseServices.Part part)
+  {
+    var parts = new List<ObjectId>();
+    var modelSpace = (BlockTableRecord)transaction.GetObject(SymbolUtilityServices.GetBlockModelSpaceId(part.Database), OpenMode.ForRead);
+    var partClass = Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(Autodesk.Civil.DatabaseServices.ProfileViewPart));
+    foreach (ObjectId entityId in modelSpace)
+    {
+      if (entityId.ObjectClass.IsDerivedFrom(partClass)
+        && ((Autodesk.Civil.DatabaseServices.ProfileViewPart)transaction.GetObject(entityId, OpenMode.ForRead)).ModelPartId == part.ObjectId)
+      {
+        parts.Add(entityId);
+      }
     }
 
     return parts;
-  }
-
-  // GeometricExtents throws on an entity with null or invalid extents.
-  private static bool TryGetExtents(Entity entity, out Extents3d extents)
-  {
-    try
-    {
-      extents = entity.GeometricExtents;
-      return true;
-    }
-    catch (Exception exception) when (exception is not JsonRpcDispatchException)
-    {
-      extents = default;
-      return false;
-    }
-  }
-
-  private static JsonRpcDispatchException NoProfileViewPartError(string kind, string name, int profileViewCount, int skipped)
-  {
-    if (profileViewCount == 0)
-    {
-      return new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"{kind} '{name}' is not drawn in any profile view, so it has no profile to label.");
-    }
-
-    if (skipped > 0)
-    {
-      return new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"{kind} '{name}' is drawn in {profileViewCount} profile views, but none of its {skipped} profile view parts has valid extents inside one of them, so no profile label was created.");
-    }
-
-    return new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Civil 3D lists {profileViewCount} profile view(s) displaying {kind.ToLowerInvariant()} '{name}', but no profile view part for it was found in model space, so no profile label was created.");
   }
 
   private static IReadOnlyList<ObjectId> CreateStructureLabels(Transaction transaction, Autodesk.Civil.DatabaseServices.Structure structure, ObjectId styleId, string labelType, out int skipped)
@@ -742,20 +716,8 @@ public static class LabelCommands
     skipped = 0;
     if (string.Equals(labelType, "profile", StringComparison.OrdinalIgnoreCase))
     {
-      var profileViewIds = structure.GetProfileViewsDisplayingMe();
-      var parts = FindProfileViewParts(transaction, structure, profileViewIds, out skipped);
-      if (parts.Count == 0)
-      {
-        throw NoProfileViewPartError("Structure", structure.Name, profileViewIds.Count, skipped);
-      }
-
-      var labelIds = new List<ObjectId>();
-      foreach (var (partId, profileViewId) in parts)
-      {
-        labelIds.Add(Autodesk.Civil.DatabaseServices.StructureProfileLabel.Create(profileViewId, partId, styleId));
-      }
-
-      return labelIds;
+      return CreateProfileLabels(transaction, structure, "Structure",
+        (partId, profileViewId) => Autodesk.Civil.DatabaseServices.StructureProfileLabel.Create(profileViewId, partId, styleId), out skipped);
     }
 
     if (string.Equals(labelType, "plan", StringComparison.OrdinalIgnoreCase))
