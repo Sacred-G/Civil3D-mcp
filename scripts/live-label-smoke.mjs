@@ -115,9 +115,16 @@ foreach (var (id, name, shown) in new[] { (s1, "-MH1", true), (s2, "-MH2", true)
   part.Name = p + name;
   if (shown) foreach (var pvId in views) part.AddToProfileView(pvId);
 }
-var labelSets = new List<string>();
+// Each alignment label set with its item count: importing it should leave
+// exactly that many label groups on the alignment.
+var labelSets = new List<object>();
 foreach (ObjectId id in Civil.Styles.LabelSetStyles.AlignmentLabelSetStyles)
-  labelSets.Add(Open<Autodesk.Civil.DatabaseServices.Styles.StyleBase>(id).Name);
+{
+  var set = Open<Autodesk.Civil.DatabaseServices.Styles.AlignmentLabelSetStyle>(id);
+  var items = 0;
+  foreach (var item in set) items++;
+  labelSets.Add(new { name = set.Name, items });
+}
 return new { entities = alignment.Entities.Count, labelSets };
 `;
 
@@ -152,13 +159,19 @@ try {
   const setup = await runCode(setupCode, { prefix, x0: (process.pid % 50) * 2000 + 10_000 }, "write");
   record("setup: alignment with 5 entities, 2 profile views, a pipe network", setup.entities === 5, setup);
 
+  // The fullest set first, then an empty one if there is one, then the rest, so
+  // the count has to change from import to import: each must replace the last.
+  const sets = [...setup.labelSets].sort((a, b) => b.items - a.items);
+  const empty = sets.findIndex((s) => s.items === 0);
+  if (empty > 1) sets.splice(1, 0, ...sets.splice(empty, 1));
   const groups = [];
-  for (const set of setup.labelSets.slice(0, 3)) {
-    const response = await label("alignment", `${prefix}-AL`, "label_set", set);
-    groups.push({ set, labelGroups: response.isError ? text(response) : payload(response).labelGroups });
+  for (const set of sets.slice(0, 4)) {
+    const response = await label("alignment", `${prefix}-AL`, "label_set", set.name);
+    groups.push({ set: set.name, items: set.items, labelGroups: response.isError ? text(response) : payload(response).labelGroups });
   }
-  record("label_set applies each alignment label set and reports labelGroups",
-    groups.length > 0 && groups.every((g) => typeof g.labelGroups === "number") && groups.some((g) => g.labelGroups > 0), groups);
+  const changed = groups.some((g, i) => i > 0 && g.labelGroups !== groups[i - 1].labelGroups);
+  record("label_set leaves exactly the set's label groups (each import replaces the last)",
+    groups.length > 1 && groups.every((g) => g.labelGroups === g.items) && changed, groups);
 
   const curves = await label("alignment", `${prefix}-AL`, "curves");
   record("curves labels the simple arc and the arc inside the spiral-curve-spiral",
