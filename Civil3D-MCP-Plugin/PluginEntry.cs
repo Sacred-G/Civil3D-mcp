@@ -13,6 +13,7 @@ public sealed class PluginEntry : IExtensionApplication
   {
     try
     {
+      CivilExecution.CaptureHostContext();
       PluginRuntime.StartServer();
       PluginLog.Info("PluginEntry", $"Civil3D MCP plugin initialized on port {PluginRuntime.Port}. Log file: {PluginLog.LogFilePath}");
       WriteMessage("Civil3D MCP plugin initialized.");

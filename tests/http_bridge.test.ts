@@ -226,7 +226,7 @@ describe("httpBridge", () => {
       expect(executeOrchestratorMock).not.toHaveBeenCalled();
     });
 
-    it.each(["civil3d_preview_action", "civil3d_request_approval"])(
+    it.each(["civil3d_preview_action", "civil3d_request_approval", "civil3d_request_plan_approval"])(
       "routes the %s broker through its registered handler directly",
       async (toolName) => {
         hasToolHandlerMock.mockImplementation((name) => name === toolName);

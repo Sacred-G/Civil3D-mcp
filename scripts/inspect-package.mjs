@@ -20,6 +20,7 @@ for (const required of [
   "build/index.js",
   "build/version.js",
   "build/standards/data/civil3d_framework_rules.json",
+  "build/standards/data/mdwasd_rules.json",
   "LICENSE",
   "README.md",
 ]) {

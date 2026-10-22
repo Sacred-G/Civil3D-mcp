@@ -1,0 +1,628 @@
+[
+  {
+    "section_number": "UC-005 A.8",
+    "title": "MDWASD easement widths",
+    "pages": [
+      6
+    ],
+    "rule": "All MDWASD easements containing water mains shall be 12 feet wide (6 ft each side of the main), labeled 'twelve (12) feet MDWASD easement'; sewer mains 15 feet (7.5 ft each side), labeled 'fifteen (15) feet MDWASD easement'; both water and sewer: minimum 23.5 feet (6 ft offset from the water main, 7.5 ft from the sewer, 10 ft between the two mains). Draw with dark dashed lines.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "easement",
+      "water",
+      "sewer",
+      "miami-dade"
+    ]
+  },
+  {
+    "section_number": "UC-005 A.9",
+    "title": "MDWASD easement exclusivity",
+    "pages": [
+      6
+    ],
+    "rule": "No structures or trees inside an MDWASD easement, including its vertical projection; easements are exclusively for MDWASD mains. Overhead utilities or structures may cross or be within the vertical projection only with at least 25 feet of clearance.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "easement",
+      "structures",
+      "trees",
+      "miami-dade"
+    ]
+  },
+  {
+    "section_number": "UC-005 A.11/A.15",
+    "title": "MDWASD easement accessories and centering",
+    "pages": [
+      6
+    ],
+    "rule": "Meters, fire hydrants and other MDWASD accessories go outside the main easement with separate easements of their own. A single water or sewer main in an easement is centered in the easement. Meters in private property are part of MDWASD easements; service line from main to meter max 50 feet.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "easement",
+      "meter",
+      "fire hydrant",
+      "accessories"
+    ]
+  },
+  {
+    "section_number": "WS 2.21",
+    "title": "MDWASD easement for service and fire hydrant",
+    "pages": [
+      1
+    ],
+    "rule": "WS 2.21: 1-2 in and 4 in service and fire hydrant: 6 ft each side of the water main, 6 ft each side of the service line, 2.5 ft beyond the meter box, 6 ft beyond the hydrant (hydrant lateral 6 in DIP). 8 in and 10 in turbine meters: 6 ft from the main, 12 ft and 10 ft along the service, 7 ft each side.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "easement",
+      "service",
+      "fire hydrant",
+      "turbine meter",
+      "ws 2.21"
+    ]
+  },
+  {
+    "section_number": "GS 1.5",
+    "title": "Water main to sewer horizontal separation",
+    "pages": [
+      1
+    ],
+    "rule": "Potable water main to gravity or pressure sanitary sewer / force main: horizontal separation 10 ft preferred, 6 ft minimum wall to wall (6 ft only when the water main is at least 6 in above the top of the gravity sewer). Storm sewer / reclaimed water: 3 ft minimum (10 ft preferred with storm/wastewater/force main). Vacuum sewer: 10 ft preferred, 3 ft minimum. On-site sewage treatment: 10 ft. F.A.C. 62-555.314.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "separation",
+      "water",
+      "sewer",
+      "horizontal",
+      "gs 1.5",
+      "conflict"
+    ]
+  },
+  {
+    "section_number": "GS 1.5 notes 1-5",
+    "title": "Water main crossings vertical separation",
+    "pages": [
+      2
+    ],
+    "rule": "Storm, wastewater or reclaimed water crossing under a potable water main: minimum 12 in between the invert of the upper pipe and the crown of the lower. If not possible: both DIP, joints equidistant from the crossing with at least 10 ft between joints, minimum vertical separation 6 in (20 ft DIP water main centered). Force main crossing: 12 in outside to outside. Laterals: 12 in; PVC C-900 SDR18 when crossing over. Water services cross over wastewater mains with 12 in, else 10 ft long PVC casing with 6 in. Cross perpendicular whenever possible.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "crossing",
+      "vertical",
+      "water",
+      "sewer",
+      "gs 1.5",
+      "conflict"
+    ]
+  },
+  {
+    "section_number": "UC-005 A.16",
+    "title": "Other utility and drainage separation",
+    "pages": [
+      7
+    ],
+    "rule": "Horizontal minimum separation between any water or sewer main and any utility or drainage not covered by F.A.C. 62-555.314 is 5 ft face to face.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "separation",
+      "utility",
+      "drainage"
+    ]
+  },
+  {
+    "section_number": "UC-005 C.4",
+    "title": "Sewer manhole spacing and labeling",
+    "pages": [
+      9
+    ],
+    "rule": "Gravity sewer manholes every 400 feet maximum. Label manhole numbers, slope, pipe size, material and distance to the next manhole. Show invert elevation of pipe with direction of flow and rim elevation on top of the manhole.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "sewer",
+      "manhole",
+      "spacing",
+      "label"
+    ]
+  },
+  {
+    "section_number": "UC-005 C.6/C.7",
+    "title": "Gravity sewer cover and pipe material",
+    "pages": [
+      9
+    ],
+    "rule": "Grass areas: cover < 2.5 ft DIP under reinforced slab; 2.5-6 ft DIP or approved C900 PVC (SDR35 only with a non-reinforced slab, if approved); 6-14 ft PVC if approved; > 14 ft DIP. Paved areas: cover < 3.5 ft DIP or approved C900; cover < 2.5 ft DIP with reinforced concrete slab.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "sewer",
+      "cover",
+      "material",
+      "dip",
+      "pvc"
+    ]
+  },
+  {
+    "section_number": "UC-005 B",
+    "title": "Water main valves, services and cover",
+    "pages": [
+      8
+    ],
+    "rule": "Resilient-seat gate valves every 660 ft (butterfly same for 42 in and larger); transmission mains 20 in or greater a valve every 1/2 mile. Fire hydrant service lines max 50 ft and 6 in nominal. Water/force mains <= 12 in with less than 30 in cover, and 16-24 in with less than 36 in cover, need a reinforced concrete slab (GS 1.2). Cutting/plugging existing MDWASD mains and services of 2 in and below from existing mains are done by MDWASD forces at the owner's expense.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "water",
+      "valve",
+      "hydrant",
+      "cover",
+      "service"
+    ]
+  },
+  {
+    "section_number": "UC-005 A.12",
+    "title": "Existing and proposed main drawing and labeling",
+    "pages": [
+      6
+    ],
+    "rule": "Show existing water/sewer mains as broken (dashed) lines, proposed as dark solid lines; identify utility, pipe size and material type. Mains 20 in and larger as double lines. Show all existing utilities and structures in the right-of-way clearly labeled. When connecting to existing piping show size, material, any removal required and the nearest controlling valve.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "existing",
+      "label",
+      "size",
+      "material",
+      "drawing"
+    ]
+  },
+  {
+    "section_number": "UC-005 A.1-A.6",
+    "title": "MDWASD plan submittal conventions",
+    "pages": [
+      5
+    ],
+    "rule": "Signed and sealed plans, 24x36 in; plan scale 1 in = 10 ft to 1 in = 40 ft with profile vertical 1/10 of plan; location sketch 1 in = 300 ft on the first sheet; GS 0.5 standard notes on all water and sewer plans, other notes labeled 'Not Part of MDWASD Notes nor Approval'; all construction notes on plan, not profile. Baseline not on top of the main; centerline and R/W labeled at two points.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "plans",
+      "scale",
+      "notes",
+      "submittal",
+      "drawing"
+    ]
+  },
+  {
+    "section_number": "GS 0.5",
+    "title": "Record drawing requirements",
+    "pages": [
+      2
+    ],
+    "rule": "Record drawings: 24x36 prints, PDF and CAD in NAD83 Florida East State Plane, words RECORD DRAWING in large letters, separate water and sewer drawings and profiles, stationing from 0+00 at a permanent reference point, all PROPOSED information removed. Water: pipe size, material, offset, deflections, stations of services/hydrants/valves/fittings, crossings, profile top of ground and top of pipe every 100 ft. Sewer: manhole number, size, material, slope, laterals referenced to manholes, cleanouts, RIM and INV with direction for each invert, State Plane coordinates of all manholes and valves plus two control points.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "record drawing",
+      "as-built",
+      "survey",
+      "state plane"
+    ]
+  },
+  {
+    "section_number": "UC-310",
+    "title": "Gravity sewer service laterals",
+    "pages": [
+      1
+    ],
+    "rule": "Lateral branch fitting is a tee with modified riser when the sewer top is 7 ft or deeper, otherwise a wye (SS 1.0 / 2.0). A lateral entering a manhole 2 ft or more above the main invert needs a drop connection. Plug each lateral; set a 2x2 in x 2 ft pressure-treated stake painted green at its end; measure and record its location before covering.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "sewer",
+      "lateral",
+      "uc-310"
+    ]
+  },
+  {
+    "section_number": "UC-075",
+    "title": "Water service installations",
+    "pages": [
+      1
+    ],
+    "rule": "All components lead free (NL). 1 in HDPE tubing (CTS, SODR 9) and 2 in HDPE pipe (IPS, SODR 9), blue shell with footage marks every 2 ft, 10 AWG blue tracer wire accessible at the meter box. Type K copper; Type L only on the customer side, not in public right-of-way.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "water",
+      "service",
+      "hdpe",
+      "uc-075"
+    ]
+  },
+  {
+    "section_number": "CAD Manual 2.1-2.12",
+    "title": "WASD CAD drafting conventions",
+    "pages": [
+      7
+    ],
+    "rule": "WASD Pipeline CAD and GIS Standards Manual (Jan 2026): NAD83 Florida East Zone 901 horizontal, NGVD29 vertical, decimal US Survey Feet, model space 1:1, Simplex text. Slopes to the nearest 0.01 percent, elevations and inverts to the nearest 0.01 ft. Continuous 100-ft stationing starting at 10+00. State Plane coordinates at start, end, PIs, PCs, PTs and major appurtenances. Plan scale 1 in = 20 ft (or 40 ft); profile vertical 1 in = 2 ft. Match marks at half or full stations, perpendicular to the alignment.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "cad manual",
+      "units",
+      "datum",
+      "stationing",
+      "scale",
+      "text"
+    ]
+  },
+  {
+    "section_number": "CAD Manual 2.4",
+    "title": "WASD annotation rules",
+    "pages": [
+      8
+    ],
+    "rule": "Move annotation away from the feature, line annotations up, avoid odd abbreviations and squeezed text, break leaders only at conflicts, leaders must not intersect, group leaders at about the same angle; center-left justification for blocks of text; no unusually large text.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "cad manual",
+      "annotation",
+      "leader",
+      "label"
+    ]
+  },
+  {
+    "section_number": "CAD Manual 3.7",
+    "title": "WASD standard callouts",
+    "pages": [
+      25
+    ],
+    "rule": "Water/sewer callouts: STA. XX+XX (O/S XX' LT./RT.) then PROP. <size, joint type, fitting> then REST. W/GLANDS. Hydrants: PROP. XX\"x6\" M.J. TEE, 6\" M.J. GATE VALVE & F.H. ASSY. SEE STANDARD DETAIL WS 4.50. Survey manhole callout: MHSA, RIM ELEV.=X.XX', 8\" CLAY (E) INV. ELEV.=X.XX', BOTTOM ELEV.=X.XX'. Reference points: RP #1 SET PK W/WASD STA.= O/S= N= E= ELEV.=.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "cad manual",
+      "callout",
+      "label",
+      "manhole",
+      "hydrant"
+    ]
+  },
+  {
+    "section_number": "CAD Manual 5 / App A",
+    "title": "WASD layers for existing facilities",
+    "pages": [
+      28
+    ],
+    "rule": "US NCS layer naming. Existing water pipe C-WATR-PIPE-EXST (color 190, HIDDEN, 0.006 in), fittings C-WATR-FITT-EXST, valves/meters C-WATR-INST-EXST (152); existing sanitary sewer pipe C-SSWR-PIPE-EXST (70, HIDDEN), fittings C-SSWR-FITT-EXST, structures C-SSWR-STRC-EXST (80). Survey layers V-WATR*, V-SSWR*, V-ESMT (easement, DASHED2), V-RWAY (PHANTOM2), V-PROP-LINE, V-PROP-LOTL, V-ROAD-CNTR, V-TOPO. Proposed water 171 / sewer 90 continuous 0.012 in; pipes >= 20 in drawn as two lines with a dashed centerline.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "cad manual",
+      "layers",
+      "existing",
+      "water",
+      "sewer",
+      "easement"
+    ]
+  },
+  {
+    "section_number": "CAD Manual 7",
+    "title": "WASD as-built CAD requirements for GIS",
+    "pages": [
+      48
+    ],
+    "rule": "As-builts: use the official WASD as-built template, NAD83 FL East georeferencing, GIS layers with the _WASD suffix (plan view only, one feature type per layer), single-line polylines connected basepoint to basepoint, point features as blocks/COGO points at the surveyed basepoint, only field-verified installed assets (no trees, signs, poles, spot elevations, lot lines, EOP, or proposed information), bold as-built pipes/property/R-W/easements/baselines, attributes per Appendix C (diameter, material, casing, valve size, install date, X/Y). File name E (water) / ES (sewer) + 6-digit as-built number + C/D + 2-digit phase + sub-phase letter.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "cad manual",
+      "as-built",
+      "gis",
+      "record drawing",
+      "layers",
+      "attributes"
+    ]
+  },
+  {
+    "section_number": "GS 3.0",
+    "title": "WASD standard symbols",
+    "pages": [
+      1
+    ],
+    "rule": "Existing symbols are thin/gray open shapes; proposed are bold/solid. Gate and plug valve: open bowtie (existing) / filled bowtie (proposed); plug: triangle; tee, cross, bends 90 (L-shape), bends other than 90, check valve (N-shape), backflow preventer, tapping sleeve and valve, fire hydrant, meter (single service), flushing valve outlet; pipes 20 in or greater drawn as double line; lines: R/W, P, CL, BL, EOP.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "symbols",
+      "legend",
+      "valve",
+      "hydrant",
+      "gs 3.0"
+    ]
+  },
+  {
+    "section_number": "UC-005 B.6",
+    "title": "Water valve spacing check (automated)",
+    "pages": [
+      8
+    ],
+    "rule": "Gate valves every 660 ft on water mains (butterfly the same for >= 42 in; >= 20 in transmission mains every 1/2 mile). Check = pipe distance between ADJACENT valves along the main <= 660 ft. In this repo's skill: scripts/mdwasd-check.mjs (rule UC-005 B.6) over asbuilt.json appurtenances with coordinates; main ends without a valve are only informational because the as-built window ends where the scan ends.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "valve",
+      "spacing",
+      "660",
+      "water"
+    ]
+  },
+  {
+    "section_number": "WS 4.50",
+    "title": "Fire hydrant installation detail",
+    "pages": [
+      1
+    ],
+    "rule": "Hydrant on a 6 in D.I. lateral from an M.J. tee or tapping sleeve with a 6 in gate valve in a No. 2 valve box; 4 ft cover (54 in bury depth); 18x18 in concrete thrust block (no mechanical restraint on the shoe); 3x3x6 in concrete slab or sidewalk flag; hydrant 1 ft from the face of the sidewalk within the grass area where the walk is inside the 4-7 ft offset, otherwise Fire Department location; guard posts 4 in x 5 ft galvanized steel at the pumper face and 2.5 ft left/right of the hydrant CL, none in F.D.O.T. R/W.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "fire hydrant",
+      "ws 4.50",
+      "lateral",
+      "valve",
+      "guard post"
+    ]
+  },
+  {
+    "section_number": "WS 4.10",
+    "title": "Typical water service plan",
+    "pages": [
+      1
+    ],
+    "rule": "Meter box centerline 2.5 ft inside the property line; no meter if the box is in a driving surface; 1 in copper tubing, road crossings in 1-1/2 in black steel casing with 18 in minimum offset; 2 in x 4 in meter vault for 2 in service.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "water service",
+      "meter",
+      "ws 4.10"
+    ]
+  },
+  {
+    "section_number": "SS 1.0",
+    "title": "Gravity sewer service lateral (shallow sewers)",
+    "pages": [
+      1
+    ],
+    "rule": "Lateral 6 in minimum, slope at least 1/8 in per ft, wye with 45 degree bends, main 8 in minimum, 3 ft minimum to invert, clean-out with threaded plug in a concrete box at the property line / ultimate R/W line / easement line, watertight plug at the lateral end (SS 21.0 for grass areas, SS 22.0 clean-out, UC-310).",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "sewer",
+      "lateral",
+      "clean-out",
+      "ss 1.0",
+      "slope"
+    ]
+  },
+  {
+    "section_number": "SS 6.0 / SS 7.0",
+    "title": "Sanitary sewer manhole (standard and shallow)",
+    "pages": [
+      1
+    ],
+    "rule": "Precast manhole: interior diameter 4 ft minimum, wall 8 in, 3 to 5 courses of clay brick under a Type A frame (2 ft clear opening), invert channel slope 3/4 in per ft, pipe opening = OD + 4 in sealed with non-shrink grout, base slab diameter 6'-4\"/7'-4\"/8'-4\" with 8 in min (12 in with PVC waterstop) thickness, overall depth 4 ft to 18 ft (steel #4 @ 12 in, top and bottom beyond 14.5 ft), seal-coated 16 mil, no lift holes, no construction joint below +4.0 ft MSL; first joint: VCP 5 ft pipe, PVC 13 ft pipe, DIP 2 ft PExPE nipple; wheel load 16000 lb. Type A cover 107 lb, frame 259 lb (SS 4.0).",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "manhole",
+      "sewer",
+      "ss 6.0",
+      "ss 7.0",
+      "dimensions"
+    ]
+  },
+  {
+    "section_number": "SS 9.0",
+    "title": "Drop connection",
+    "pages": [
+      1
+    ],
+    "rule": "A drop connection is required whenever an influent sewer is 2 ft or more above the main invert channel; cast-in-place drop at least 3 ft, all PVC or all DIP, 6 in cover, 2 #4 bars each outside face, manhole diameter 4 ft minimum.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "manhole",
+      "drop",
+      "sewer",
+      "ss 9.0"
+    ]
+  },
+  {
+    "section_number": "WS 1.0 / WS 3.10 / WS 3.11 / SS 13.0",
+    "title": "Valve boxes and valve settings",
+    "pages": [
+      1
+    ],
+    "rule": "Gate valves under 16 in: 48 in cover; No. 2 valve box (6 in riser) for fire hydrant valves, fire line and domestic services, 2 in mains in easements and bypass valves; No. 3 box (10 in riser, ring 135 lb, cover 37 lb) for ALL main-line valves; No. 53 box for sewer valves (ring 134 lb, cover 44 lb). Butterfly valves up to 24 in: 48 in cover, 10 in riser, 2 in AWWA nut with torque limiter 200-220 ft-lb. Plug valves 16 in and larger on a concrete support pad (SS 19.1). Reclaimed water: purple Pantone 522C lid marked R.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "valve",
+      "valve box",
+      "cover",
+      "ws 1.0"
+    ]
+  },
+  {
+    "section_number": "WS 2.10 / WS 2.12 / WS 4.10",
+    "title": "Meter boxes and service plan",
+    "pages": [
+      1
+    ],
+    "rule": "Single meter box 27-3/8 x 17-7/8 x 12 in; dual meter box with meters 7.5 in apart; box center line 2.5 ft inside the property line; slab 5x5x4 in sidewalk / 3x3x6 in reinforced elsewhere; 1 in blue HDPE or Type K copper service, purple HDPE for reclaimed water; meters are not installed when the box is in a driving surface; service cover 30 in (36 in on arterial roads).",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "meter",
+      "service",
+      "ws 2.10",
+      "ws 2.12",
+      "ws 4.10"
+    ]
+  },
+  {
+    "section_number": "WS 4.16 / 4.18 / 4.19 / 4.20 / 4.21",
+    "title": "Meter banks and backflow preventers",
+    "pages": [
+      1
+    ],
+    "rule": "Meter bank: 2 in header max 10 x 5/8 in or 5 x 1 in meters; 4 in header max 5 x 2 in meters. Backflow preventers in private property behind the meter, 30 in clear all around, RPZ 12-30 in (<= 2 in) or 16-30 in (4-8 in) above a slab, DDCV 18-30 in, copper or Sch. 40 brass up to 2 in, ductile iron flanged 4 in and larger, PVC not accepted, blue enamel (RPZ) / red enamel (DDCV); parallel DDCVs 5 ft apart when service cannot be interrupted; vacuum breaker (irrigation) 12 in above the highest sprinkler head.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "backflow",
+      "meter bank",
+      "ddcv",
+      "rpz"
+    ]
+  },
+  {
+    "section_number": "GS 1.0 / GS 1.2 / GS 1.7 / GS 1.8",
+    "title": "Tie rods, slabs and tapping",
+    "pages": [
+      1
+    ],
+    "rule": "Tie rods at 150 psi: <= 8 in 3 x 3/4; 12 in 4 x 3/4; 16 in 6 x 3/4; 20 in 8 x 3/4; 24 in 12 x 3/4; 30 and 36 in 14 x 1; 42 and 48 in 16 x 1-1/4. Reinforced slab for cover under 2.5 ft: 5 ft wide, 8 in thick, #4 @ 12 in EW, 6 in over the pipe, extended until cover exceeds 30 in. Tapping sleeve and valve: pressure test 150 psi, 18 in clearance from fittings and bells, taps larger than 20 in only by a tapping specialist, Department forces make taps up to 20 in on existing mains.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "tie rod",
+      "tapping",
+      "slab",
+      "cover",
+      "gs 1.0"
+    ]
+  },
+  {
+    "section_number": "GS 2.0",
+    "title": "Thrust restraint lengths",
+    "pages": [
+      1
+    ],
+    "rule": "Minimum pipe length to restrain each side of a fitting (DIP and PVC; sand, 150 psi test, 4 ft bury, trench type 3, safety factor 1.5). Examples (ft): 8 in 90 deg bend 25, 45 deg 11, 22.5 deg 5, 11.25 deg 3, plug 59, in-line valve 59; 12 in 35/15/7/4, plug 83; 16 in 45/19/9/4, plug 107; 24 in 62/26/12/6, plug 151; 36 in 84/35/17/8, plug 220; 48 in 101/42/20/10, plug 270. Full table in the skill file mdwasd-thrust-restraint.json.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "thrust",
+      "restraint",
+      "gs 2.0",
+      "bend",
+      "valve"
+    ]
+  },
+  {
+    "section_number": "GS 5.0",
+    "title": "Casing for jack and bore crossings",
+    "pages": [
+      1
+    ],
+    "rule": "Steel casing by carrier pipe size (in): 4->12, 6->16, 8->18, 10->20, 12->24, 14->24, 16->30, 18->30, 20->36, 24->42, 30->48, 36->54, 42->60, 48->72 (wall .250 for 12 in casing, .375 up to 36 in, .500 above). Casing extends 10 ft past each R/W line; cover 30 in minimum (36 in in Miami-Dade County and FDOT R/W); stainless spacers every 10 ft; restrained-joint carrier pipe (no glands); 2 in minimum clearance between joint and casing; to-scale drawing for every jack and bore.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "casing",
+      "crossing",
+      "gs 5.0",
+      "bore"
+    ]
+  },
+  {
+    "section_number": "GS 0.5 sheet 1",
+    "title": "Standard notes for all water and sewer plans",
+    "pages": [
+      1
+    ],
+    "rule": "Notes required on all plans (UC-005 A.2): cover over water or force mains 4 ft minimum; main-line valves with 10 in risers and No. 3 or 53 boxes, hydrant and service valves with 6 in risers and No. 2 boxes; force main service connections have a shutoff and check valve; meters installed by MDWASD; fire hydrant locations by the Fire Department; call MDWASD inspection 2 full business days before construction and One Call 48 h before digging; all connections to existing Department mains and taps up to 20 in are made by Department forces; record drawings 3 sets for water, 4 for gravity sewer, 5 for force main or pump station.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "notes",
+      "standard notes",
+      "gs 0.5",
+      "record drawing"
+    ]
+  },
+  {
+    "section_number": "GS 1.5 / GS 1.1",
+    "title": "Conflict detail: joint spacing and deflection",
+    "pages": [
+      1
+    ],
+    "rule": "At crossings joint spacing alternate: 3 ft minimum (storm, vacuum), 6 ft (sanitary), full length of pipe centered. Conflict fittings: 22.5 deg (preferred) or 45 deg elbows with 10 ft + 10 ft and no joints between fittings, cover 36 in minimum; deflection type (preferred): do not exceed 50 percent of the manufacturer's maximum joint deflection.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "crossing",
+      "conflict",
+      "gs 1.5",
+      "gs 1.1"
+    ]
+  },
+  {
+    "section_number": "RGN 1.0 / R 1.0-5.0",
+    "title": "Reclaimed water mains",
+    "pages": [
+      1
+    ],
+    "rule": "Pantone 522C purple for pipe, valve and meter box covers; 4 ft minimum cover; no physical connection to potable; main on the opposite side of the street from potable; crossings not less than 60 degrees; 150 psi design, 100 psi hydrostatic test; locator balls 2 ft deep every 50 ft (20 ft in deflections) and 5 ft from fittings; services in meter boxes with 4 ft between services; sign 24 x 20 in, post 36-62 in high.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "reclaimed",
+      "purple",
+      "locator ball",
+      "rgn 1.0"
+    ]
+  },
+  {
+    "section_number": "A 1.0 - A 4.0",
+    "title": "Pavement restoration",
+    "pages": [
+      1
+    ],
+    "rule": "Type I: 2 in asphalt over 8 in base, trench + 12 in each side; Type II (state road): surface = ditch width + 4 ft, asphalt >= 3 in; Type III: 6 in slab with 6x6 6 ga mesh + 1 in asphalt; Type IV: 8 in concrete with #5 @ 12 in EW; Type M: asphalt equal to adjacent road or 1.5 in, 12 in base; Type V: overlay 1 in (county) or mill 1.5 in + overlay 1.5 in (FDOT). Backfill per GS 1.9 (trench = OD + 24 in).",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "pavement",
+      "restoration",
+      "a 1.0",
+      "trench"
+    ]
+  },
+  {
+    "section_number": "A 10.0",
+    "title": "WASD abbreviations",
+    "pages": [
+      1
+    ],
+    "rule": "Department abbreviations (A 10.0): e.g. F.H. fire hydrant, G.V. gate valve, M.J. mechanical joint, P.E. plain end, REST. restrained, T.O.P. top of pipe, TAP. SLV. tapping sleeve, F.V.O. flushing valve outlet, W.M. water main, SAN. sanitary sewer, S.S. storm sewer, CORP. STOP corporation stop, INV. invert, E.O.P. edge of pavement, B.O. blow-off, ARV air release valve. Full list in the skill file mdwasd-abbreviations.json.",
+    "score": 18,
+    "tags": [
+      "mdwasd",
+      "abbreviations",
+      "a 10.0"
+    ]
+  }
+]

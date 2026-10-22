@@ -51,15 +51,15 @@ public static class PressureNetworkCommands
     {
       var network = FindPressureNetworkByName(civilDoc, transaction, name, OpenMode.ForRead);
 
-      var pipes = GetChildObjectIds(network, "GetPipeIds", "PipeIds", "Pipes")
+      var pipes = GetChildObjectIds(network, "GetPipeIds", "PipeIds", "Pipes").Distinct()
         .Select(id => ToPressurePipeData(CivilObjectUtils.GetRequiredObject<AcDbObject>(transaction, id, OpenMode.ForRead)))
         .ToList();
 
-      var fittings = GetChildObjectIds(network, "GetFittingIds", "FittingIds", "Fittings")
+      var fittings = GetChildObjectIds(network, "GetFittingIds", "FittingIds", "Fittings").Distinct()
         .Select(id => ToPressureFittingData(CivilObjectUtils.GetRequiredObject<AcDbObject>(transaction, id, OpenMode.ForRead)))
         .ToList();
 
-      var appurtenances = GetChildObjectIds(network, "GetAppurtenanceIds", "AppurtenanceIds", "Appurtenances")
+      var appurtenances = GetChildObjectIds(network, "GetAppurtenanceIds", "AppurtenanceIds", "Appurtenances").Distinct()
         .Select(id => ToPressureAppurtenanceData(CivilObjectUtils.GetRequiredObject<AcDbObject>(transaction, id, OpenMode.ForRead)))
         .ToList();
 

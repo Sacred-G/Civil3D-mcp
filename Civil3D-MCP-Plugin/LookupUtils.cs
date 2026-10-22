@@ -23,6 +23,59 @@ public static class LookupUtils
     return database.Clayer;
   }
 
+  public static ObjectId GetOrLoadLinetypeId(Database database, Transaction transaction, string linetypeName)
+  {
+    if (string.Equals(linetypeName, "ByLayer", StringComparison.OrdinalIgnoreCase))
+    {
+      return database.ByLayerLinetype;
+    }
+
+    if (string.Equals(linetypeName, "ByBlock", StringComparison.OrdinalIgnoreCase))
+    {
+      return database.ByBlockLinetype;
+    }
+
+    var linetypeTable = CivilObjectUtils.GetRequiredObject<LinetypeTable>(transaction, database.LinetypeTableId, OpenMode.ForRead);
+    if (linetypeTable.Has(linetypeName))
+    {
+      return linetypeTable[linetypeName];
+    }
+
+    try
+    {
+      database.LoadLineTypeFile(linetypeName, "acad.lin");
+    }
+    catch
+    {
+      try
+      {
+        database.LoadLineTypeFile(linetypeName, "acadiso.lin");
+      }
+      catch
+      {
+        // fall through to the not-found check below
+      }
+    }
+
+    linetypeTable = CivilObjectUtils.GetRequiredObject<LinetypeTable>(transaction, database.LinetypeTableId, OpenMode.ForRead);
+    if (linetypeTable.Has(linetypeName))
+    {
+      return linetypeTable[linetypeName];
+    }
+
+    throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Linetype '{linetypeName}' could not be found or loaded from acad.lin/acadiso.lin.");
+  }
+
+  public static string? GetLinetypeName(Transaction transaction, ObjectId linetypeId)
+  {
+    if (linetypeId.IsNull)
+    {
+      return null;
+    }
+
+    return (transaction.GetObject(linetypeId, OpenMode.ForRead) as LinetypeTableRecord)?.Name;
+  }
+
   public static ObjectId GetSiteId(CivilDocument civilDoc, Transaction transaction, string? siteName)
   {
     if (string.IsNullOrWhiteSpace(siteName))
@@ -45,6 +98,29 @@ public static class LookupUtils
   public static ObjectId GetAlignmentStyleId(CivilDocument civilDoc, Transaction transaction, string? styleName)
   {
     return GetStyleId(civilDoc.Styles.AlignmentStyles, transaction, styleName);
+  }
+
+  /// <summary>
+  /// Exact (case-insensitive) alignment style lookup. Unlike <see cref="GetAlignmentStyleId"/> it never falls back to the
+  /// first style in the collection, so a typo cannot silently restyle an existing alignment. Returns ObjectId.Null if absent.
+  /// </summary>
+  public static ObjectId FindAlignmentStyleIdExact(CivilDocument civilDoc, Transaction transaction, string styleName)
+  {
+    foreach (var objectId in EnumerateObjectIds(civilDoc.Styles.AlignmentStyles))
+    {
+      if (objectId == ObjectId.Null)
+      {
+        continue;
+      }
+
+      var style = transaction.GetObject(objectId, OpenMode.ForRead);
+      if (string.Equals(CivilObjectUtils.GetName(style), styleName, StringComparison.OrdinalIgnoreCase))
+      {
+        return objectId;
+      }
+    }
+
+    return ObjectId.Null;
   }
 
   public static ObjectId GetProfileStyleId(CivilDocument civilDoc, Transaction transaction, string? styleName)

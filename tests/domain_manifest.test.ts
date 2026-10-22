@@ -18,7 +18,35 @@ describe("domain manifest migration", () => {
     expect(alignment!.operations).toContain("report");
     expect(alignment!.operations).toContain("add_tangent");
     expect(alignment!.operations).toContain("widen_transition");
+    expect(alignment!.operations).toContain("set_style");
     expect(alignment!.safeForRetry).toBe(false);
+  });
+
+  it("registers the layer reader and the fase 1 audit as read-only operations", () => {
+    const geometry = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_geometry");
+    const workflow = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_workflow");
+
+    expect(geometry!.operations).toContain("list_layers");
+    expect(workflow!.operations).toContain("fase1_audit");
+    expect(GENERATED_TOOL_CATALOG_ENTRIES.some((entry) => entry.toolName === "acad_list_layers")).toBe(true);
+    expect(GENERATED_TOOL_CATALOG_ENTRIES.some((entry) => entry.toolName === "civil3d_workflow_fase1_audit")).toBe(true);
+  });
+
+  it("registers the fase 1 build workflow (drawing side of fase1_audit) as a mutating operation", () => {
+    const workflow = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_workflow");
+    const build = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_workflow_fase1_build");
+
+    expect(workflow!.operations).toContain("fase1_build");
+    expect(build).toBeDefined();
+    expect(build!.safeForRetry).toBe(false);
+  });
+
+  it("registers bulk erase and gravity network delete as approval-gated operations", () => {
+    const geometry = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_geometry");
+    const pipe = GENERATED_TOOL_CATALOG_ENTRIES.find((entry) => entry.toolName === "civil3d_pipe");
+
+    expect(geometry!.operations).toContain("erase_entities");
+    expect(pipe!.operations).toContain("delete_pipe_network");
   });
 
   it("generates expanded canonical surface operations and legacy surface_edit exposure", () => {
@@ -104,6 +132,9 @@ describe("domain manifest migration", () => {
     expect(pipe).toBeDefined();
     expect(pipe!.operations).toContain("list");
     expect(pipe!.operations).toContain("catalog_list");
+    expect(pipe!.operations).toContain("network_catalog");
+    expect(pipe!.operations).toContain("add_network_to_profile_view");
+    expect(pipe!.operations).toContain("set_part_properties");
     expect(pipe!.operations).toContain("calculate_hgl");
     expect(pipe!.operations).toContain("size_network");
     expect(pipe!.operations).toContain("create_pressure_network");
@@ -431,12 +462,40 @@ describe("domain manifest migration", () => {
     expect(geometry).toBeDefined();
     expect(geometry!.operations).toContain("cogo_inverse");
     expect(geometry!.operations).toContain("create_mtext");
+    expect(geometry!.operations).toContain("create_mleader");
+    expect(geometry!.operations).toContain("list_text_entities");
+    expect(geometry!.operations).toContain("list_polyline_entities");
+    expect(geometry!.operations).toContain("list_dimensions");
+    expect(geometry!.operations).toContain("create_aligned_dimension");
+    expect(geometry!.operations).toContain("list_viewports");
+    expect(geometry!.operations).toContain("set_viewport_twist");
+    expect(geometry!.operations).toContain("create_entities");
+    expect(geometry!.operations).toContain("list_layouts");
+    expect(geometry!.operations).toContain("new_layout");
+    expect(geometry!.operations).toContain("copy_layout");
+    expect(geometry!.operations).toContain("rename_layout");
+    expect(geometry!.operations).toContain("delete_layout");
+    expect(geometry!.operations).toContain("set_viewport_scale");
+    expect(geometry!.operations).toContain("list_block_references");
+    expect(geometry!.operations).toContain("list_shape_entities");
+    expect(geometry!.operations).toContain("update_text_content");
+    expect(geometry!.operations).toContain("update_block_reference");
+    expect(geometry!.operations).toContain("erase_entity");
+    expect(geometry!.operations).toContain("attach_xref");
+    expect(geometry!.operations).toContain("create_or_update_layer");
+    expect(geometry!.operations).toContain("purge_unused");
+    expect(geometry!.operations).toContain("audit_drawing");
+    expect(geometry!.operations).toContain("insert_block_reference");
     expect(geometry!.safeForRetry).toBe(false);
 
     expect(drawing).toBeDefined();
     expect(drawing!.operations).toContain("info");
     expect(drawing!.operations).toContain("selected_objects_info");
     expect(drawing!.operations).toContain("list_object_types");
+    expect(drawing!.operations).toContain("list_open_documents");
+    expect(drawing!.operations).toContain("set_active_document");
+    expect(drawing!.operations).toContain("get_system_variable");
+    expect(drawing!.operations).toContain("set_system_variable");
 
     expect(coordinateSystem).toBeDefined();
     expect(coordinateSystem!.operations).toContain("transform");
@@ -571,5 +630,23 @@ describe("domain manifest migration", () => {
     expect(docs!.operations).toContain("orchestrate");
     expect(orchestrate).toBeDefined();
     expect(orchestrate!.domain).toBe("docs");
+  });
+
+  it("accepts paper-space targeting for text creation actions", () => {
+    const geometry = MIGRATED_DOMAIN_DEFINITIONS.find((definition) => definition.domain === "geometry");
+    const schema = geometry!.actions.create_text.inputSchema;
+    const base = { action: "create_text", text: "REV 3", x: 30, y: 3 };
+
+    expect(schema.safeParse(base).success).toBe(true);
+    expect(schema.safeParse({ ...base, space: "paper", layout: "PLAN" }).success).toBe(true);
+    expect(schema.safeParse({ ...base, space: "all" }).success).toBe(false);
+
+    const mtext = geometry!.actions.create_mtext.inputSchema;
+    expect(mtext.safeParse({ action: "create_mtext", text: "NOTE", x: 1, y: 2, space: "paper", layout: "PLAN" }).success).toBe(true);
+
+    const mleader = geometry!.actions.create_mleader.inputSchema;
+    const leader = { action: "create_mleader", text: "TEE", leaderPointX: 1, leaderPointY: 2, textPointX: 3, textPointY: 4 };
+    expect(mleader.safeParse({ ...leader, space: "paper" }).success).toBe(true);
+    expect(mleader.safeParse({ ...leader, space: "all" }).success).toBe(false);
   });
 });

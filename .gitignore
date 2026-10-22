@@ -8,6 +8,7 @@ dist/
 **/obj/
 *.dll
 *.pdb
+Civil3D-MCP-Plugin/*.bundle/
 
 # IDE
 .vs/

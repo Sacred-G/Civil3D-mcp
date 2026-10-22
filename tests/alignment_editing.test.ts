@@ -259,6 +259,20 @@ describe("civil3d_alignment_delete_entity input schema", () => {
   });
 });
 
+// ─── civil3d_alignment_set_style ─────────────────────────────────────────────
+
+describe("civil3d_alignment_set_style input schema", () => {
+  const AlignmentSetStyleSchema = z.object({ alignmentName: z.string(), style: z.string().min(1) });
+
+  it("accepts an alignment name and a style name", () => {
+    expect(AlignmentSetStyleSchema.safeParse({ alignmentName: "SW 118TH AVE", style: "BCC - ALIGNMENT" }).success).toBe(true);
+  });
+
+  it("rejects an empty style name", () => {
+    expect(AlignmentSetStyleSchema.safeParse({ alignmentName: "SW 118TH AVE", style: "" }).success).toBe(false);
+  });
+});
+
 // ─── civil3d_alignment_set_station_equation ──────────────────────────────────
 
 describe("civil3d_alignment_set_station_equation input schema", () => {

@@ -77,7 +77,15 @@ public static class LabelCommands
       if (string.Equals(objectType, "alignment", StringComparison.OrdinalIgnoreCase) && string.Equals(labelType, "label_set", StringComparison.OrdinalIgnoreCase))
       {
         var labelSetId = LookupUtils.GetAlignmentLabelSetId(civilDoc, transaction, labelStyle);
-        ApplyObjectIdProperty(target, labelSetId, "LabelSetId");
+        if (target is Autodesk.Civil.DatabaseServices.Alignment alignment)
+        {
+          // Alignments have no LabelSetId property: the label set is imported (creates the station labels).
+          alignment.ImportLabelSet(labelSetId);
+        }
+        else
+        {
+          ApplyObjectIdProperty(target, labelSetId, "LabelSetId");
+        }
         return new Dictionary<string, object?>
         {
           ["objectType"] = objectType,

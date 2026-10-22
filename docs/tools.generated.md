@@ -2,12 +2,12 @@
 
 Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 
-- Catalog entries: 206
+- Catalog entries: 245
 - Domains: 29
 
 | Tool | Domain | Operations | Plugin methods | Safe retry |
 |---|---|---|---|---|
-| `civil3d_alignment` | alignment | list, get, station_to_point, point_to_station, create, delete, report, add_tangent, add_spiral, delete_entity, set_station_equation, get_station_offset, offset_create, widen_transition | listAlignments, getAlignment, alignmentStationToPoint, alignmentPointToStation, createAlignment, deleteAlignment, alignmentSampleStations, alignmentAddTangent, alignmentAddSpiral, alignmentDeleteEntity, alignmentSetStationEquation, alignmentGetStationOffset, alignmentOffsetCreate, alignmentWidenTransition | no |
+| `civil3d_alignment` | alignment | list, get, station_to_point, point_to_station, create, delete, report, add_tangent, add_spiral, delete_entity, set_style, set_station_equation, get_station_offset, offset_create, widen_transition | listAlignments, getAlignment, alignmentStationToPoint, alignmentPointToStation, createAlignment, deleteAlignment, alignmentSampleStations, alignmentAddTangent, alignmentAddSpiral, alignmentDeleteEntity, alignmentSetStyle, alignmentSetStationEquation, alignmentGetStationOffset, alignmentOffsetCreate, alignmentWidenTransition | no |
 | `civil3d_alignment_add_spiral` | alignment | — | alignmentAddSpiral | no |
 | `civil3d_alignment_add_tangent` | alignment | — | alignmentAddTangent | no |
 | `civil3d_alignment_delete_entity` | alignment | — | alignmentDeleteEntity | no |
@@ -15,6 +15,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_alignment_offset_create` | alignment | — | alignmentOffsetCreate | no |
 | `civil3d_alignment_report` | alignment | — | getAlignment, alignmentSampleStations | yes |
 | `civil3d_alignment_set_station_equation` | alignment | — | alignmentSetStationEquation | no |
+| `civil3d_alignment_set_style` | alignment | — | alignmentSetStyle | no |
 | `civil3d_alignment_widen_transition` | alignment | — | alignmentWidenTransition | no |
 | `civil3d_intersection` | alignment | list, get | listIntersections, getIntersection | yes |
 | `civil3d_intersection_get` | alignment | — | getIntersection | yes |
@@ -44,19 +45,46 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_docs` | docs | list_tool_capabilities, orchestrate | — | yes |
 | `civil3d_orchestrate` | docs | — | — | yes |
 | `list_tool_capabilities` | docs | — | — | yes |
-| `civil3d_drawing` | drawing | info, new, save, undo, redo, settings, selected_objects_info, list_object_types | getDrawingInfo, newDrawing, saveDrawing, undoDrawing, redoDrawing, getDrawingSettings, getSelectedCivilObjectsInfo, listCivilObjectTypes | no |
+| `acad_get_system_variable` | drawing | — | getSystemVariable | yes |
+| `acad_list_open_documents` | drawing | — | listOpenDocuments | yes |
+| `acad_set_active_document` | drawing | — | setActiveDocument | no |
+| `acad_set_system_variable` | drawing | — | setSystemVariable | no |
+| `civil3d_drawing` | drawing | info, new, save, undo, redo, settings, selected_objects_info, list_object_types, list_open_documents, set_active_document, get_system_variable, set_system_variable | getDrawingInfo, newDrawing, saveDrawing, undoDrawing, redoDrawing, getDrawingSettings, getSelectedCivilObjectsInfo, listCivilObjectTypes, listOpenDocuments, setActiveDocument, getSystemVariable, setSystemVariable | no |
 | `get_drawing_info` | drawing | — | getDrawingInfo | yes |
 | `get_selected_civil_objects_info` | drawing | — | getSelectedCivilObjectsInfo | yes |
 | `list_civil_object_types` | drawing | — | listCivilObjectTypes | yes |
+| `acad_attach_xref` | geometry | — | attachXref | no |
+| `acad_audit_drawing` | geometry | — | auditDrawing | no |
 | `acad_create_3dpolyline` | geometry | — | create3dPolyline | no |
+| `acad_create_aligned_dimension` | geometry | — | createAlignedDimension | no |
+| `acad_create_entities` | geometry | — | createEntities | no |
+| `acad_create_mleader` | geometry | — | createMLeader | no |
 | `acad_create_mtext` | geometry | — | createMText | no |
+| `acad_create_or_update_layer` | geometry | — | createOrUpdateLayer | no |
 | `acad_create_polyline` | geometry | — | createPolyline | no |
 | `acad_create_text` | geometry | — | createText | no |
+| `acad_erase_entities` | geometry | — | eraseEntities | no |
+| `acad_erase_entity` | geometry | — | eraseEntity | no |
+| `acad_insert_block_reference` | geometry | — | insertBlockReference | no |
+| `acad_layout` | geometry | list_layouts, new_layout, copy_layout, rename_layout, delete_layout, set_viewport_scale | listLayouts, createLayout, copyLayout, renameLayout, deleteLayout, setViewportAnnotationScale | no |
+| `acad_list_block_references` | geometry | — | listBlockReferences | yes |
+| `acad_list_dimensions` | geometry | — | listDimensions | yes |
+| `acad_list_layers` | geometry | — | listLayers | yes |
+| `acad_list_polyline_entities` | geometry | — | listPolylineEntities | yes |
+| `acad_list_shape_entities` | geometry | — | listShapeEntities | yes |
+| `acad_list_text_entities` | geometry | — | listTextEntities | yes |
+| `acad_list_viewports` | geometry | — | listViewports | yes |
+| `acad_move_entities` | geometry | — | moveEntities | no |
+| `acad_purge_unused` | geometry | — | purgeUnused | no |
+| `acad_select_entities` | geometry | — | selectEntities | yes |
+| `acad_set_viewport_twist` | geometry | — | setViewportTwist | no |
+| `acad_update_block_reference` | geometry | — | updateBlockReference | no |
+| `acad_update_text_content` | geometry | — | updateTextContent | no |
 | `civil3d_cogo_curve_solve` | geometry | — | cogoCurveSolve | yes |
 | `civil3d_cogo_direction_distance` | geometry | — | cogoDirectionDistance | yes |
 | `civil3d_cogo_inverse` | geometry | — | cogoInverse | yes |
 | `civil3d_cogo_traverse` | geometry | — | cogoTraverse | yes |
-| `civil3d_geometry` | geometry | cogo_inverse, cogo_direction_distance, cogo_traverse, cogo_curve_solve, create_line_segment, create_polyline, create_3dpolyline, create_text, create_mtext | cogoInverse, cogoDirectionDistance, cogoTraverse, cogoCurveSolve, createLineSegment, createPolyline, create3dPolyline, createText, createMText | no |
+| `civil3d_geometry` | geometry | cogo_inverse, cogo_direction_distance, cogo_traverse, cogo_curve_solve, create_line_segment, create_polyline, create_3dpolyline, create_text, create_mtext, create_mleader, list_text_entities, list_polyline_entities, list_block_references, list_shape_entities, update_text_content, update_block_reference, erase_entity, erase_entities, attach_xref, create_or_update_layer, purge_unused, audit_drawing, insert_block_reference, list_dimensions, create_aligned_dimension, list_viewports, set_viewport_twist, create_entities, list_layouts, new_layout, copy_layout, rename_layout, delete_layout, set_viewport_scale, list_layers | cogoInverse, cogoDirectionDistance, cogoTraverse, cogoCurveSolve, createLineSegment, createPolyline, create3dPolyline, createText, createMText, createMLeader, listTextEntities, listPolylineEntities, listBlockReferences, listShapeEntities, updateTextContent, updateBlockReference, eraseEntity, eraseEntities, attachXref, createOrUpdateLayer, purgeUnused, auditDrawing, insertBlockReference, listDimensions, createAlignedDimension, listViewports, setViewportTwist, createEntities, listLayouts, createLayout, copyLayout, renameLayout, deleteLayout, setViewportAnnotationScale, listLayers | no |
 | `create_line_segment` | geometry | — | createLineSegment | no |
 | `civil3d_feature_line` | grading | list, get, export_as_polyline | listFeatureLines, getFeatureLine, exportFeatureLineAsPolyline | no |
 | `civil3d_feature_line_create` | grading | — | createFeatureLine | no |
@@ -86,14 +114,18 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_parcel_edit` | parcel | — | editParcel | no |
 | `civil3d_parcel_lot_line_adjust` | parcel | — | adjustParcelLotLine | no |
 | `civil3d_parcel_report` | parcel | — | reportParcels | yes |
-| `civil3d_pipe` | pipe | list, get, get_pipe, get_structure, check_interference, create, add_pipe, add_structure, catalog_list, calculate_hgl, hydraulic_analysis, get_structure_properties, size_network, automate_profile_view, list_pressure_networks, get_pressure_network, create_pressure_network, delete_pressure_network, assign_pressure_parts_list, set_pressure_cover, validate_pressure_network, export_pressure_network, connect_pressure_networks, add_pressure_pipe, get_pressure_pipe_properties, resize_pressure_pipe, add_pressure_fitting, get_pressure_fitting_properties, add_pressure_appurtenance | listPipeNetworks, getPipeNetwork, getPipe, getStructure, checkPipeNetworkInterference, createPipeNetwork, addPipeToNetwork, addStructureToNetwork, listPipePartsCatalog, calculatePipeNetworkHgl, analyzePipeNetworkHydraulics, getPipeStructureProperties, resizePipeInNetwork, listProfiles, createProfileFromSurface, profileViewCreate, listPressureNetworks, getPressureNetworkInfo, createPressureNetwork, deletePressureNetwork, assignPressurePartsList, setPressureNetworkCover, validatePressureNetwork, exportPressureNetwork, connectPressureNetworks, addPressurePipe, getPressurePipeProperties, resizePressurePipe, addPressureFitting, getPressureFittingProperties, addPressureAppurtenance | no |
+| `civil3d_network_catalog` | pipe | — | listNetworkCatalog | yes |
+| `civil3d_pipe` | pipe | list, get, get_pipe, get_structure, check_interference, create, add_pipe, add_structure, catalog_list, calculate_hgl, hydraulic_analysis, get_structure_properties, size_network, automate_profile_view, list_pressure_networks, get_pressure_network, create_pressure_network, delete_pressure_network, delete_pipe_network, assign_pressure_parts_list, set_pressure_cover, validate_pressure_network, export_pressure_network, connect_pressure_networks, add_pressure_pipe, get_pressure_pipe_properties, resize_pressure_pipe, add_pressure_fitting, get_pressure_fitting_properties, add_pressure_appurtenance, network_catalog, add_network_to_profile_view, set_part_properties | listPipeNetworks, getPipeNetwork, getPipe, getStructure, checkPipeNetworkInterference, createPipeNetwork, addPipeToNetwork, addStructureToNetwork, listPipePartsCatalog, calculatePipeNetworkHgl, analyzePipeNetworkHydraulics, getPipeStructureProperties, resizePipeInNetwork, listProfiles, createProfileFromSurface, profileViewCreate, listPressureNetworks, getPressureNetworkInfo, createPressureNetwork, deletePressureNetwork, deletePipeNetwork, assignPressurePartsList, setPressureNetworkCover, validatePressureNetwork, exportPressureNetwork, connectPressureNetworks, addPressurePipe, getPressurePipeProperties, resizePressurePipe, addPressureFitting, getPressureFittingProperties, addPressureAppurtenance, listNetworkCatalog, addNetworkToProfileView, setPartProperties | no |
 | `civil3d_pipe_catalog` | pipe | — | listPipePartsCatalog | yes |
 | `civil3d_pipe_hydraulic_analysis` | pipe | — | analyzePipeNetworkHydraulics | yes |
 | `civil3d_pipe_network` | pipe | list, get, get_pipe, get_structure, check_interference | listPipeNetworks, getPipeNetwork, getPipe, getStructure, checkPipeNetworkInterference | yes |
+| `civil3d_pipe_network_add_to_profile_view` | pipe | — | addNetworkToProfileView | no |
+| `civil3d_pipe_network_delete` | pipe | — | deletePipeNetwork | no |
 | `civil3d_pipe_network_edit` | pipe | create, add_pipe, add_structure | createPipeNetwork, addPipeToNetwork, addStructureToNetwork | no |
 | `civil3d_pipe_network_hgl_calculate` | pipe | — | calculatePipeNetworkHgl | yes |
 | `civil3d_pipe_network_size` | pipe | — | getPipeNetwork, listPipePartsCatalog, resizePipeInNetwork | no |
 | `civil3d_pipe_profile_view_automation` | pipe | — | getPipeNetwork, listProfiles, createProfileFromSurface, profileViewCreate | no |
+| `civil3d_pipe_set_part_properties` | pipe | — | setPartProperties | yes |
 | `civil3d_pipe_structure_properties` | pipe | — | getPipeStructureProperties | yes |
 | `civil3d_pressure_appurtenance_add` | pipe | — | addPressureAppurtenance | no |
 | `civil3d_pressure_fitting_add` | pipe | — | addPressureFitting | no |
@@ -130,7 +162,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_point_group_update` | point | — | updatePointGroup | no |
 | `civil3d_point_transform` | point | — | transformCogoPoints | no |
 | `create_cogo_point` | point | — | createCogoPoints | no |
-| `civil3d_profile` | profile | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete, report, add_pvi, delete_pvi, add_curve, set_grade, check_k_values, view_create, view_band_set | listProfiles, getProfile, getProfileElevation, sampleProfileElevations, createProfileFromSurface, createLayoutProfile, deleteProfile, profileAddPvi, profileDeletePvi, profileAddCurve, profileSetGrade, profileCheckKValues, profileViewCreate, profileViewBandSet | no |
+| `civil3d_profile` | profile | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete, report, add_pvi, delete_pvi, add_curve, set_grade, check_k_values, view_create, view_band_set, view_info, view_set_location, view_styles, view_annotations, view_apply_annotations | listProfiles, getProfile, getProfileElevation, sampleProfileElevations, createProfileFromSurface, createLayoutProfile, deleteProfile, profileAddPvi, profileDeletePvi, profileAddCurve, profileSetGrade, profileCheckKValues, profileViewCreate, profileViewBandSet, profileViewInfo, profileViewSetLocation, profileViewStyles, profileViewAnnotations, profileViewApplyAnnotations | no |
 | `civil3d_profile_add_curve` | profile | — | profileAddCurve | no |
 | `civil3d_profile_add_pvi` | profile | — | profileAddPvi | no |
 | `civil3d_profile_check_k_values` | profile | — | profileCheckKValues | yes |
@@ -138,8 +170,13 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_profile_get_elevation` | profile | — | getProfileElevation | yes |
 | `civil3d_profile_report` | profile | — | getProfile, sampleProfileElevations | yes |
 | `civil3d_profile_set_grade` | profile | — | profileSetGrade | no |
+| `civil3d_profile_view_annotations` | profile | — | profileViewAnnotations | yes |
+| `civil3d_profile_view_apply_annotations` | profile | — | profileViewApplyAnnotations | no |
 | `civil3d_profile_view_band_set` | profile | — | profileViewBandSet | no |
 | `civil3d_profile_view_create` | profile | — | profileViewCreate | no |
+| `civil3d_profile_view_info` | profile | — | profileViewInfo | yes |
+| `civil3d_profile_view_set_location` | profile | — | profileViewSetLocation | no |
+| `civil3d_profile_view_styles` | profile | — | profileViewStyles | yes |
 | `civil3d_data_shortcut` | project | list, sync, create_reference | listDataShortcuts, syncDataShortcuts, createDataShortcutReference | no |
 | `civil3d_data_shortcut_create` | project | — | createDataShortcut | no |
 | `civil3d_data_shortcut_promote` | project | — | promoteDataShortcut | no |
@@ -200,11 +237,13 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_survey_figure_get` | survey | — | getSurveyFigure | yes |
 | `civil3d_survey_figure_list` | survey | — | listSurveyFigures | yes |
 | `civil3d_survey_observation_list` | survey | — | listSurveyObservations | yes |
-| `civil3d_workflow` | workflow | corridor_qc_report, grading_surface_volume, surface_comparison_report, data_shortcut_publish_sync, data_shortcut_reference_sync, project_startup, project_reference_setup, drawing_readiness_audit, feature_line_to_grading, pipe_network_design, plan_production_publish, qc_fix_and_verify | corridorQcReportWorkflow, calculateSurfaceVolume, surfaceComparisonReportWorkflow, dataShortcutPublishSyncWorkflow, dataShortcutReferenceSyncWorkflow, projectStartupWorkflow, projectReferenceSetupWorkflow, drawingReadinessAuditWorkflow, featureLineToGradingWorkflow, getPipeNetwork, listPipePartsCatalog, resizePipeInNetwork, analyzePipeNetworkHydraulics, planProductionPublishWorkflow, qcFixAndVerifyWorkflow | no |
+| `civil3d_workflow` | workflow | corridor_qc_report, grading_surface_volume, surface_comparison_report, data_shortcut_publish_sync, data_shortcut_reference_sync, project_startup, project_reference_setup, drawing_readiness_audit, feature_line_to_grading, pipe_network_design, plan_production_publish, qc_fix_and_verify, fase1_audit, fase1_build | corridorQcReportWorkflow, calculateSurfaceVolume, surfaceComparisonReportWorkflow, dataShortcutPublishSyncWorkflow, dataShortcutReferenceSyncWorkflow, projectStartupWorkflow, projectReferenceSetupWorkflow, drawingReadinessAuditWorkflow, featureLineToGradingWorkflow, getPipeNetwork, listPipePartsCatalog, resizePipeInNetwork, analyzePipeNetworkHydraulics, planProductionPublishWorkflow, qcFixAndVerifyWorkflow, listLayouts, listTextEntities, listPressureNetworks, profileViewInfo, listPipeNetworks, listAlignments, getAlignment, listSurfaces, listLayers, newDrawing, saveDrawing, listOpenDocuments, attachXref, createAlignment, insertBlockReference, createEntities, setViewportTwist, updateTextContent, eraseEntities, listPolylineEntities, listShapeEntities, moveEntities, createOrUpdateLayer | no |
 | `civil3d_workflow_corridor_qc_report` | workflow | — | corridorQcReportWorkflow | no |
 | `civil3d_workflow_data_shortcut_publish_sync` | workflow | — | dataShortcutPublishSyncWorkflow | no |
 | `civil3d_workflow_data_shortcut_reference_sync` | workflow | — | dataShortcutReferenceSyncWorkflow | no |
 | `civil3d_workflow_drawing_readiness_audit` | workflow | — | drawingReadinessAuditWorkflow | yes |
+| `civil3d_workflow_fase1_audit` | workflow | — | listLayouts, listTextEntities, listPressureNetworks, profileViewInfo, listPipeNetworks, listAlignments, getAlignment, listSurfaces, listLayers | yes |
+| `civil3d_workflow_fase1_build` | workflow | — | newDrawing, saveDrawing, listOpenDocuments, attachXref, createAlignment, insertBlockReference, createEntities, setViewportTwist, listTextEntities, updateTextContent, eraseEntities, listPolylineEntities, listShapeEntities, moveEntities, listLayers, createOrUpdateLayer | no |
 | `civil3d_workflow_feature_line_to_grading` | workflow | — | featureLineToGradingWorkflow | no |
 | `civil3d_workflow_grading_surface_volume` | workflow | — | calculateSurfaceVolume | yes |
 | `civil3d_workflow_pipe_network_design` | workflow | — | getPipeNetwork, listPipePartsCatalog, resizePipeInNetwork, analyzePipeNetworkHydraulics | no |

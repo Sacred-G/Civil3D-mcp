@@ -13,6 +13,29 @@ const approvalInputShape = {
   ttlSeconds: z.number().int().min(30).max(600).optional(),
 };
 
+const planInputShape = {
+  steps: z.array(z.object({
+    toolName: z.string().min(1),
+    action: z.string().min(1),
+    parameters: z.record(z.unknown()),
+  })).min(1).max(40),
+  ttlSeconds: z.number().int().min(60).max(1800).optional(),
+};
+
+const PlanApprovalResponseSchema = z.object({
+  status: z.literal("approved"),
+  planId: z.string(),
+  documentId: z.string(),
+  expiresAt: z.string(),
+  steps: z.array(z.object({
+    index: z.number(),
+    toolName: z.string(),
+    action: z.string(),
+    approvalToken: z.string(),
+  })),
+  instruction: z.string(),
+});
+
 const PreviewResponseSchema = z.object({
   status: z.enum(["approval_required", "ready"]),
   toolName: z.string(),
@@ -127,7 +150,42 @@ export function registerApprovalTool(server: McpServer) {
     }
   };
 
+  const planHandler = async (rawArgs: JsonObject) => {
+    try {
+      const args = rawArgs as {
+        steps: Array<{ toolName: string; action: string; parameters: JsonObject }>;
+        ttlSeconds?: number;
+      };
+      const steps = args.steps.map((step) => {
+        const target = resolveApprovalTarget(step);
+        return {
+          target: {
+            toolName: step.toolName,
+            action: step.action,
+            capabilities: target.actionDefinition.capabilities,
+            safeForRetry: target.actionDefinition.safeForRetry,
+            requiresActiveDrawing: target.actionDefinition.requiresActiveDrawing,
+          },
+          parameters: step.parameters,
+        };
+      });
+      const receipt = await approvalPolicy.requestPlan(steps, (args.ttlSeconds ?? 900) * 1000);
+
+      return successResult({
+        status: "approved",
+        ...receipt,
+        instruction:
+          "Execute the steps IN ORDER, each with its own approvalToken and exactly the parameters it was approved with. " +
+          "The plan is bound to this document (its contents may change between steps). A different document, other parameters, " +
+          "a skipped step or expiry rejects the token; then request a new plan.",
+      });
+    } catch (error) {
+      return errorResult("civil3d_request_plan_approval", error);
+    }
+  };
+
   captureToolHandler("civil3d_preview_action", previewHandler);
+  captureToolHandler("civil3d_request_plan_approval", planHandler);
   captureToolHandler("civil3d_request_approval", requestHandler);
 
   server.registerTool(
@@ -150,6 +208,28 @@ export function registerApprovalTool(server: McpServer) {
       },
     },
     previewHandler,
+  );
+
+  server.registerTool(
+    "civil3d_request_plan_approval",
+    {
+      title: "Request Civil 3D Plan Approval",
+      description:
+        "Issues one single-use approval token PER STEP for an ordered list of up to 40 exact Civil 3D actions in ONE call " +
+        "(e.g. the clean-up steps of a Fase 1 delivery), instead of one request per step. Unlike single tokens, the plan is bound " +
+        "to the active DOCUMENT rather than to its contents (every step changes them) and its steps must run in order. Every step " +
+        "must require approval; exact parameters are still enforced per step.",
+      inputSchema: planInputShape,
+      outputSchema: PlanApprovalResponseSchema,
+      annotations: {
+        title: "Request Civil 3D Plan Approval",
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      },
+    },
+    planHandler,
   );
 
   server.registerTool(

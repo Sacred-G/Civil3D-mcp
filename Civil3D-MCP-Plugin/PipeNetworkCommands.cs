@@ -149,14 +149,15 @@ public static class PipeNetworkCommands
     var x = PluginRuntime.GetRequiredDouble(parameters, "x");
     var y = PluginRuntime.GetRequiredDouble(parameters, "y");
     var partName = PluginRuntime.GetRequiredString(parameters, "partName");
-    var rimElevation = PluginRuntime.GetOptionalDouble(parameters, "rimElevation") ?? 0.0;
-    var sumpDepth = PluginRuntime.GetOptionalDouble(parameters, "sumpDepth") ?? 0.0;
+    var rimElevation = PluginRuntime.GetOptionalDouble(parameters, "rimElevation");
+    var sumpDepth = PluginRuntime.GetOptionalDouble(parameters, "sumpDepth");
+    var structureName = PluginRuntime.GetOptionalString(parameters, "structureName");
 
     return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var network = FindPipeNetworkByName(civilDoc, transaction, networkName, OpenMode.ForWrite);
-      var location = new Point3d(x, y, rimElevation);
-      var createdStructureId = AddStructureToNetwork(network, transaction, location, partName, rimElevation, sumpDepth);
+      var location = new Point3d(x, y, rimElevation ?? 0.0);
+      var createdStructureId = AddStructureToNetwork(network, transaction, location, partName, rimElevation, sumpDepth, structureName);
       var structure = CivilObjectUtils.GetRequiredObject<Structure>(transaction, createdStructureId, OpenMode.ForRead);
 
       return new Dictionary<string, object?>
@@ -189,7 +190,12 @@ public static class PipeNetworkCommands
       var startPoint = ReadPoint(parameters, "startPoint");
       var endPoint = ReadPoint(parameters, "endPoint");
       var createdPipeId = AddPipeToNetwork(network, transaction, partName, diameter, startPoint, endPoint, startStructureId, endStructureId);
-      var pipe = CivilObjectUtils.GetRequiredObject<Pipe>(transaction, createdPipeId, OpenMode.ForRead);
+      var pipeName = PluginRuntime.GetOptionalString(parameters, "pipeName");
+      var pipe = CivilObjectUtils.GetRequiredObject<Pipe>(transaction, createdPipeId, string.IsNullOrWhiteSpace(pipeName) ? OpenMode.ForRead : OpenMode.ForWrite);
+      if (!string.IsNullOrWhiteSpace(pipeName))
+      {
+        pipe.Name = pipeName;
+      }
 
       return new Dictionary<string, object?>
       {
@@ -332,6 +338,19 @@ public static class PipeNetworkCommands
     }
   }
 
+  // Deletes a gravity (non-pressure) pipe network with all its pipes and structures. Empty shells left behind after erasing
+  // the parts one by one (e.g. "PROP SAN SEWER") are removed the same way.
+  public static Task<object?> DeletePipeNetworkAsync(JsonObject? parameters)
+  {
+    var name = PluginRuntime.GetRequiredString(parameters, "name");
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var network = FindPipeNetworkByName(civilDoc, transaction, name, OpenMode.ForWrite);
+      network.Erase();
+      return new Dictionary<string, object?> { ["deleted"] = true, ["name"] = name };
+    });
+  }
+
   private static Network FindPipeNetworkByName(object civilDoc, Transaction transaction, string name, OpenMode openMode)
   {
     foreach (var network in EnumeratePipeNetworks(civilDoc, transaction, openMode))
@@ -452,14 +471,29 @@ public static class PipeNetworkCommands
     return Network.Create((CivilDocument)civilDoc, ref requestedName);
   }
 
-  private static ObjectId AddStructureToNetwork(Network network, Transaction transaction, Point3d location, string partName, double rimElevation, double sumpDepth)
+  private static ObjectId AddStructureToNetwork(Network network, Transaction transaction, Point3d location, string partName, double? rimElevation, double? sumpDepth, string? structureName = null)
   {
     var part = FindPartForNetwork(network, transaction, partName, DomainType.Structure);
     var createdId = ObjectId.Null;
     network.AddStructure(part.FamilyId, part.SizeId, location, 0.0, ref createdId, applyRules: false);
     var structure = CivilObjectUtils.GetRequiredObject<Structure>(transaction, createdId, OpenMode.ForWrite);
-    structure.RimElevation = rimElevation;
-    structure.RimToSumpHeight = sumpDepth;
+    if (!string.IsNullOrWhiteSpace(structureName))
+    {
+      structure.Name = structureName;
+    }
+
+    if (rimElevation.HasValue)
+    {
+      // An explicit rim (surveyed R.E. or design rim) must not be pulled back to the reference surface.
+      structure.AutomaticRimSurfaceAdjustment = false;
+      structure.RimElevation = rimElevation.Value;
+    }
+
+    if (sumpDepth.HasValue)
+    {
+      structure.RimToSumpHeight = sumpDepth.Value;
+    }
+
     return createdId;
   }
 
@@ -645,6 +679,19 @@ public static class PipeNetworkCommands
 
   private static ObjectId FindPartsListId(object civilDoc, Transaction transaction, string partsListName)
   {
+    // Typed lookup first: the reflection path below returns null names on Civil 3D 2027.
+    if (civilDoc is CivilDocument typedDocument)
+    {
+      foreach (ObjectId listId in typedDocument.Styles.PartsListSet)
+      {
+        if (transaction.GetObject(listId, OpenMode.ForRead) is PartsList typedList
+          && string.Equals(typedList.Name, partsListName, StringComparison.OrdinalIgnoreCase))
+        {
+          return listId;
+        }
+      }
+    }
+
     foreach (var partsList in EnumeratePartsLists(civilDoc, transaction))
     {
       if (string.Equals(CivilObjectUtils.GetName(partsList), partsListName, StringComparison.OrdinalIgnoreCase) && partsList is AcDbObject dbObject)

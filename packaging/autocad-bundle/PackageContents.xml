@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage
+  SchemaVersion="1.0"
+  AppVersion="1.2.1.0"
+  Author="Civil3D-MCP"
+  Name="Civil3DMcpPlugin"
+  >
+  <CompanyDetails Name="Civil3D-MCP" Phone="" Url="" Email="" />
+  <RuntimeRequirements
+    Platform="Civil3D"
+    SeriesMin="R25.0"
+    SeriesMax="R30.0"
+    OS="Win64"
+    SupportPath="./Contents"
+  />
+  <Components>
+    <ComponentEntry
+      AppName="Civil3DMcpPlugin"
+      LoadOnAutoCADStartup="True"
+      ModuleName="./Contents/Civil3DMcpPlugin.dll"
+      >
+      <AssemblyMappings>
+        <AssemblyMappingFolder Path="./Contents" />
+      </AssemblyMappings>
+    </ComponentEntry>
+  </Components>
+  <DisplayInAppManager>False</DisplayInAppManager>
+</ApplicationPackage>

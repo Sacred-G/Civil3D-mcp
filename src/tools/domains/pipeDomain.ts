@@ -20,6 +20,9 @@ const PipeFlowSchema = z.object({
 });
 
 const GenericPipeResponseSchema = z.object({}).passthrough();
+const PipeNetworkCatalogArgsSchema = z.object({ action: z.literal("network_catalog") });
+const PipeSetPartPropertiesArgsSchema = z.object({ action: z.literal("set_part_properties"), networkName: z.string(), partName: z.string(), description: z.string().optional(), newName: z.string().min(1).optional() });
+const PipeAddNetworkToProfileViewArgsSchema = z.object({ action: z.literal("add_network_to_profile_view"), networkName: z.string(), profileViewName: z.string(), partNames: z.array(z.string().min(1)).max(500).optional() });
 
 const canonicalPipeInputShape = {
   action: z.enum([
@@ -41,6 +44,7 @@ const canonicalPipeInputShape = {
     "get_pressure_network",
     "create_pressure_network",
     "delete_pressure_network",
+    "delete_pipe_network",
     "assign_pressure_parts_list",
     "set_pressure_cover",
     "validate_pressure_network",
@@ -52,6 +56,9 @@ const canonicalPipeInputShape = {
     "add_pressure_fitting",
     "get_pressure_fitting_properties",
     "add_pressure_appurtenance",
+    "network_catalog",
+    "add_network_to_profile_view",
+    "set_part_properties",
   ]),
   name: z.string().optional(),
   networkName: z.string().optional(),
@@ -135,6 +142,7 @@ const PipeAddPipeArgsSchema = z.object({
   endStructure: z.string().optional(),
   partName: z.string(),
   diameter: z.number().optional(),
+  pipeName: z.string().optional(),
 }).superRefine((value, ctx) => {
   if (!value.startPoint && !value.startStructure) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, message: "Either startPoint or startStructure is required.", path: ["startPoint"] });
@@ -151,6 +159,7 @@ const PipeAddStructureArgsSchema = z.object({
   partName: z.string(),
   rimElevation: z.number().optional(),
   sumpDepth: z.number().optional(),
+  structureName: z.string().optional(),
 });
 const PipeCatalogListArgsSchema = z.object({ action: z.literal("catalog_list"), partsList: z.string().optional() });
 const PipeCalculateHglArgsSchema = z.object({
@@ -211,6 +220,7 @@ const PipeCreatePressureNetworkArgsSchema = z.object({
   referenceSurface: z.string().optional(),
 });
 const PipeDeletePressureNetworkArgsSchema = z.object({ action: z.literal("delete_pressure_network"), name: z.string() });
+const PipeDeletePipeNetworkArgsSchema = z.object({ action: z.literal("delete_pipe_network"), name: z.string() });
 const PipeAssignPressurePartsListArgsSchema = z.object({
   action: z.literal("assign_pressure_parts_list"),
   networkName: z.string(),
@@ -423,6 +433,7 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
         endStructure: args.endStructure,
         partName: args.partName,
         diameter: args.diameter,
+        pipeName: args.pipeName,
       })),
     },
     add_structure: {
@@ -440,6 +451,7 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
         partName: args.partName,
         rimElevation: args.rimElevation,
         sumpDepth: args.sumpDepth,
+        structureName: args.structureName,
       })),
     },
     catalog_list: {
@@ -646,6 +658,16 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
       pluginMethods: ["deletePressureNetwork"],
       execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("deletePressureNetwork", { name: args.name })),
     },
+    delete_pipe_network: {
+      action: "delete_pipe_network",
+      inputSchema: PipeDeletePipeNetworkArgsSchema,
+      responseSchema: GenericPipeResponseSchema,
+      capabilities: ["delete"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["deletePipeNetwork"],
+      execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("deletePipeNetwork", { name: args.name })),
+    },
     assign_pressure_parts_list: {
       action: "assign_pressure_parts_list",
       inputSchema: PipeAssignPressurePartsListArgsSchema,
@@ -797,6 +819,36 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
         onPipeName: args.onPipeName,
       })),
     },
+    network_catalog: {
+      action: "network_catalog",
+      inputSchema: PipeNetworkCatalogArgsSchema,
+      responseSchema: GenericPipeResponseSchema,
+      capabilities: ["query"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["listNetworkCatalog"],
+      execute: async () => await withApplicationConnection(async (appClient) => await appClient.sendCommand("listNetworkCatalog", {})),
+    },
+    add_network_to_profile_view: {
+      action: "add_network_to_profile_view",
+      inputSchema: PipeAddNetworkToProfileViewArgsSchema,
+      responseSchema: GenericPipeResponseSchema,
+      capabilities: ["edit"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["addNetworkToProfileView"],
+      execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("addNetworkToProfileView", { networkName: args.networkName, profileViewName: args.profileViewName, partNames: args.partNames })),
+    },
+    set_part_properties: {
+      action: "set_part_properties",
+      inputSchema: PipeSetPartPropertiesArgsSchema,
+      responseSchema: GenericPipeResponseSchema,
+      capabilities: ["edit"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["setPartProperties"],
+      execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("setPartProperties", { networkName: args.networkName, partName: args.partName, description: args.description, newName: args.newName })),
+    },
   },
   exposures: [
     {
@@ -807,10 +859,11 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
       supportedActions: [
         "list", "get", "get_pipe", "get_structure", "check_interference", "create", "add_pipe", "add_structure",
         "catalog_list", "calculate_hgl", "hydraulic_analysis", "get_structure_properties", "size_network", "automate_profile_view",
-        "list_pressure_networks", "get_pressure_network", "create_pressure_network", "delete_pressure_network",
+        "list_pressure_networks", "get_pressure_network", "create_pressure_network", "delete_pressure_network", "delete_pipe_network",
         "assign_pressure_parts_list", "set_pressure_cover", "validate_pressure_network", "export_pressure_network",
         "connect_pressure_networks", "add_pressure_pipe", "get_pressure_pipe_properties", "resize_pressure_pipe",
         "add_pressure_fitting", "get_pressure_fitting_properties", "add_pressure_appurtenance",
+        "network_catalog", "add_network_to_profile_view", "set_part_properties",
       ],
       resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }),
     },
@@ -833,7 +886,7 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_pipe_network_edit",
       displayName: "Civil 3D Pipe Network Edit",
-      description: "Creates and modifies Civil 3D pipe networks, pipes, and structures.",
+      description: "Creates and modifies Civil 3D pipe networks, pipes, and structures. add_structure: structureName names it (e.g. MH-01); an explicit rimElevation is held fixed (automatic rim-to-surface adjustment is turned off) and sumpDepth is rim-to-sump. add_pipe: pipeName names it; startPoint/endPoint z is the pipe centerline (invert + inner radius).",
       inputShape: {
         action: z.enum(["create", "add_pipe", "add_structure"]),
         name: z.string().optional(),
@@ -853,6 +906,8 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
         y: z.number().optional(),
         rimElevation: z.number().optional(),
         sumpDepth: z.number().optional(),
+        structureName: z.string().optional(),
+        pipeName: z.string().optional(),
       },
       supportedActions: ["create", "add_pipe", "add_structure"],
       resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }),
@@ -936,6 +991,14 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
       inputShape: { name: z.string() },
       supportedActions: ["delete_pressure_network"],
       resolveAction: (rawArgs) => ({ action: "delete_pressure_network", args: { action: "delete_pressure_network", name: rawArgs.name } }),
+    },
+    {
+      toolName: "civil3d_pipe_network_delete",
+      displayName: "Civil 3D Pipe Network Delete",
+      description: "Deletes a gravity (sanitary/storm) pipe network with all its pipes and structures, or removes an empty shell left after erasing its parts. For pressure (water) networks use civil3d_pressure_network_delete. Get the network name from civil3d_pipe get_structure/get_pipe connected names (list can fail with 'Retrieve attribute failed').",
+      inputShape: { name: z.string() },
+      supportedActions: ["delete_pipe_network"],
+      resolveAction: (rawArgs) => ({ action: "delete_pipe_network", args: { action: "delete_pipe_network", name: rawArgs.name } }),
     },
     {
       toolName: "civil3d_pressure_network_assign_parts_list",
@@ -1024,6 +1087,30 @@ export const PIPE_DOMAIN_DEFINITION: DomainToolDefinition = {
       inputShape: { networkName: z.string(), partName: z.string(), position: OptionalPoint3DSchema, rotation: z.number().optional(), onPipeName: z.string().optional() },
       supportedActions: ["add_pressure_appurtenance"],
       resolveAction: (rawArgs) => ({ action: "add_pressure_appurtenance", args: { action: "add_pressure_appurtenance", networkName: rawArgs.networkName, partName: rawArgs.partName, position: rawArgs.position, rotation: rawArgs.rotation, onPipeName: rawArgs.onPipeName } }),
+    },
+    {
+      toolName: "civil3d_network_catalog",
+      displayName: "Civil 3D Network Parts Catalog",
+      description: "Lists the drawing's gravity parts lists (pipe and structure families with their exact size names) and pressure part lists (part descriptions by type: PressurePipe, Elbow, Tee, Plug, Cap, Valve, Hydrant). Use these exact names as partsList / partName when creating networks and adding parts.",
+      inputShape: {},
+      supportedActions: ["network_catalog"],
+      resolveAction: () => ({ action: "network_catalog", args: { action: "network_catalog" } }),
+    },
+    {
+      toolName: "civil3d_pipe_network_add_to_profile_view",
+      displayName: "Civil 3D Add Network To Profile View",
+      description: "Draws the parts of a gravity pipe network (pipes + structures) or a pressure network (pipes, fittings, appurtenances) into an existing profile view, found by name. partNames limits it to those parts (e.g. only an existing sewer stub that crosses another street's profile); names that match nothing are reported in failed.",
+      inputShape: { networkName: z.string(), profileViewName: z.string(), partNames: z.array(z.string().min(1)).max(500).optional() },
+      supportedActions: ["add_network_to_profile_view"],
+      resolveAction: (rawArgs) => ({ action: "add_network_to_profile_view", args: { action: "add_network_to_profile_view", networkName: rawArgs.networkName, profileViewName: rawArgs.profileViewName, partNames: rawArgs.partNames } }),
+    },
+    {
+      toolName: "civil3d_pipe_set_part_properties",
+      displayName: "Civil 3D Set Network Part Properties",
+      description: "Sets the Description (what pipe/structure labels print as <[Description]>) and/or renames a part of a gravity or pressure network, found by network and part name. Use it to give a stand-in part the real material text from the as-built, e.g. an existing water main crossing modeled with a gravity part.",
+      inputShape: { networkName: z.string(), partName: z.string(), description: z.string().optional(), newName: z.string().min(1).optional() },
+      supportedActions: ["set_part_properties"],
+      resolveAction: (rawArgs) => ({ action: "set_part_properties", args: { action: "set_part_properties", networkName: rawArgs.networkName, partName: rawArgs.partName, description: rawArgs.description, newName: rawArgs.newName } }),
     },
   ],
 };

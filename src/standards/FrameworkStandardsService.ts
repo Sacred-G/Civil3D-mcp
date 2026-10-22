@@ -48,24 +48,28 @@ const TOPIC_ALIASES: Record<string, string[]> = {
   proposed_existing: ["proposed", "existing", "design", "survey", "conditions"],
   pipe_networks: ["pipe", "pipes", "structure", "pressure pipe", "network"],
   profile_section: ["profile", "profiles", "section", "sections", "profile view", "section view"],
+  mdwasd: ["mdwasd", "miami-dade", "wasd"],
 };
 
 let cachedRulesPromise: Promise<FrameworkPromptRule[]> | null = null;
 
-function getPromptRulesPath(): string {
+// Rule files merged into one lookup: the Civil 3D framework rules plus the Miami-Dade WASD
+// (Water & Sewer Department) design/construction standards (UC-005, GS 0.5, GS 1.5, WS 2.21, ...).
+const RULE_FILES = ["civil3d_framework_rules.json", "mdwasd_rules.json"];
+
+function getPromptRulesPath(fileName: string): string {
   const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
-  return path.resolve(
-    currentDirectory,
-    "../standards/data/civil3d_framework_rules.json"
-  );
+  return path.resolve(currentDirectory, "../standards/data", fileName);
 }
 
 async function loadPromptRules(): Promise<FrameworkPromptRule[]> {
   if (!cachedRulesPromise) {
-    cachedRulesPromise = readFile(getPromptRulesPath(), "utf8").then((raw) => {
-      const parsed = JSON.parse(raw) as FrameworkPromptRule[];
-      return Array.isArray(parsed) ? parsed : [];
-    });
+    cachedRulesPromise = Promise.all(
+      RULE_FILES.map(async (fileName) => {
+        const parsed = JSON.parse(await readFile(getPromptRulesPath(fileName), "utf8")) as FrameworkPromptRule[];
+        return Array.isArray(parsed) ? parsed : [];
+      })
+    ).then((lists) => lists.flat());
   }
 
   return await cachedRulesPromise;

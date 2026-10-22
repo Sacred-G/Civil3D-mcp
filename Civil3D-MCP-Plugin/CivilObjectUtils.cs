@@ -21,6 +21,12 @@ public static class CivilObjectUtils
       return null;
     }
 
+    // Civil styles (including label set styles) hide Name behind an ambiguous reflection lookup.
+    if (value is Autodesk.Civil.DatabaseServices.Styles.StyleBase style)
+    {
+      return style.Name;
+    }
+
     return Civil3DCompatibility.GetPropertyValue(value, "Name")?.ToString();
   }
 

@@ -206,6 +206,10 @@ const ProfileViewCreateArgsSchema = z.object({
   insertY: z.number(),
   style: z.string().optional(),
   bandSet: z.string().optional(),
+  stationStart: z.number().optional(),
+  stationEnd: z.number().optional(),
+  elevationMin: z.number().optional(),
+  elevationMax: z.number().optional(),
 });
 
 const ProfileViewBandSetArgsSchema = z.object({
@@ -214,9 +218,53 @@ const ProfileViewBandSetArgsSchema = z.object({
   bandSetName: z.string(),
 });
 
+const StationElevationSchema = z.object({ station: z.number(), elevation: z.number() });
+const ModelXYSchema = z.object({ x: z.number(), y: z.number() });
+
+const ProfileViewInfoArgsSchema = z.object({
+  action: z.literal("view_info"),
+  profileViewName: z.string().optional(),
+  points: z.array(StationElevationSchema).max(500).optional(),
+  xyPoints: z.array(ModelXYSchema).max(500).optional(),
+});
+
+const ProfileViewStylesArgsSchema = z.object({ action: z.literal("view_styles") });
+
+const ProfileViewAnnotationsArgsSchema = z.object({
+  action: z.literal("view_annotations"),
+  profileViewName: z.string().optional(),
+});
+
+const AnnotationItemSchema = z.object({}).passthrough();
+
+const ProfileViewApplyAnnotationsArgsSchema = z.object({
+  action: z.literal("view_apply_annotations"),
+  // optional: without it only plan labels (NoteLabel / StationOffsetLabel) are applied (e.g. a Fase 1 sheet has no profile view)
+  profileViewName: z.string().optional(),
+  style: z.string().optional(),
+  bandSetStyle: z.string().optional(),
+  clearBands: z.boolean().optional(),
+  labels: z.array(AnnotationItemSchema).max(500).optional(),
+  labelGroups: z.array(AnnotationItemSchema).max(100).optional(),
+  maxMatchDistance: z.number().positive().optional(),
+});
+
+const ProfileViewSetLocationArgsSchema = z.object({
+  action: z.literal("view_set_location"),
+  profileViewName: z.string(),
+  anchorStation: z.number(),
+  anchorElevation: z.number(),
+  targetX: z.number(),
+  targetY: z.number(),
+});
+
 // ─── Canonical input shape (union of all action fields) ───────────────────────
 
 const canonicalProfileInputShape = {
+  stationStart: z.number().optional(),
+  stationEnd: z.number().optional(),
+  elevationMin: z.number().optional(),
+  elevationMax: z.number().optional(),
   action: z.enum([
     "list",
     "get",
@@ -233,7 +281,23 @@ const canonicalProfileInputShape = {
     "check_k_values",
     "view_create",
     "view_band_set",
+    "view_info",
+    "view_set_location",
+    "view_styles",
+    "view_annotations",
+    "view_apply_annotations",
   ]),
+  bandSetStyle: z.string().optional(),
+  clearBands: z.boolean().optional(),
+  labels: z.array(AnnotationItemSchema).optional(),
+  labelGroups: z.array(AnnotationItemSchema).optional(),
+  maxMatchDistance: z.number().positive().optional(),
+  points: z.array(StationElevationSchema).optional(),
+  xyPoints: z.array(ModelXYSchema).optional(),
+  anchorStation: z.number().optional(),
+  anchorElevation: z.number().optional(),
+  targetX: z.number().optional(),
+  targetY: z.number().optional(),
   alignmentName: z.string().optional(),
   profileName: z.string().optional(),
   profileViewName: z.string().optional(),
@@ -563,6 +627,10 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           insertY: args.insertY,
           style: args.style,
           bandSet: args.bandSet,
+          stationStart: args.stationStart,
+          stationEnd: args.stationEnd,
+          elevationMin: args.elevationMin,
+          elevationMax: args.elevationMax,
         }),
       ),
     },
@@ -578,6 +646,78 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
         async (appClient) => await appClient.sendCommand("profileViewBandSet", {
           profileViewName: args.profileViewName,
           bandSetName: args.bandSetName,
+        }),
+      ),
+    },
+    view_info: {
+      action: "view_info",
+      inputSchema: ProfileViewInfoArgsSchema,
+      responseSchema: GenericProfileResponseSchema,
+      capabilities: ["query"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["profileViewInfo"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("profileViewInfo", {
+          profileViewName: args.profileViewName,
+          points: args.points,
+          xyPoints: args.xyPoints,
+        }),
+      ),
+    },
+    view_styles: {
+      action: "view_styles",
+      inputSchema: ProfileViewStylesArgsSchema,
+      responseSchema: GenericProfileResponseSchema,
+      capabilities: ["query"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["profileViewStyles"],
+      execute: async () => await withApplicationConnection(async (appClient) => await appClient.sendCommand("profileViewStyles", {})),
+    },
+    view_annotations: {
+      action: "view_annotations",
+      inputSchema: ProfileViewAnnotationsArgsSchema,
+      responseSchema: GenericProfileResponseSchema,
+      capabilities: ["query"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["profileViewAnnotations"],
+      execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("profileViewAnnotations", { profileViewName: args.profileViewName })),
+    },
+    view_apply_annotations: {
+      action: "view_apply_annotations",
+      inputSchema: ProfileViewApplyAnnotationsArgsSchema,
+      responseSchema: GenericProfileResponseSchema,
+      capabilities: ["edit"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["profileViewApplyAnnotations"],
+      execute: async (args) => await withApplicationConnection(async (appClient) => await appClient.sendCommand("profileViewApplyAnnotations", {
+        profileViewName: args.profileViewName,
+        style: args.style,
+        bandSetStyle: args.bandSetStyle,
+        clearBands: args.clearBands,
+        labels: args.labels,
+        labelGroups: args.labelGroups,
+        maxMatchDistance: args.maxMatchDistance,
+      })),
+    },
+    view_set_location: {
+      action: "view_set_location",
+      inputSchema: ProfileViewSetLocationArgsSchema,
+      responseSchema: GenericProfileResponseSchema,
+      capabilities: ["edit"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["profileViewSetLocation"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("profileViewSetLocation", {
+          profileViewName: args.profileViewName,
+          anchorStation: args.anchorStation,
+          anchorElevation: args.anchorElevation,
+          targetX: args.targetX,
+          targetY: args.targetY,
         }),
       ),
     },
@@ -604,6 +744,11 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
         "check_k_values",
         "view_create",
         "view_band_set",
+        "view_info",
+        "view_set_location",
+        "view_styles",
+        "view_annotations",
+        "view_apply_annotations",
       ],
       resolveAction: (rawArgs) => ({
         action: String(rawArgs.action ?? ""),
@@ -767,7 +912,7 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_profile_view_create",
       displayName: "Civil 3D Profile View Create",
-      description: "Creates a Civil 3D profile view at the specified insertion point in model space. Optionally applies a style and band set.",
+      description: "Creates a Civil 3D profile view at the specified insertion point in model space. Optionally applies a style and band set, and a user-specified station range (stationStart/stationEnd, may start before the alignment, e.g. -20) and elevation range (elevationMin/elevationMax) so deep pipes stay inside the grid.",
       inputShape: {
         alignmentName: z.string(),
         profileViewName: z.string(),
@@ -775,6 +920,10 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
         insertY: z.number(),
         style: z.string().optional(),
         bandSet: z.string().optional(),
+        stationStart: z.number().optional(),
+  stationEnd: z.number().optional(),
+  elevationMin: z.number().optional(),
+  elevationMax: z.number().optional(),
       },
       supportedActions: ["view_create"],
       resolveAction: (rawArgs) => ({
@@ -787,6 +936,10 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           insertY: rawArgs.insertY,
           style: rawArgs.style,
           bandSet: rawArgs.bandSet,
+          stationStart: rawArgs.stationStart,
+          stationEnd: rawArgs.stationEnd,
+          elevationMin: rawArgs.elevationMin,
+          elevationMax: rawArgs.elevationMax,
         },
       }),
     },
@@ -806,6 +959,73 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           profileViewName: rawArgs.profileViewName,
           bandSetName: rawArgs.bandSetName,
         },
+      }),
+    },
+    {
+      toolName: "civil3d_profile_view_info",
+      displayName: "Civil 3D Profile View Info",
+      description: "Reads a profile view's placement: location, grid origin, station and elevation range, model units per station and per foot of elevation (vertical exaggeration), and converts design points {station, elevation} to model XY (points) or model XY to station/elevation (xyPoints). Omit profileViewName to list every profile view with its placement (station0Elevation0 = model XY of STA 0+00 at elevation 0). Use it to place profile annotations from design values.",
+      inputShape: {
+        profileViewName: z.string().optional(),
+        points: z.array(StationElevationSchema).max(500).optional(),
+        xyPoints: z.array(ModelXYSchema).max(500).optional(),
+      },
+      supportedActions: ["view_info"],
+      resolveAction: (rawArgs) => ({
+        action: "view_info",
+        args: { action: "view_info", profileViewName: rawArgs.profileViewName, points: rawArgs.points, xyPoints: rawArgs.xyPoints },
+      }),
+    },
+    {
+      toolName: "civil3d_profile_view_styles",
+      displayName: "Civil 3D Profile View Styles",
+      description: "Lists the drawing's profile view styles, profile view band set styles, marker styles, and the label styles usable in profile views, keyed by label type: StructureProfileLabel, PipeProfileLabel, PressurePipeProfileLabel, PressureFittingProfileLabel, PressureAppurtenanceProfileLabel, StationElevationLabel, ProfileStationLabelGroup (major station) and ProfileMinorStationLabelGroup.",
+      inputShape: {},
+      supportedActions: ["view_styles"],
+      resolveAction: () => ({ action: "view_styles", args: { action: "view_styles" } }),
+    },
+    {
+      toolName: "civil3d_profile_view_annotations",
+      displayName: "Civil 3D Profile View Annotations",
+      description: "Reads a profile view's presentation, or every view's when profileViewName is omitted: view style, top and bottom bands (type, style, profiles, intervals), labels (type, style, featured part with plan position featureX/featureY, ratio, direction, station/elevation, dragged label location, text overrides by component index) and profile label groups (type, style, profile, increment). The labels and labelGroups arrays can be passed unchanged to civil3d_profile_view_apply_annotations.",
+      inputShape: { profileViewName: z.string().optional() },
+      supportedActions: ["view_annotations"],
+      resolveAction: (rawArgs) => ({ action: "view_annotations", args: { action: "view_annotations", profileViewName: rawArgs.profileViewName } }),
+    },
+    {
+      toolName: "civil3d_profile_view_apply_annotations",
+      displayName: "Civil 3D Profile View Apply Annotations",
+      description: "Applies presentation to a profile view (profileViewName optional: omit it to apply ONLY plan labels - NoteLabel / StationOffsetLabel, no profile view needed): view style by name, a band set style (bandSetStyle) or no bands (clearBands), labels and labelGroups as returned by civil3d_profile_view_annotations (from another drawing or view). Part labels are matched to this drawing's parts by plan position (featureX/featureY within maxMatchDistance, default 1 ft); dragged labels keep their labelLocation; text overrides are replayed by component index. Idempotent: a label that already exists (StationElevationLabel by station/elevation, NoteLabel/StationOffsetLabel by anchor + style, part labels by part + style) is updated in place (dragged position, layer, overrides) and reported with reused:true instead of being duplicated; a labelLocation that differs from the anchor counts as dragged even without dragged:true. Each label reports its handle or its error; the rest still get created.",
+      inputShape: {
+        profileViewName: z.string().optional(), // omitted = plan labels only (NoteLabel / StationOffsetLabel), e.g. a Fase 1 sheet
+        style: z.string().optional(),
+        bandSetStyle: z.string().optional(),
+        clearBands: z.boolean().optional(),
+        labels: z.array(AnnotationItemSchema).max(500).optional(),
+        labelGroups: z.array(AnnotationItemSchema).max(100).optional(),
+        maxMatchDistance: z.number().positive().optional(),
+      },
+      supportedActions: ["view_apply_annotations"],
+      resolveAction: (rawArgs) => ({
+        action: "view_apply_annotations",
+        args: { action: "view_apply_annotations", profileViewName: rawArgs.profileViewName, style: rawArgs.style, bandSetStyle: rawArgs.bandSetStyle, clearBands: rawArgs.clearBands, labels: rawArgs.labels, labelGroups: rawArgs.labelGroups, maxMatchDistance: rawArgs.maxMatchDistance },
+      }),
+    },
+    {
+      toolName: "civil3d_profile_view_set_location",
+      displayName: "Civil 3D Profile View Set Location",
+      description: "Moves a profile view so the grid point (anchorStation, anchorElevation) lands exactly on model point (targetX, targetY), e.g. to line a rebuilt view up with an existing sheet's viewports and annotations. Parts drawn in the view move with it.",
+      inputShape: {
+        profileViewName: z.string(),
+        anchorStation: z.number(),
+        anchorElevation: z.number(),
+        targetX: z.number(),
+        targetY: z.number(),
+      },
+      supportedActions: ["view_set_location"],
+      resolveAction: (rawArgs) => ({
+        action: "view_set_location",
+        args: { action: "view_set_location", profileViewName: rawArgs.profileViewName, anchorStation: rawArgs.anchorStation, anchorElevation: rawArgs.anchorElevation, targetX: rawArgs.targetX, targetY: rawArgs.targetY },
       }),
     },
   ],

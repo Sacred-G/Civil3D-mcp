@@ -113,6 +113,50 @@ public static class AlignmentEditCommands
     });
   }
 
+  // ─── alignmentSetStyle ────────────────────────────────────────────────────
+
+  /// <summary>
+  /// Re-styles an EXISTING alignment (create/offset_create only set the style at creation). The style must already exist in
+  /// the drawing (see civil3d_style list objectType=alignment); an unknown name is an error, never a silent fallback.
+  /// Idempotent: setting the style the alignment already has reports changed=false.
+  /// </summary>
+  public static Task<object?> SetStyleAsync(JsonObject? parameters)
+  {
+    var alignmentName = PluginRuntime.GetRequiredString(parameters, "alignmentName");
+    var styleName = PluginRuntime.GetRequiredString(parameters, "style");
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var alignment = CivilObjectUtils.FindAlignmentByName(civilDoc, transaction, alignmentName);
+      var styleId = LookupUtils.FindAlignmentStyleIdExact(civilDoc, transaction, styleName);
+      if (styleId.IsNull)
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.OBJECT_NOT_FOUND",
+          $"Alignment style '{styleName}' was not found in this drawing. Use civil3d_style list objectType=alignment to see the available styles.");
+      }
+
+      var writeAlignment = CivilObjectUtils.GetRequiredObject<Alignment>(
+        transaction, alignment.ObjectId, OpenMode.ForWrite);
+      var previousStyle = writeAlignment.StyleName;
+      var changed = writeAlignment.StyleId != styleId;
+      if (changed)
+      {
+        writeAlignment.StyleId = styleId;
+      }
+
+      return new Dictionary<string, object?>
+      {
+        ["alignmentName"] = alignment.Name,
+        ["operation"] = "set_style",
+        ["previousStyle"] = previousStyle,
+        ["style"] = styleName,
+        ["changed"] = changed,
+        ["success"] = true,
+      };
+    });
+  }
+
   // ─── alignmentSetStationEquation ─────────────────────────────────────────
 
   public static Task<object?> SetStationEquationAsync(JsonObject? parameters)

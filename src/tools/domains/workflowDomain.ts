@@ -4,6 +4,8 @@ import type { DomainToolDefinition } from "../domainRuntime.js";
 import { PIPE_DOMAIN_DEFINITION } from "./pipeDomain.js";
 import { SURFACE_DOMAIN_DEFINITION } from "./surfaceDomain.js";
 import { SURVEY_DOMAIN_DEFINITION } from "./surveyDomain.js";
+import { runFase1Audit, summarizeFase1 } from "./fase1Audit.js";
+import { runFase1Build, summarizeFase1Build } from "./fase1Build.js";
 
 const SurfaceVolumeMethodSchema = z.enum(["tin_volume", "average_end_area", "prismoidal"]);
 const WorkflowDataShortcutObjectTypeSchema = z.enum([
@@ -64,6 +66,49 @@ function buildWorkflowResult(
   };
 }
 
+// Fase 1 build: draws a spec (see scripts/c300-build-spec.mjs in the civil3d-mcp-workflows skill) in
+// one call. Entities/layers are intentionally loose (passthrough) rather than re-declaring
+// geometryDomain's DraftEntitySchema -- the plugin's createEntities call still validates them; this
+// just forwards the batch, so it can't drift out of sync with that schema as it evolves.
+const Fase1BuildEntitySchema = z.object({ kind: z.string() }).catchall(z.unknown());
+const Fase1BuildPlanLabelSchema = z.object({ type: z.enum(["NoteLabel", "StationOffsetLabel"]), style: z.string() }).catchall(z.unknown());
+const Fase1BuildXrefSchema = z.object({
+  filePath: z.string(),
+  layer: z.string().optional(),
+  overlay: z.boolean().optional(),
+  xrefName: z.string().optional(),
+  x: z.number().optional(),
+  y: z.number().optional(),
+  z: z.number().optional(),
+  scale: z.number().optional(),
+  rotation: z.number().optional(),
+});
+const Fase1BuildAlignmentSchema = z.object({
+  name: z.string(),
+  points: z.array(z.object({ x: z.number(), y: z.number() })).min(2),
+  type: z.enum(["centerline", "offset"]).optional(),
+  site: z.string().optional(),
+  style: z.string().optional(),
+  layer: z.string().optional(),
+  labelSet: z.string().optional(),
+});
+const Fase1BuildClImportSchema = z.object({ blockName: z.string(), sourceFilePath: z.string() });
+const Fase1BuildTwistSchema = z.object({
+  layout: z.string(),
+  viewportHandle: z.string().optional(),
+  twistDegrees: z.number().optional(),
+  streetAngleDegrees: z.number().optional(),
+  centerX: z.number().optional(),
+  centerY: z.number().optional(),
+});
+const Fase1BuildTitleReplacementSchema = z.object({
+  layout: z.string(),
+  contains: z.string(),
+  find: z.string(),
+  replace: z.string(),
+});
+const Fase1BuildSheetSchema = z.object({ minX: z.number(), minY: z.number(), maxX: z.number(), maxY: z.number() });
+
 const canonicalWorkflowInputShape = {
   action: z.enum([
     "corridor_qc_report",
@@ -78,7 +123,29 @@ const canonicalWorkflowInputShape = {
     "pipe_network_design",
     "plan_production_publish",
     "qc_fix_and_verify",
+    "fase1_audit",
+    "fase1_build",
   ]),
+  alignmentStyle: z.string().optional(),
+  boundaryLayer: z.string().optional(),
+  allowedLayouts: z.array(z.string()).optional(),
+  xrefs: z.array(Fase1BuildXrefSchema).optional(),
+  alignment: Fase1BuildAlignmentSchema.optional(),
+  clImport: Fase1BuildClImportSchema.optional(),
+  blockImports: z.array(Fase1BuildClImportSchema).optional(),
+  entities: z.array(Fase1BuildEntitySchema).optional(),
+  planLabels: z.array(Fase1BuildPlanLabelSchema).optional(),
+  planLabelsFallback: z.array(Fase1BuildEntitySchema).optional(),
+  layers: z.record(z.string(), z.unknown()).optional(),
+  entitySpace: z.enum(["model", "paper"]).optional(),
+  entityLayout: z.string().optional(),
+  twists: z.array(Fase1BuildTwistSchema).optional(),
+  titleBlock: z.array(Fase1BuildTitleReplacementSchema).optional(),
+  expectedDocument: z.string().optional(),
+  stripPropNotes: z.boolean().optional(),
+  freezeLayers: z.array(z.string()).optional(),
+  sheet: Fase1BuildSheetSchema.optional(),
+  save: z.boolean().optional(),
   corridorName: z.string().optional(),
   outputPath: z.string().optional(),
   overwrite: z.boolean().optional(),
@@ -209,6 +276,37 @@ const ProjectReferenceSetupArgsSchema = z.object({
   dryRun: z.boolean().optional(),
   saveAs: z.string().optional(),
   overwrite: z.boolean().optional(),
+});
+
+const Fase1AuditArgsSchema = z.object({
+  action: z.literal("fase1_audit"),
+  alignmentStyle: z.string().optional(),
+  boundaryLayer: z.string().optional(),
+  allowedLayouts: z.array(z.string()).optional(),
+});
+
+const Fase1BuildArgsSchema = z.object({
+  action: z.literal("fase1_build"),
+  templatePath: z.string().optional(),
+  saveAs: z.string().optional(),
+  overwrite: z.boolean().optional(),
+  xrefs: z.array(Fase1BuildXrefSchema).optional(),
+  alignment: Fase1BuildAlignmentSchema.optional(),
+  clImport: Fase1BuildClImportSchema.optional(),
+  blockImports: z.array(Fase1BuildClImportSchema).optional(),
+  entities: z.array(Fase1BuildEntitySchema).optional(),
+  planLabels: z.array(Fase1BuildPlanLabelSchema).optional(),
+  planLabelsFallback: z.array(Fase1BuildEntitySchema).optional(),
+  layers: z.record(z.string(), z.unknown()).optional(),
+  entitySpace: z.enum(["model", "paper"]).optional(),
+  entityLayout: z.string().optional(),
+  twists: z.array(Fase1BuildTwistSchema).optional(),
+  titleBlock: z.array(Fase1BuildTitleReplacementSchema).optional(),
+  expectedDocument: z.string().optional(),
+  stripPropNotes: z.boolean().optional(),
+  freezeLayers: z.array(z.string()).optional(),
+  sheet: Fase1BuildSheetSchema.optional(),
+  save: z.boolean().optional(),
 });
 
 const DrawingReadinessAuditArgsSchema = z.object({
@@ -449,6 +547,108 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
           overwrite: args.overwrite ?? false,
         }),
       ),
+    },
+    fase1_audit: {
+      action: "fase1_audit",
+      inputSchema: Fase1AuditArgsSchema,
+      responseSchema: WorkflowResponseSchema,
+      capabilities: ["query", "inspect", "analyze"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: [
+        "listLayouts",
+        "listTextEntities",
+        "listPressureNetworks",
+        "profileViewInfo",
+        "listPipeNetworks",
+        "listAlignments",
+        "getAlignment",
+        "listSurfaces",
+        "listLayers",
+      ],
+      execute: async (args) => await withApplicationConnection(async (appClient) => {
+        const checks = await runFase1Audit((method, params) => appClient.sendCommand(method, params), {
+          alignmentStyle: args.alignmentStyle as string | undefined,
+          boundaryLayer: args.boundaryLayer as string | undefined,
+          allowedLayouts: args.allowedLayouts as string[] | undefined,
+        });
+        const totals = summarizeFase1(checks);
+        return buildWorkflowResult(
+          "fase1_audit",
+          totals.summary,
+          checks.map((check) => ({
+            name: check.what,
+            action: "fase1.audit",
+            status: "completed" as const,
+            result: { level: check.level, detail: check.detail },
+          })),
+          { fail: totals.fail, warn: totals.warn, ok: totals.ok, checks },
+          checks.filter((check) => check.level !== "OK").map((check) => `${check.level} ${check.what}: ${check.detail}`),
+        );
+      }),
+    },
+    fase1_build: {
+      action: "fase1_build",
+      inputSchema: Fase1BuildArgsSchema,
+      responseSchema: WorkflowResponseSchema,
+      capabilities: ["create", "edit", "manage"],
+      requiresActiveDrawing: false,
+      safeForRetry: false,
+      pluginMethods: [
+        "newDrawing",
+        "saveDrawing",
+        "listOpenDocuments",
+        "attachXref",
+        "createAlignment",
+        "insertBlockReference",
+        "createEntities",
+        "setViewportTwist",
+        "listTextEntities",
+        "updateTextContent",
+        "eraseEntities",
+        "listPolylineEntities",
+        "listShapeEntities",
+        "moveEntities",
+        "listLayers",
+        "createOrUpdateLayer",
+      ],
+      execute: async (args) => await withApplicationConnection(async (appClient) => {
+        const buildSteps = await runFase1Build((method, params) => appClient.sendCommand(method, params), {
+          templatePath: args.templatePath as string | undefined,
+          saveAs: args.saveAs as string | undefined,
+          overwrite: args.overwrite as boolean | undefined,
+          xrefs: args.xrefs as Parameters<typeof runFase1Build>[1]["xrefs"],
+          alignment: args.alignment as Parameters<typeof runFase1Build>[1]["alignment"],
+          clImport: args.clImport as Parameters<typeof runFase1Build>[1]["clImport"],
+          blockImports: args.blockImports as Parameters<typeof runFase1Build>[1]["blockImports"],
+          entities: args.entities as Parameters<typeof runFase1Build>[1]["entities"],
+          planLabels: args.planLabels as Parameters<typeof runFase1Build>[1]["planLabels"],
+          planLabelsFallback: args.planLabelsFallback as Parameters<typeof runFase1Build>[1]["planLabelsFallback"],
+          layers: args.layers as Record<string, unknown> | undefined,
+          entitySpace: args.entitySpace as "model" | "paper" | undefined,
+          entityLayout: args.entityLayout as string | undefined,
+          twists: args.twists as Parameters<typeof runFase1Build>[1]["twists"],
+          titleBlock: args.titleBlock as Parameters<typeof runFase1Build>[1]["titleBlock"],
+          expectedDocument: args.expectedDocument as string | undefined,
+          stripPropNotes: args.stripPropNotes as boolean | undefined,
+          freezeLayers: args.freezeLayers as string[] | undefined,
+          sheet: args.sheet as Parameters<typeof runFase1Build>[1]["sheet"],
+          save: args.save as boolean | undefined,
+        });
+        const totals = summarizeFase1Build(buildSteps);
+        return buildWorkflowResult(
+          "fase1_build",
+          totals.summary,
+          buildSteps.map((step) => ({
+            name: step.name,
+            action: "fase1.build",
+            status: step.status === "SKIPPED" ? ("skipped" as const) : ("completed" as const),
+            result: { status: step.status, detail: step.detail },
+          })),
+          { fail: totals.fail, skipped: totals.skipped, ok: totals.ok, steps: buildSteps },
+          buildSteps.filter((step) => step.status !== "OK").map((step) => `${step.status} ${step.name}: ${step.detail}`),
+        );
+      }),
     },
     drawing_readiness_audit: {
       action: "drawing_readiness_audit",
@@ -749,6 +949,8 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
         "pipe_network_design",
         "plan_production_publish",
         "qc_fix_and_verify",
+        "fase1_audit",
+        "fase1_build",
       ],
       capabilities: ["query", "analyze", "generate", "edit", "manage", "export", "create", "import"],
       requiresActiveDrawing: true,
@@ -916,6 +1118,58 @@ export const WORKFLOW_DOMAIN_DEFINITION: DomainToolDefinition = {
           saveAs: rawArgs.saveAs,
           overwrite: rawArgs.overwrite,
         },
+      }),
+    },
+    {
+      toolName: "civil3d_workflow_fase1_audit",
+      displayName: "Civil 3D Workflow Fase 1 Audit",
+      description: "Read-only audit of the open drawing against the firm's 'Fase 1 = existing conditions only' rule: only Model + C-300 layouts, no PROP/PROPOSED wording, no pressure/gravity networks or profile views, every alignment in the firm style (default BCC - ALIGNMENT) and the EG surface boundary layer (default C-TINN-BNDY) frozen. Returns every check with OK/WARN/FAIL and the exact tool call that fixes each FAIL.",
+      inputShape: {
+        alignmentStyle: z.string().optional(),
+        boundaryLayer: z.string().optional(),
+        allowedLayouts: z.array(z.string()).optional(),
+      },
+      supportedActions: ["fase1_audit"],
+      resolveAction: (rawArgs) => ({
+        action: "fase1_audit",
+        args: {
+          action: "fase1_audit",
+          alignmentStyle: rawArgs.alignmentStyle,
+          boundaryLayer: rawArgs.boundaryLayer,
+          allowedLayouts: rawArgs.allowedLayouts,
+        },
+      }),
+    },
+    {
+      toolName: "civil3d_workflow_fase1_build",
+      displayName: "Civil 3D Workflow Fase 1 Build",
+      description: "Assembles a Fase 1 C-300 sheet (existing conditions only) from a pre-computed spec in ONE call: opens/saves the template, refuses to write unless the ACTIVE document matches expectedDocument (or saveAs), attaches xrefs (Overlay), creates the frontage alignment (with style/labelSet), imports the _cl block definition once and places the rest of the entity batch, twists the C-300 viewport and Model tab, edits title-block text by substring, removes PROP/PROPOSED from the sheet notes (rewrites the on-sheet MD-WASD notes, erases off-sheet PROP template notes; stripPropNotes:false to skip), re-checks the document and saves. Build the payload with scripts/c300-build-spec.mjs + scripts/fase1-build-payload.mjs (skill civil3d-mcp-workflows) — this tool draws it, it does not derive it from a topo dump itself. Called with only expectedDocument it just cleans the PROP notes of that drawing and saves. Stops at the first failing step (later steps report 'skipped'); nothing before the failure is undone.",
+      inputShape: {
+        templatePath: z.string().optional(),
+        saveAs: z.string().optional(),
+        overwrite: z.boolean().optional(),
+        xrefs: z.array(Fase1BuildXrefSchema).optional(),
+        alignment: Fase1BuildAlignmentSchema.optional(),
+        clImport: Fase1BuildClImportSchema.optional(),
+        blockImports: z.array(Fase1BuildClImportSchema).optional(),
+        entities: z.array(Fase1BuildEntitySchema).optional(),
+        planLabels: z.array(Fase1BuildPlanLabelSchema).optional(),
+        planLabelsFallback: z.array(Fase1BuildEntitySchema).optional(),
+        layers: z.record(z.string(), z.unknown()).optional(),
+        entitySpace: z.enum(["model", "paper"]).optional(),
+        entityLayout: z.string().optional(),
+        twists: z.array(Fase1BuildTwistSchema).optional(),
+        titleBlock: z.array(Fase1BuildTitleReplacementSchema).optional(),
+        expectedDocument: z.string().optional(),
+        stripPropNotes: z.boolean().optional(),
+        freezeLayers: z.array(z.string()).optional(),
+        sheet: Fase1BuildSheetSchema.optional(),
+        save: z.boolean().optional(),
+      },
+      supportedActions: ["fase1_build"],
+      resolveAction: (rawArgs) => ({
+        action: "fase1_build",
+        args: { action: "fase1_build", ...rawArgs },
       }),
     },
     {

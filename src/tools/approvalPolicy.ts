@@ -18,7 +18,32 @@ interface ApprovalGrant {
   parametersHash: string;
   drawingFingerprint: string;
   expiresAt: number;
+  /** Set for tokens issued by requestPlan: they belong to an ordered plan on ONE document. */
+  planId?: string;
+  stepIndex?: number;
 }
+
+interface PlanState {
+  documentId: string;
+  length: number;
+  nextIndex: number;
+  expiresAt: number;
+}
+
+export interface PlanStepInput {
+  target: ApprovalTarget;
+  parameters: JsonObject;
+}
+
+export interface PlanApprovalReceipt {
+  planId: string;
+  documentId: string;
+  expiresAt: string;
+  steps: Array<{ index: number; toolName: string; action: string; approvalToken: string }>;
+}
+
+export const MAX_PLAN_STEPS = 40;
+export const MAX_PLAN_TTL_MS = 30 * 60 * 1000;
 
 export interface ApprovalReceipt {
   approvalToken: string;
@@ -83,6 +108,13 @@ export function hasApprovalRisk(target: ApprovalTarget): boolean {
   );
 }
 
+/** Identity of the active document (path/name only, NOT its contents): stays stable while a plan mutates the drawing. */
+export async function getActiveDocumentIdentity(): Promise<string> {
+  const info = await withApplicationConnection((client) => client.sendCommand("getDrawingInfo", {})) as JsonObject | null;
+  const identity = String(info?.filePath ?? info?.drawingName ?? info?.fileName ?? "");
+  return createHash("sha256").update(identity).digest("hex");
+}
+
 export async function getActiveDrawingFingerprint(): Promise<string> {
   const drawingInfo = await withApplicationConnection((client) => client.sendCommand("getDrawingInfo", {}));
   return createHash("sha256").update(stableJson(drawingInfo)).digest("hex");
@@ -99,11 +131,61 @@ function isNoActiveDrawingError(error: unknown): boolean {
 
 export class ApprovalPolicyService {
   private readonly grants = new Map<string, ApprovalGrant>();
+  private readonly plans = new Map<string, PlanState>();
 
   public constructor(
     private readonly drawingFingerprint: DrawingFingerprintProvider = getActiveDrawingFingerprint,
     private readonly now: () => number = () => Date.now(),
+    private readonly documentIdentity: DrawingFingerprintProvider = getActiveDocumentIdentity,
   ) {}
+
+  /**
+   * Approves an ORDERED list of exact actions in one call (e.g. the ~10 steps of a Fase 1 clean-up). Each step gets its own
+   * single-use token bound to its exact parameters; the whole plan is bound to the active DOCUMENT (not to its contents, which
+   * every step changes) and steps must be executed in order. Any deviation (other document, other parameters, skipped step,
+   * expiry) is rejected exactly like a single-step token.
+   */
+  public async requestPlan(
+    steps: PlanStepInput[],
+    ttlMs = 15 * 60 * 1000,
+  ): Promise<PlanApprovalReceipt> {
+    if (steps.length === 0) {
+      throw new ApprovalValidationError("A plan needs at least one step.");
+    }
+    if (steps.length > MAX_PLAN_STEPS) {
+      throw new ApprovalValidationError(`A plan may have at most ${MAX_PLAN_STEPS} steps (got ${steps.length}); split it.`);
+    }
+    steps.forEach((step, index) => {
+      if (!isApprovalRequired(step.target)) {
+        throw new ApprovalValidationError(
+          `Plan step ${index} ('${step.target.toolName}' action '${step.target.action}') does not require approval; remove it from the plan and execute it directly.`,
+        );
+      }
+    });
+
+    const boundedTtl = Math.min(ttlMs, MAX_PLAN_TTL_MS);
+    const expiresAt = this.now() + boundedTtl;
+    const documentId = await this.documentIdentity();
+    const drawingFingerprint = await this.drawingFingerprint();
+    const planId = randomUUID();
+    this.plans.set(planId, { documentId, length: steps.length, nextIndex: 0, expiresAt });
+
+    const issued = steps.map((step, index) => {
+      const approvalToken = randomUUID();
+      this.grants.set(approvalToken, {
+        toolName: step.target.toolName,
+        action: step.target.action,
+        parametersHash: hashParameters(step.parameters),
+        drawingFingerprint,
+        expiresAt,
+        planId,
+        stepIndex: index,
+      });
+      return { index, toolName: step.target.toolName, action: step.target.action, approvalToken };
+    });
+
+    return { planId, documentId, expiresAt: new Date(expiresAt).toISOString(), steps: issued };
+  }
 
   private async fingerprintFor(target: ApprovalTarget): Promise<string> {
     try {
@@ -175,6 +257,27 @@ export class ApprovalPolicyService {
       grant.parametersHash !== hashParameters(parameters)
     ) {
       throw new ApprovalValidationError("Approval token does not match this tool action and its parameters.");
+    }
+
+    if (grant.planId !== undefined) {
+      const plan = this.plans.get(grant.planId);
+      if (!plan || plan.expiresAt <= this.now()) {
+        this.plans.delete(grant.planId);
+        throw new ApprovalValidationError("The approved plan has expired. Request a new plan approval.");
+      }
+      if (grant.stepIndex !== plan.nextIndex) {
+        throw new ApprovalValidationError(
+          `Plan steps must run in order: expected step ${plan.nextIndex}, got step ${grant.stepIndex}. Request a new plan approval.`,
+        );
+      }
+      if (plan.documentId !== await this.documentIdentity()) {
+        throw new ApprovalValidationError("The active document changed after the plan was approved. Request approval for the current document.");
+      }
+      plan.nextIndex += 1;
+      if (plan.nextIndex >= plan.length) {
+        this.plans.delete(grant.planId);
+      }
+      return;
     }
 
     const activeDrawingFingerprint = await this.fingerprintFor(target);

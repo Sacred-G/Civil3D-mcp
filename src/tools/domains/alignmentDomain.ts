@@ -108,6 +108,7 @@ const canonicalAlignmentInputShape = {
     "add_tangent",
     "add_spiral",
     "delete_entity",
+    "set_style",
     "set_station_equation",
     "get_station_offset",
     "offset_create",
@@ -227,6 +228,12 @@ const AlignmentDeleteEntityArgsSchema = z.object({
   action: z.literal("delete_entity"),
   name: z.string(),
   entityIndex: z.number().int().min(0),
+});
+
+const AlignmentSetStyleArgsSchema = z.object({
+  action: z.literal("set_style"),
+  name: z.string(),
+  style: z.string().min(1),
 });
 
 const AlignmentSetStationEquationArgsSchema = z.object({
@@ -513,6 +520,21 @@ export const ALIGNMENT_DOMAIN_DEFINITION: DomainToolDefinition = {
         }),
       ),
     },
+    set_style: {
+      action: "set_style",
+      inputSchema: AlignmentSetStyleArgsSchema,
+      responseSchema: GenericAlignmentResponseSchema,
+      capabilities: ["edit", "manage"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["alignmentSetStyle"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("alignmentSetStyle", {
+          alignmentName: args.name,
+          style: args.style,
+        }),
+      ),
+    },
     set_station_equation: {
       action: "set_station_equation",
       inputSchema: AlignmentSetStationEquationArgsSchema,
@@ -602,6 +624,7 @@ export const ALIGNMENT_DOMAIN_DEFINITION: DomainToolDefinition = {
         "add_tangent",
         "add_spiral",
         "delete_entity",
+        "set_style",
         "set_station_equation",
         "get_station_offset",
         "offset_create",
@@ -701,6 +724,24 @@ export const ALIGNMENT_DOMAIN_DEFINITION: DomainToolDefinition = {
           action: "delete_entity",
           name: rawArgs.alignmentName,
           entityIndex: rawArgs.entityIndex,
+        },
+      }),
+    },
+    {
+      toolName: "civil3d_alignment_set_style",
+      displayName: "Civil 3D Alignment Set Style",
+      description: "Changes the alignment style (line/curve/tick display, e.g. \"BCC - ALIGNMENT\") of an EXISTING Civil 3D alignment; create only sets the style at creation. The style must already exist in the drawing (civil3d_style list objectType=alignment) — an unknown name is an error. Idempotent (changed=false if already set). Does not change label sets (use civil3d_label add label_set) or the alignment's geometry, profiles or labels.",
+      inputShape: {
+        alignmentName: z.string(),
+        style: z.string().min(1),
+      },
+      supportedActions: ["set_style"],
+      resolveAction: (rawArgs) => ({
+        action: "set_style",
+        args: {
+          action: "set_style",
+          name: rawArgs.alignmentName,
+          style: rawArgs.style,
         },
       }),
     },
