@@ -23,6 +23,14 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# SHA-256 through .NET rather than Get-FileHash: Windows PowerShell 5.1 started from a
+# PowerShell 7 prompt inherits 7's PSModulePath and cannot load the module Get-FileHash lives in.
+function Get-Sha256([string] $Path) {
+  $stream = [System.IO.File]::OpenRead($Path)
+  try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)) }
+  finally { $stream.Dispose() }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if (-not $Destination) { $Destination = Join-Path $repoRoot "C_References" }
 
@@ -71,7 +79,7 @@ foreach ($name in $required.Keys) {
     # unhashable file as different and let the copy below decide.
     $identical = $false
     try {
-      $identical = (Get-FileHash $target).Hash -eq (Get-FileHash $source.FullName).Hash
+      $identical = (Get-Sha256 $target) -eq (Get-Sha256 $source.FullName)
     } catch {
       Write-Warning "  could not hash $name ($($_.Exception.Message)); refreshing"
     }

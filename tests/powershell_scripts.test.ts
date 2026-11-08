@@ -12,10 +12,19 @@ const onWindows = process.platform === "win32";
 const hasPwsh = onWindows && spawnSync("where.exe", ["pwsh"], { stdio: "ignore" }).status === 0;
 const shells = ["powershell", ...(hasPwsh ? ["pwsh"] : [])];
 
+// Windows PowerShell 5.1 started from PowerShell 7 inherits 7's module folders in PSModulePath and
+// then fails to load its own core modules (Get-FileHash "not recognized"). Drop the variable for 5.1
+// so it rebuilds its default; pwsh keeps it.
+function shellEnv(shell: string, env: NodeJS.ProcessEnv | undefined): NodeJS.ProcessEnv {
+  const out: NodeJS.ProcessEnv = { ...(env ?? process.env) };
+  if (shell === "powershell") for (const key of Object.keys(out)) if (key.toUpperCase() === "PSMODULEPATH") delete out[key];
+  return out;
+}
+
 function runPowerShell(shell: string, script: string, options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   return spawnSync(shell, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script], {
     cwd: options.cwd,
-    env: options.env,
+    env: shellEnv(shell, options.env),
     encoding: "utf8",
     input: "",
     timeout: 120_000,
@@ -28,7 +37,7 @@ function runPowerShell(shell: string, script: string, options: { cwd?: string; e
 function startPowerShell(shell: string, args: string[], options: { cwd?: string; env?: NodeJS.ProcessEnv } = {}) {
   const child = spawn(shell, ["-NoProfile", "-ExecutionPolicy", "Bypass", "-File", ...args], {
     cwd: options.cwd,
-    env: options.env,
+    env: shellEnv(shell, options.env),
     stdio: ["ignore", "pipe", "pipe"],
     windowsHide: true,
   });
