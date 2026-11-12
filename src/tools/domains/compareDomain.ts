@@ -33,6 +33,8 @@ const SideSchema = z.object({
   sourcePath: z.string().nullish(),
   sourceKind: z.string().nullish(),
   capturedAtUtc: z.string().nullish(),
+  // "fast" when curves were fingerprinted without extents (very large drawings).
+  entityDetail: z.enum(["full", "fast"]).nullish(),
   entityCount: z.number().int(),
   civilObjectCount: z.number().int(),
   warnings: z.array(z.string()),
@@ -88,6 +90,7 @@ export const SnapshotResponseSchema = z.object({
   schema: z.string(),
   capturedAtUtc: z.string().nullish(),
   sourcePath: z.string().nullish(),
+  entityDetail: z.enum(["full", "fast"]).nullish(),
   entityCount: z.number().int(),
   civilObjectCount: z.number().int(),
   bytes: z.number().int(),

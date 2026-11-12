@@ -76,6 +76,7 @@ public static class CompareCommands
       ["schema"] = fingerprint.Schema,
       ["capturedAtUtc"] = fingerprint.CapturedAtUtc,
       ["sourcePath"] = fingerprint.SourcePath,
+      ["entityDetail"] = fingerprint.EntityDetail,
       ["entityCount"] = fingerprint.Entities.Count,
       ["civilObjectCount"] = fingerprint.CivilObjects.Count,
       ["bytes"] = Encoding.UTF8.GetByteCount(json),
