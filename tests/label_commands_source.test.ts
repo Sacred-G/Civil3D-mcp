@@ -64,6 +64,9 @@ describe("label_add source guards (LabelCommands.cs)", () => {
   it("reports the alignment's label group count after label_set", () => {
     const labelSet = blockAfter('string.Equals(labelType, "label_set", StringComparison.OrdinalIgnoreCase))\n');
     expect(labelSet).toContain("ImportLabelSet(labelSetId)");
+    // A blank labelStyle fails: label_set has no default set to fall back on.
+    expect(labelSet).toMatch(/if \(string\.IsNullOrWhiteSpace\(labelStyle\)\)\s*\{\s*throw new JsonRpcDispatchException\("CIVIL3D\.INVALID_INPUT"/);
+    expect(labelSet.indexOf("IsNullOrWhiteSpace(labelStyle)")).toBeLessThan(labelSet.indexOf("FindStyleInCollection("));
     // An unknown set name fails instead of importing the first set.
     expect(labelSet).toContain('FindStyleInCollection(transaction, civilDoc.Styles.LabelSetStyles.AlignmentLabelSetStyles, labelStyle, "alignment label set")');
     expect(labelSet).not.toContain("LookupUtils.GetAlignmentLabelSetId");
