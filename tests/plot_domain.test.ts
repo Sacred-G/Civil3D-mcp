@@ -197,6 +197,9 @@ describe("civil3d_plot schemas", () => {
       { layoutNames: ["C-101"], outputDirectory: "C:/out", plotArea: "window" },
       { layoutNames: ["C-101"], outputDirectory: "C:/out", windowCorners: [0, 0, 36, 24] },
       { layoutNames: ["C-101"], outputDirectory: "C:/out", plotArea: "window", windowCorners: [0, 0, 36] },
+      // A window with no width or no height.
+      { layoutNames: ["C-101"], outputDirectory: "C:/out", plotArea: "window", windowCorners: [5, 0, 5, 24] },
+      { layoutNames: ["C-101"], outputDirectory: "C:/out", plotArea: "window", windowCorners: [0, 3, 36, 3] },
       { layoutNames: ["C-101"], outputDirectory: "C:/out", plotArea: "display" },
     ];
     for (const args of invalid) {
@@ -205,6 +208,14 @@ describe("civil3d_plot schemas", () => {
         JSON.stringify(args),
       ).toBe(false);
     }
+    // Any two opposite corners are accepted; the plugin orders them.
+    expect(PlotLayoutsToPdfArgsSchema.safeParse({
+      action: "plot_layouts_to_pdf",
+      layoutNames: ["C-101"],
+      outputDirectory: "C:/out",
+      plotArea: "window",
+      windowCorners: [36, 24, 0, 0],
+    }).success).toBe(true);
     const listPlotters = PLOT_DOMAIN_DEFINITION.actions.list_plotters.inputSchema;
     expect(listPlotters.safeParse({ action: "list_plotters", device: "DWG To PDF.pc3" }).success).toBe(true);
     expect(listPlotters.safeParse({ action: "list_plotters", device: "  " }).success).toBe(false);
@@ -396,9 +407,21 @@ describe("civil3d_plot native implementation guards", () => {
     // A medium such as ARCH D (36 x 24) is already landscape at rotation 0;
     // judging by the rotation alone plotted it on a portrait page, cut off.
     const code = pluginCode("PlotCommands.cs");
-    expect(code).toContain("return (paper.X > paper.Y) != quarterTurn;");
+    expect(code).toContain("return (paperWidth > paperHeight) != quarterTurn;");
     expect(code).toContain('IsLandscape(source)');
     expect(pluginSource("PlotCommands.cs")).toContain('IsLandscape(settings) ? "landscape" : "portrait"');
+  });
+
+  it("measures the default orientation on the paperSize override, not the layout's own paper", () => {
+    const code = pluginCode("PlotCommands.cs");
+    expect(code).toMatch(/string\.IsNullOrWhiteSpace\(paperSize\)\s*\?\s*IsLandscape\(source\)\s*:\s*IsLandscapeOnMedia\(probe, paper\.Canonical, rotation\)/);
+    expect(code).toContain("PlotSettingsValidator.Current.SetCanonicalMediaName(probe, canonicalMedia);");
+  });
+
+  it("sends the window's lower-left corner first, whatever order the caller gave", () => {
+    const code = pluginCode("PlotCommands.cs");
+    expect(code).toContain("FormatPoint(Math.Min(windowCorners[0], windowCorners[2]), Math.Min(windowCorners[1], windowCorners[3]))");
+    expect(code).toContain("FormatPoint(Math.Max(windowCorners[0], windowCorners[2]), Math.Max(windowCorners[1], windowCorners[3]))");
   });
 
   it("strips C# comments and every string form before the code guards run", () => {

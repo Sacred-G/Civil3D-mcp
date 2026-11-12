@@ -620,14 +620,22 @@ public static class PlotCommands
       PlotSettings source = namedSetup ?? layout;
       var paper = ResolvePaper(pdfMedia, paperSize, source.CanonicalMediaName, layout.LayoutName);
       var rotation = source.PlotRotation;
-      var landscape = orientation != null ? orientation == "landscape" : IsLandscape(source);
+      // Without an explicit orientation the page keeps the layout's
+      // orientation, measured on the paper that is actually plotted: with a
+      // paperSize override that is the requested medium (a landscape layout
+      // overridden to a portrait sheet plots portrait), not the layout's own.
+      var landscape = orientation != null
+        ? orientation == "landscape"
+        : string.IsNullOrWhiteSpace(paperSize)
+          ? IsLandscape(source)
+          : IsLandscapeOnMedia(probe, paper.Canonical, rotation) ?? IsLandscape(source);
       var styleSheet = plotStyleTable ?? source.CurrentStyleSheet;
 
       jobs.Add(new PlotJob
       {
         LayoutName = layout.LayoutName,
         PageSetup = namedSetup != null ? pageSetup : NullIfEmpty(layout.PlotSettingsName),
-        PaperSize = paper,
+        PaperSize = paper.Locale,
         PaperUnitsToken = source.PlotPaperUnits == PlotPaperUnit.Millimeters ? "_M" : "_I",
         OrientationToken = landscape ? "_L" : "_P",
         UpsideDown = rotation is PlotRotation.Degrees180 or PlotRotation.Degrees270,
@@ -641,9 +649,15 @@ public static class PlotCommands
           _ => "_L",
         },
         // Plain invariant decimals: the corner prompts do not accept exponents.
+        // -PLOT asks for the lower-left corner first, then the upper-right, so
+        // the two corners are normalized: any two opposite corners may be given.
         WindowCorners = windowCorners == null
           ? null
-          : [FormatPoint(windowCorners[0], windowCorners[1]), FormatPoint(windowCorners[2], windowCorners[3])],
+          :
+          [
+            FormatPoint(Math.Min(windowCorners[0], windowCorners[2]), Math.Min(windowCorners[1], windowCorners[3])),
+            FormatPoint(Math.Max(windowCorners[0], windowCorners[2]), Math.Max(windowCorners[1], windowCorners[3])),
+          ],
       });
     }
 
@@ -651,20 +665,20 @@ public static class PlotCommands
     return jobs;
   }
 
-  private static string ResolvePaper(IReadOnlyList<MediaName> pdfMedia, string? requested, string? sourceCanonical, string layoutName)
+  private static MediaName ResolvePaper(IReadOnlyList<MediaName> pdfMedia, string? requested, string? sourceCanonical, string layoutName)
   {
     if (!string.IsNullOrWhiteSpace(requested))
     {
       var match = pdfMedia.FirstOrDefault(item =>
         string.Equals(item.Locale, requested, StringComparison.OrdinalIgnoreCase) ||
         string.Equals(item.Canonical, requested, StringComparison.OrdinalIgnoreCase));
-      return match?.Locale ?? throw new JsonRpcDispatchException(
+      return match ?? throw new JsonRpcDispatchException(
         "CIVIL3D.INVALID_INPUT",
         $"Paper size '{requested}' is not available on {DefaultPdfDevice}. Use civil3d_plot action=list_plotters with device='{DefaultPdfDevice}' to list media. Examples: {Preview(pdfMedia.Select(item => item.Locale))}.");
     }
 
     var fromLayout = pdfMedia.FirstOrDefault(item => string.Equals(item.Canonical, sourceCanonical, StringComparison.OrdinalIgnoreCase));
-    return fromLayout?.Locale ?? throw new JsonRpcDispatchException(
+    return fromLayout ?? throw new JsonRpcDispatchException(
       "CIVIL3D.INVALID_INPUT",
       $"Layout '{layoutName}' uses paper '{sourceCanonical}', which {DefaultPdfDevice} does not provide. Pass 'paperSize' (for example '{pdfMedia.FirstOrDefault()?.Locale}') or a PDF page setup.");
   }
@@ -943,11 +957,32 @@ public static class PlotCommands
   // defines it, and a medium such as "ARCH D (36.00 x 24.00 Inches)" is already
   // wider than tall. So the page is landscape when exactly one of the two holds:
   // the paper is wider than tall, or the rotation is a quarter turn.
-  private static bool IsLandscape(PlotSettings settings)
+  private static bool IsLandscape(PlotSettings settings) =>
+    IsLandscape(settings.PlotPaperSize.X, settings.PlotPaperSize.Y, settings.PlotRotation);
+
+  private static bool IsLandscape(double paperWidth, double paperHeight, PlotRotation rotation)
   {
-    var paper = settings.PlotPaperSize;
-    var quarterTurn = settings.PlotRotation is PlotRotation.Degrees090 or PlotRotation.Degrees270;
-    return (paper.X > paper.Y) != quarterTurn;
+    var quarterTurn = rotation is PlotRotation.Degrees090 or PlotRotation.Degrees270;
+    return (paperWidth > paperHeight) != quarterTurn;
+  }
+
+  // The same test on another medium of the PDF device, measured on the
+  // throwaway, non-database-resident probe (no layout or page setup is
+  // modified). Null when the medium's size cannot be read; the caller then
+  // falls back to the layout's own paper.
+  private static bool? IsLandscapeOnMedia(PlotSettings probe, string canonicalMedia, PlotRotation rotation)
+  {
+    try
+    {
+      PlotSettingsValidator.Current.SetCanonicalMediaName(probe, canonicalMedia);
+      var size = probe.PlotPaperSize;
+      return size.X > 0 && size.Y > 0 ? IsLandscape(size.X, size.Y, rotation) : null;
+    }
+    catch (Exception exception)
+    {
+      PluginLog.Warn("PlotCommands", $"Could not read the size of medium '{canonicalMedia}': {exception.Message}");
+      return null;
+    }
   }
 
   private static Dictionary<string, object?> ToPlotSettingsSummary(PlotSettings settings)

@@ -16,11 +16,13 @@
   (`plot_layouts_to_pdf`, `publish_sheet_set`) via `asJob: true`. Verified
   live against Civil 3D 2027; `asJob` plotting has not been run live.
   `plot_layouts_to_pdf` takes `plotArea` (`layout`, the default for
-  paper-space layouts; `extents`; or `window` with `windowCorners`) and plots
-  the Model tab when `layoutNames` names it (extents or a window, fit to the
-  paper and centred). Page orientation comes from the paper's own shape as
-  well as the layout rotation, so a layout on a landscape medium such as
-  ARCH D (36 x 24) at rotation 0 plots landscape.
+  paper-space layouts; `extents`; or `window` with `windowCorners`, any two
+  opposite corners, sent lower-left first) and plots the Model tab when
+  `layoutNames` names it (extents or a window, fit to the paper and centred).
+  Page orientation comes from the paper's own shape as well as the layout
+  rotation, so a layout on a landscape medium such as ARCH D (36 x 24) at
+  rotation 0 plots landscape; with a `paperSize` override and no
+  `orientation`, the shape of the requested medium decides.
 - `CivilExecution.ExecuteCommandSequenceAsync` for host work that issues
   AutoCAD commands; it keeps the `CIVIL3D.NO_DRAWING` check and the
   drawing-identity check but opens no transaction around the command.

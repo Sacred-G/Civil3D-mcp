@@ -169,6 +169,15 @@ export const PlotLayoutsToPdfArgsSchema = z.object({
       path: ["windowCorners"],
     });
   }
+  // Any two opposite corners: the plugin sends the lower-left and upper-right
+  // corners to -PLOT in that order. A window with no width or height is refused.
+  if (args.windowCorners?.length === 4 && (args.windowCorners[0] === args.windowCorners[2] || args.windowCorners[1] === args.windowCorners[3])) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "windowCorners must be two opposite corners [x1, y1, x2, y2] with distinct x and distinct y values.",
+      path: ["windowCorners"],
+    });
+  }
   if (args.outputPath && (args.allLayouts || (args.layoutNames?.length ?? 0) > 1)) {
     context.addIssue({
       code: z.ZodIssueCode.custom,
@@ -362,7 +371,7 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
         plotStyleTable: z.string().optional().describe("plot_layouts_to_pdf: plot style table, for example 'monochrome.ctb'."),
         orientation: OrientationSchema.optional(),
         plotArea: PlotAreaSchema.optional().describe("plot_layouts_to_pdf: 'layout' (paper-space default, 1:1), 'extents', or 'window'. The Model tab plots 'extents' (default) or 'window', scaled to fit and centred."),
-        windowCorners: z.array(z.number()).optional().describe("plot_layouts_to_pdf with plotArea='window': [x1, y1, x2, y2] in paper units on a layout, drawing units on the Model tab."),
+        windowCorners: z.array(z.number()).optional().describe("plot_layouts_to_pdf with plotArea='window': [x1, y1, x2, y2], any two opposite corners, in paper units on a layout, drawing units on the Model tab."),
         overwrite: z.boolean().optional().describe("Replace existing PDFs (default false)."),
         continueOnError: z.boolean().optional().describe("plot_layouts_to_pdf: keep plotting after a layout fails (default true)."),
         requireSaved: z.boolean().optional().describe("publish_sheet_set: refuse when the drawing has unsaved changes (default true)."),
