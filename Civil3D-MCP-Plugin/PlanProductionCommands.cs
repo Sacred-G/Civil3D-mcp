@@ -312,7 +312,7 @@ public static class PlanProductionCommands
       ".pdf");
     throw new JsonRpcDispatchException(
       "CIVIL3D.API_ERROR",
-      "PDF publishing requires a complete AutoCAD PlotEngine transaction and completion verification. The previous asynchronous PUBLISH fallback could report success before output existed, so no publish was started.");
+      "PDF publishing requires a complete AutoCAD PlotEngine transaction and completion verification. The previous asynchronous PUBLISH fallback could report success before output existed, so no publish was started. Use civil3d_plot action=publish_sheet_set (one multi-sheet PDF) or action=plot_layouts_to_pdf (one PDF per layout), which verify the written output.");
   }
 
   // -------------------------------------------------------------------------
@@ -328,7 +328,7 @@ public static class PlanProductionCommands
       ".pdf", ".dwf", ".dwfx", ".dst");
     throw new JsonRpcDispatchException(
       "CIVIL3D.API_ERROR",
-      "Sheet-set PDF export is unavailable until a typed AutoCAD PlotEngine workflow with output verification is implemented. No export was started.");
+      "Sheet-set PDF export is unavailable until a typed AutoCAD PlotEngine workflow with output verification is implemented. No export was started. To publish the sheets' layouts as one PDF, use civil3d_plot action=publish_sheet_set with their layoutNames.");
   }
 
   // =========================================================================

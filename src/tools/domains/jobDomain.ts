@@ -6,6 +6,8 @@ const JobOperationSchema = z.enum([
   "publish_sheet_pdf",
   "surface_dem_import",
   "bulk_qc_report",
+  "plot_layouts_to_pdf",
+  "publish_sheet_set",
 ]);
 
 const JobStatusArgs = z.object({ action: z.literal("status"), jobId: z.string().min(1) });

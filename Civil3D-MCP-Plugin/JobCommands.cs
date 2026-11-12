@@ -11,6 +11,8 @@ public static class JobCommands
       ["publish_sheet_pdf"] = "publishSheetPdf",
       ["surface_dem_import"] = "createSurfaceFromDem",
       ["bulk_qc_report"] = "qcReportGenerate",
+      ["plot_layouts_to_pdf"] = "plotLayoutsToPdf",
+      ["publish_sheet_set"] = "plotPublishSheetSet",
     };
 
   public static Task<object?> StartJobAsync(JsonObject? parameters)

@@ -221,6 +221,12 @@ public static class CommandDispatcher
       "setSheetViewScale" => PlanProductionCommands.SetSheetViewScaleAsync(parameters),
       "publishSheetPdf" => PlanProductionCommands.PublishSheetPdfAsync(parameters),
       "exportSheetSet" => PlanProductionCommands.ExportSheetSetAsync(parameters),
+      // Plot / publish
+      "plotListLayouts" => PlotCommands.ListLayoutsAsync(parameters),
+      "plotListPageSetups" => PlotCommands.ListPageSetupsAsync(),
+      "plotListPlotters" => PlotCommands.ListPlottersAsync(parameters),
+      "plotLayoutsToPdf" => PlotCommands.PlotLayoutsToPdfAsync(parameters),
+      "plotPublishSheetSet" => PlotCommands.PublishSheetSetAsync(parameters),
       // QC checks
       "qcCheckAlignment" => QcCommands.QcCheckAlignmentAsync(parameters),
       "qcCheckProfile" => QcCommands.QcCheckProfileAsync(parameters),
