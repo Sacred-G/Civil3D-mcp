@@ -27,8 +27,9 @@ $ErrorActionPreference = 'Stop'
 # PowerShell 7 prompt inherits 7's PSModulePath and cannot load the module Get-FileHash lives in.
 function Get-Sha256([string] $Path) {
   $stream = [System.IO.File]::OpenRead($Path)
-  try { [System.BitConverter]::ToString([System.Security.Cryptography.SHA256]::Create().ComputeHash($stream)) }
-  finally { $stream.Dispose() }
+  $sha = [System.Security.Cryptography.SHA256]::Create()
+  try { [System.BitConverter]::ToString($sha.ComputeHash($stream)) }
+  finally { $sha.Dispose(); $stream.Dispose() }
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -48,16 +49,13 @@ $required = [ordered]@{
   "AeccPressurePipesMgd.dll"   = "C3D"
 }
 
-if (-not (Test-Path $Destination)) {
-  New-Item -ItemType Directory -Path $Destination | Out-Null
-  Write-Host "Created $Destination"
-}
-
+# Find all six before copying any: a missing one must not leave C_References
+# partly refreshed, mixing this release's assemblies with another's.
+$sources = [ordered]@{}
 $missing = @()
 foreach ($name in $required.Keys) {
   $subDir = $required[$name]
   $searchDir = if ($subDir) { Join-Path $AcadRoot $subDir } else { $AcadRoot }
-  $target = Join-Path $Destination $name
 
   # NTFS is case-insensitive, but match defensively so casing drift in the
   # install (acdbmgd.dll vs AcDbMgd.dll) still resolves.
@@ -68,6 +66,21 @@ foreach ($name in $required.Keys) {
     $missing += $name
     continue
   }
+  $sources[$name] = $source
+}
+
+if ($missing.Count -gt 0) {
+  throw "Could not locate: $($missing -join ', '). Check the Civil 3D install is complete. Nothing was copied."
+}
+
+if (-not (Test-Path $Destination)) {
+  New-Item -ItemType Directory -Path $Destination | Out-Null
+  Write-Host "Created $Destination"
+}
+
+foreach ($name in $sources.Keys) {
+  $source = $sources[$name]
+  $target = Join-Path $Destination $name
 
   # Never trust an existing copy blindly: C_References is also the documented
   # staging folder for 2026 references, so a stale set left there would feed
@@ -93,10 +106,6 @@ foreach ($name in $required.Keys) {
   Copy-Item -Path $source.FullName -Destination $target -Force
   $version = (Get-Item $target).VersionInfo.FileVersion
   Write-Host ("  copied  {0,-26} <- {1}  [v{2}]" -f $name, $source.DirectoryName, $version)
-}
-
-if ($missing.Count -gt 0) {
-  throw "Could not locate: $($missing -join ', '). Check the Civil 3D install is complete."
 }
 
 Write-Host ""

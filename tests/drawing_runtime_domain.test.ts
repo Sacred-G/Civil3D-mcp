@@ -40,4 +40,12 @@ describe("drawing runtime response contracts", () => {
       defaultStyles: { surface: "Contours 2' and 10'", alignment: "Proposed", profile: "Design", corridor: null, pipeNetwork: "Storm" },
     }).success).toBe(true);
   });
+
+  it("rejects a null defaultStyles object: the plugin always sends one", () => {
+    // Only the five style names are nullable (DrawingCommands.cs always
+    // builds the defaultStyles dictionary).
+    const responseSchema = DRAWING_RUNTIME_DOMAIN_DEFINITION.actions.settings.responseSchema;
+
+    expect(responseSchema.safeParse({ scaleFactor: 1, defaultLayer: "0", defaultStyles: null }).success).toBe(false);
+  });
 });
