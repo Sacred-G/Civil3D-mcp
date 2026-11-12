@@ -21,6 +21,23 @@ public static class CivilObjectUtils
       return null;
     }
 
+    // Civil 3D style objects declare "Name" TWICE in their hierarchy: once on
+    // Autodesk.Civil.DatabaseServices.Styles.StyleBase and again on
+    // Autodesk.Civil.DatabaseServices.DBObject. Type.GetProperty("Name",
+    // Public | Instance) cannot disambiguate the two, and the reflection
+    // helper turns that failure into a silent null -- so every style came back
+    // unnamed. style_list then failed schema validation outright, style_get
+    // could never match a style by name, and label_list_styles quietly
+    // returned a list of nulls.
+    //
+    // Read it through the typed base instead. Every Civil 3D style derives
+    // from StyleBase, so this covers all of them; non-style objects continue
+    // to use the reflection path below.
+    if (value is Autodesk.Civil.DatabaseServices.Styles.StyleBase styleBase)
+    {
+      return styleBase.Name;
+    }
+
     return Civil3DCompatibility.GetPropertyValue(value, "Name")?.ToString();
   }
 
