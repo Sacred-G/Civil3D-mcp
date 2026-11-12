@@ -210,9 +210,13 @@ try {
   throw "Install failed; the previous bundle (if any) is unchanged at $bundleDir. $($_.Exception.Message)"
 }
 
-if (Test-Path -LiteralPath $old) {
-  Remove-Item -LiteralPath $old -Recurse -Force -ErrorAction SilentlyContinue
-  if (Test-Path -LiteralPath $old) { Write-Warning "Could not delete the previous bundle at $old; delete it by hand." }
+# The new bundle is in place: the previous one moved aside by this run, and
+# any an interrupted earlier run left (kept above while no bundle existed),
+# are no longer needed.
+foreach ($previous in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase) })) {
+  Remove-Item -LiteralPath $previous.FullName -Recurse -Force -ErrorAction SilentlyContinue
+  if (Test-Path -LiteralPath $previous.FullName) { Write-Warning "Could not delete the previous bundle at $($previous.FullName); delete it by hand." }
 }
 
 Write-Host "Installed bundle: $bundleDir"
