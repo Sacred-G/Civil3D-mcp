@@ -76,11 +76,14 @@ public static class LabelCommands
 
       if (string.Equals(objectType, "alignment", StringComparison.OrdinalIgnoreCase) && string.Equals(labelType, "label_set", StringComparison.OrdinalIgnoreCase))
       {
-        var labelSetId = LookupUtils.GetAlignmentLabelSetId(civilDoc, transaction, labelStyle);
-        if (labelSetId == ObjectId.Null)
+        if (string.IsNullOrWhiteSpace(labelStyle))
         {
-          throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"Alignment label set '{labelStyle}' was not found.");
+          throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "Alignment label_set needs labelStyle: the name of the alignment label set to import.");
         }
+
+        // Strict lookup: an unknown name fails and lists the sets, instead of
+        // importing the first one (LookupUtils falls back to it).
+        var labelSetId = FindStyleInCollection(transaction, civilDoc.Styles.LabelSetStyles.AlignmentLabelSetStyles, labelStyle, "alignment label set");
 
         // Alignment has no LabelSetId property; the old reflection setter always
         // failed with "does not expose a writable label set property".

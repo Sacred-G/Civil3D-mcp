@@ -132,7 +132,7 @@ return new { entities = alignment.Entities.Count, labelSets };
 // ProfileViewPart between all views of a part, so the part says nothing).
 const placementCode = String.raw`
 var p = (string)Args["prefix"];
-var views = ModelSpace<ProfileView>().Where(v => v.Name.StartsWith(p)).Select(v => (v.Name, v.GeometricExtents)).ToList();
+var views = ModelSpace<ProfileView>().Where(v => v.Name.StartsWith(p + "-")).Select(v => (v.Name, v.GeometricExtents)).ToList();
 string ViewOf(Entity e)
 {
   Extents3d x;

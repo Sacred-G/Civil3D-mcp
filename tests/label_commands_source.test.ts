@@ -49,6 +49,10 @@ describe("label_add source guards (LabelCommands.cs)", () => {
     expect(profile).toContain("candidates.Add(part.ProfileViewPartId)");
     expect(profile).toMatch(/foreach \(ObjectId profileViewId in profileViewIds\)/);
     expect(profile).toContain("skipped++");
+    // Every created label is collected and returned, and none at all is an error.
+    expect(profile).toMatch(/if \(labelId\.IsNull\)\s*\{\s*skipped\+\+;\s*continue;\s*\}\s*labelIds\.Add\(labelId\);/);
+    expect(profile).toMatch(/if \(labelIds\.Count == 0\)\s*\{\s*throw new JsonRpcDispatchException/);
+    expect(profile).toMatch(/return labelIds;\s*\}$/);
     // The model-space scan is a fallback after a refused attempt, and a list.
     expect(profile.indexOf("FindProfileViewParts(")).toBeGreaterThan(profile.indexOf("TryCreateProfileLabel("));
     expect(blockAfter("private static List<ObjectId> FindProfileViewParts(")).not.toMatch(/\byield\b/);
@@ -60,6 +64,9 @@ describe("label_add source guards (LabelCommands.cs)", () => {
   it("reports the alignment's label group count after label_set", () => {
     const labelSet = blockAfter('string.Equals(labelType, "label_set", StringComparison.OrdinalIgnoreCase))\n');
     expect(labelSet).toContain("ImportLabelSet(labelSetId)");
+    // An unknown set name fails instead of importing the first set.
+    expect(labelSet).toContain('FindStyleInCollection(transaction, civilDoc.Styles.LabelSetStyles.AlignmentLabelSetStyles, labelStyle, "alignment label set")');
+    expect(labelSet).not.toContain("LookupUtils.GetAlignmentLabelSetId");
     expect(labelSet).toContain('["labelGroups"] = alignment.GetAlignmentLabelGroupIds().Count');
   });
 
