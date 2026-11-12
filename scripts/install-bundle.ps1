@@ -82,10 +82,22 @@ if ($locked) {
 }
 
 # Folders an interrupted earlier run left behind. Their names do not end in
-# .bundle, so AutoCAD never loads them.
-foreach ($leftover in Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue |
-         Where-Object { $_.Name -like ".$BundleName.staging-*" -or $_.Name -like ".$BundleName.old-*" }) {
-  Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
+# .bundle, so AutoCAD never loads them. Literal prefixes, not -like: a name
+# may contain [ or ]. A moved-aside previous bundle (.old-) is deleted only
+# while the bundle itself is in place; otherwise it may be the only copy, so
+# it is kept and reported.
+$stagingPrefix = ".$BundleName.staging-"
+$oldPrefix     = ".$BundleName.old-"
+foreach ($leftover in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue)) {
+  if ($leftover.Name.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
+  } elseif ($leftover.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    if (Test-Path -LiteralPath $bundleDir) {
+      Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    } else {
+      Write-Warning "A previous bundle was left at $($leftover.FullName) by an interrupted install; rename it to $BundleName to restore it, or delete it."
+    }
+  }
 }
 
 if ($Uninstall) {
@@ -96,8 +108,8 @@ if ($Uninstall) {
     Write-Host "Nothing to remove at $bundleDir"
   }
   Write-Host "Restart Civil 3D for the change to take effect."
-  # return, not exit: exit would also close an interactive PowerShell that
-  # ran this script directly.
+  # return, not exit: run with -File or .\install-bundle.ps1 both end the
+  # same way, and a dot-sourced run does not close the session.
   return
 }
 
@@ -152,6 +164,7 @@ $staging = Join-Path $BundleRoot ".$BundleName.staging-$suffix"
 $old     = Join-Path $BundleRoot ".$BundleName.old-$suffix"
 
 New-Item -ItemType Directory -Path $BundleRoot -Force | Out-Null
+$rollbackError = $null
 try {
   $contents = Join-Path $staging "Contents"
   New-Item -ItemType Directory -Path $contents -Force | Out-Null
@@ -180,11 +193,20 @@ try {
   try {
     [System.IO.Directory]::Move($staging, $bundleDir)
   } catch {
-    if ($hadBundle) { [System.IO.Directory]::Move($old, $bundleDir) }
+    if ($hadBundle) {
+      try {
+        [System.IO.Directory]::Move($old, $bundleDir)
+      } catch {
+        $rollbackError = $_.Exception.Message
+      }
+    }
     throw
   }
 } catch {
   if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+  if ($rollbackError) {
+    throw "Install failed and the previous bundle could not be moved back: it is at $old. Rename it to $BundleName to restore it. $($_.Exception.Message) ($rollbackError)"
+  }
   throw "Install failed; the previous bundle (if any) is unchanged at $bundleDir. $($_.Exception.Message)"
 }
 

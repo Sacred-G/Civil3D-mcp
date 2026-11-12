@@ -80,8 +80,9 @@ Write-Host "Built: $builtDll"
 
 if (-not $Install) {
   Write-Host "Re-run with -Install to deploy it as an auto-loading bundle."
-  # return, not exit: exit would also close an interactive PowerShell that
-  # ran this script directly. Failures above throw, so -File exits with 1.
+  # return, not exit: run with -File or .\build-2027.ps1 both end the same
+  # way, and a dot-sourced run does not close the session. Failures above
+  # throw, so -File exits with 1.
   return
 }
 
