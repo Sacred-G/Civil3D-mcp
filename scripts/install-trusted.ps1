@@ -35,7 +35,8 @@
   the trusted copy.
 
 .PARAMETER Uninstall
-  Remove the acaddoc.lsp block and this release's plugin folder. Reinstall the bundle with
+  Remove the acaddoc.lsp block and this release's plugin folder. The release comes from -SourceDir as for an
+  install (default net10.0-windows, 2027): pass the same -SourceDir and -Destination as for the install. Reinstall the bundle with
   install-bundle.ps1 if wanted. When acaddoc.lsp keeps other code, it hides again the acaddoc.lsp further
   down the support path that the block loaded; the uninstall warns about that.
 #>
@@ -184,7 +185,12 @@ if (Test-Path $roslyn) {
 }
 # Unchanged files are skipped, so re-running while Civil 3D has the same build loaded only refreshes
 # acaddoc.lsp; a changed DLL cannot be replaced while it is loaded.
-$changed = @($files | Where-Object { -not (Test-Path $_.To) -or (Get-FileHash $_.From).Hash -ne (Get-FileHash $_.To).Hash })
+# .NET SHA-256 rather than Get-FileHash, which Windows PowerShell 5.1 started from PowerShell 7 cannot load.
+function Get-Sha256([string] $path) {
+  $sha = [Security.Cryptography.SHA256]::Create()
+  try { [BitConverter]::ToString($sha.ComputeHash([IO.File]::ReadAllBytes($path))) } finally { $sha.Dispose() }
+}
+$changed = @($files | Where-Object { -not (Test-Path $_.To) -or (Get-Sha256 $_.From) -ne (Get-Sha256 $_.To) })
 if ($changed.Count -gt 0) {
   $locked = Get-LockedFile $target
   if ($locked) { throw "'$locked' is loaded by a running Civil 3D and the build changed. Close Civil 3D completely, then re-run." }

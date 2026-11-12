@@ -28,7 +28,7 @@
   NETLOADs it from a
   marked `acaddoc.lsp` block, so Civil 3D no longer asks "Security - Unsigned
   Executable File" at every start as it does for the `%APPDATA%` bundle; removes
-  the bundle; `-Uninstall` reverses. The plugin then loads when a drawing opens.
+  the bundle; `-Uninstall` (with the install's `-SourceDir`) reverses. The plugin then loads when a drawing opens.
   An `acaddoc.lsp` further down the support path, which the new file would
   shadow, is loaded first (so its `S::STARTUP` is chained, not lost) and stays
   chained when the installer runs again, also after user code was added to the

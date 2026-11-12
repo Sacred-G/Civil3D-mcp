@@ -55,11 +55,14 @@ function Write-Stamp([string] $Path, [string] $Value) {
   catch { [Console]::Error.WriteLine("Could not write ${Path}: $($_.Exception.Message)") }
 }
 
-# Content hash of the dependency manifests.
+# Content hash of the dependency manifests. .NET SHA-256 rather than Get-FileHash: Windows PowerShell 5.1
+# started from PowerShell 7 inherits 7's PSModulePath and then cannot load Get-FileHash.
 function Get-DependencyHash {
   (@("package.json", "package-lock.json") | ForEach-Object {
     $file = Join-Path $repoRoot $_
-    if (Test-Path -LiteralPath $file) { (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash } else { "none" }
+    if (Test-Path -LiteralPath $file) {
+      [BitConverter]::ToString([Security.Cryptography.SHA256]::Create().ComputeHash([IO.File]::ReadAllBytes($file))).Replace("-", "")
+    } else { "none" }
   }) -join "|"
 }
 
