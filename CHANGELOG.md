@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- `civil3d_grading` `group_create` (and `civil3d_grading_group_create`) takes
+  an optional `site`: the group goes in that site, which is created when it
+  does not exist. With no `site` and no site in the drawing, a site named
+  `<group name> Site` is created instead of failing with
+  `CIVIL3D.OBJECT_NOT_FOUND` (the plugin API offers no other way to make one
+  for a group). The result reports `site` and `siteCreated`.
+
 ## v1.2.1 — 2026-07-14
 
 ### Production readiness
