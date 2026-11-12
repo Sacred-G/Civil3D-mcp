@@ -206,6 +206,25 @@ export const PublishSheetSetArgsSchema = z.object({
   path: ["sheets"],
 });
 
+export const SheetPlotArgsSchema = z.object({
+  action: z.literal("sheet_plot"),
+  outputPath: z.string().min(1).regex(/\.pdf$/i, "outputPath must end in .pdf."),
+  layoutName: z.string().min(1).optional(),
+  modelCenterX: z.number().optional(),
+  modelCenterY: z.number().optional(),
+  modelWidth: z.number().positive().optional(),
+  modelHeight: z.number().positive().optional(),
+  scaleDenominator: z.number().positive().optional(),
+  paperSize: z.string().min(1).optional(),
+  title: z.string().optional(),
+  subtitle: z.string().optional(),
+  id: z.string().optional(),
+  drawingNumber: z.string().optional(),
+  date: z.string().optional(),
+  orientation: OrientationSchema.optional(),
+  overwrite: z.boolean().optional(),
+});
+
 type PlotLayoutsToPdfArgs = z.infer<typeof PlotLayoutsToPdfArgsSchema>;
 type PublishSheetSetArgs = z.infer<typeof PublishSheetSetArgsSchema>;
 
@@ -341,13 +360,53 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
         );
       },
     },
+    // Build a titled sheet (a paper-space layout, a viewport made by MVIEW and zoomed to a model
+    // window, border, title block and north arrow) and plot it to one PDF. AutoCAD's MVIEW owns the
+    // viewport: creating one through .NET on the current layout can crash Civil 3D. This is the path
+    // for a drawing that has no paper-space viewport yet.
+    sheet_plot: {
+      action: "sheet_plot",
+      inputSchema: SheetPlotArgsSchema,
+      responseSchema: z.object({
+        layoutName: z.string(),
+        outputPath: z.string(),
+        bytes: z.number(),
+        created: z.boolean(),
+      }).passthrough(),
+      capabilities: ["export", "generate", "create"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["createSheetAndPlot"],
+      execute: async (rawArgs) => {
+        const args = rawArgs as z.infer<typeof SheetPlotArgsSchema>;
+        return await withApplicationConnection(
+          async (appClient) => await appClient.sendCommand("createSheetAndPlot", {
+            layoutName: args.layoutName,
+            outputPath: args.outputPath,
+            modelCenterX: args.modelCenterX,
+            modelCenterY: args.modelCenterY,
+            modelWidth: args.modelWidth,
+            modelHeight: args.modelHeight,
+            scaleDenominator: args.scaleDenominator,
+            paperSize: args.paperSize,
+            title: args.title,
+            subtitle: args.subtitle,
+            id: args.id,
+            drawingNumber: args.drawingNumber,
+            date: args.date,
+            orientation: args.orientation,
+            overwrite: args.overwrite ?? false,
+          }),
+        );
+      },
+    },
   },
   exposures: [
     {
       toolName: "civil3d_plot",
       displayName: "Civil 3D Plot",
       description:
-        "Lists layouts, page setups, and plot devices, and plots layouts (paper-space, or the Model tab by name) to PDF (one file per layout) or publishes paper-space layouts as one multi-sheet PDF. " +
+        "Lists layouts, page setups, and plot devices, and plots layouts (paper-space, or the Model tab by name) to PDF (one file per layout) or publishes paper-space layouts as one multi-sheet PDF, or builds a titled sheet with a viewport on a model window and plots it (sheet_plot). " +
         "Uses the -PLOT/-PUBLISH commands with BACKGROUNDPLOT=0 and the 'DWG To PDF.pc3' device; output paths must be absolute .pdf paths inside the configured export roots. " +
         "Set asJob=true for long runs and poll civil3d_job action=status.",
       inputShape: {
@@ -357,6 +416,7 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
           "list_plotters",
           "plot_layouts_to_pdf",
           "publish_sheet_set",
+          "sheet_plot",
         ]),
         includeModel: z.boolean().optional().describe("list_layouts: include the Model layout."),
         device: z.string().optional().describe("list_plotters: also list paper sizes for this device (for example 'DWG To PDF.pc3')."),
@@ -364,10 +424,10 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
         allLayouts: z.boolean().optional().describe("plot_layouts_to_pdf: plot every paper-space layout in tab order."),
         sheets: z.array(PublishSheetSchema).optional().describe("publish_sheet_set: explicit sheet list; drawingPath (absolute .dwg inside the import roots) defaults to the active drawing."),
         outputDirectory: z.string().optional().describe("plot_layouts_to_pdf: absolute folder for one PDF per layout."),
-        outputPath: z.string().optional().describe("Absolute .pdf path (single layout for plot_layouts_to_pdf; the combined PDF for publish_sheet_set)."),
+        outputPath: z.string().optional().describe("Absolute .pdf path (single layout for plot_layouts_to_pdf; the combined PDF for publish_sheet_set; the sheet PDF for sheet_plot)."),
         fileNamePrefix: z.string().optional().describe("plot_layouts_to_pdf: file name prefix (default '<drawing>-')."),
         pageSetup: z.string().optional().describe("plot_layouts_to_pdf: named paper-space page setup to take paper size, orientation, and plot style from."),
-        paperSize: z.string().optional().describe("plot_layouts_to_pdf: paper size name on DWG To PDF.pc3 (overrides the layout/page setup)."),
+        paperSize: z.string().optional().describe("plot_layouts_to_pdf / sheet_plot: paper size name on DWG To PDF.pc3 (overrides the layout/page setup; sheet_plot default ARCH D)."),
         plotStyleTable: z.string().optional().describe("plot_layouts_to_pdf: plot style table, for example 'monochrome.ctb'."),
         orientation: OrientationSchema.optional(),
         plotArea: PlotAreaSchema.optional().describe("plot_layouts_to_pdf: 'layout' (paper-space default, 1:1), 'extents', or 'window'. The Model tab plots 'extents' (default) or 'window', scaled to fit and centred."),
@@ -377,6 +437,17 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
         requireSaved: z.boolean().optional().describe("publish_sheet_set: refuse when the drawing has unsaved changes (default true)."),
         keepDsd: z.boolean().optional().describe("publish_sheet_set: keep the generated .dsd sheet list next to the PDF."),
         asJob: z.boolean().optional().describe("Run the plot/publish as a background job and return a jobId."),
+        layoutName: z.string().optional().describe("sheet_plot: layout to build (created if absent; default 'MCP-SHEET')."),
+        modelCenterX: z.number().optional().describe("sheet_plot: model-space X at the centre of the viewport."),
+        modelCenterY: z.number().optional().describe("sheet_plot: model-space Y at the centre of the viewport."),
+        modelWidth: z.number().optional().describe("sheet_plot: model-space width to show (reported back)."),
+        modelHeight: z.number().optional().describe("sheet_plot: model-space height to show in the viewport."),
+        scaleDenominator: z.number().optional().describe("sheet_plot: scale shown in the title block, 1\" = N' (default 100)."),
+        title: z.string().optional().describe("sheet_plot: title-block main line (default the layout name)."),
+        subtitle: z.string().optional().describe("sheet_plot: title-block second line."),
+        id: z.string().optional().describe("sheet_plot: 'Prepared by' cell."),
+        drawingNumber: z.string().optional().describe("sheet_plot: DWG NO. (default the layout name)."),
+        date: z.string().optional().describe("sheet_plot: plot date (default today)."),
       },
       supportedActions: [
         "list_layouts",
@@ -384,6 +455,7 @@ export const PLOT_DOMAIN_DEFINITION: DomainToolDefinition = {
         "list_plotters",
         "plot_layouts_to_pdf",
         "publish_sheet_set",
+        "sheet_plot",
       ],
       resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }),
     },

@@ -4,6 +4,17 @@
 
 ### Added
 
+- `civil3d_plot` action `sheet_plot` (plugin method `createSheetAndPlot`),
+  experimental: builds a titled sheet on a paper-space layout (created when
+  absent; a viewport made by `MVIEW` and zoomed to a model window, a double
+  border, a title block and a north arrow) and plots it to one PDF on
+  `DWG To PDF.pc3` (default paper ARCH D). For drawings with no paper-space
+  viewport yet. Approval-gated like the other output actions; the output path
+  goes through `FileBoundary`. Known gaps: it assumes a drawing in feet,
+  `scaleDenominator` only labels the title block (the viewport is sized by
+  `modelHeight`), `modelWidth` is only reported back, and it has not been run
+  in Civil 3D yet.
+
 - `civil3d_plot` domain tool (plugin `PlotCommands.cs`): `list_layouts`,
   `list_page_setups`, `list_plotters` (read-only, never approval-gated) and
   `plot_layouts_to_pdf` / `publish_sheet_set` (approval-gated `export`). Plots

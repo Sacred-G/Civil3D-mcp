@@ -227,6 +227,7 @@ public static class CommandDispatcher
       "plotListPlotters" => PlotCommands.ListPlottersAsync(parameters),
       "plotLayoutsToPdf" => PlotCommands.PlotLayoutsToPdfAsync(parameters),
       "plotPublishSheetSet" => PlotCommands.PublishSheetSetAsync(parameters),
+      "createSheetAndPlot" => SheetCommands.CreateSheetAndPlotAsync(parameters),
       // QC checks
       "qcCheckAlignment" => QcCommands.QcCheckAlignmentAsync(parameters),
       "qcCheckProfile" => QcCommands.QcCheckProfileAsync(parameters),

@@ -872,7 +872,7 @@ public static class PlotCommands
   // =========================================================================
 
   /// <summary>Sets system variables and restores the originals on dispose.</summary>
-  private sealed class SystemVariableScope : IDisposable
+  internal sealed class SystemVariableScope : IDisposable
   {
     private readonly List<(string Name, object? Value)> originals = [];
     private readonly List<string> warnings = [];
