@@ -199,9 +199,18 @@ public abstract class RunCodeScript
     var transaction = TransactionFor(db);
     var table = (BlockTable)transaction.GetObject(db.BlockTableId, OpenMode.ForRead);
     var modelSpace = (BlockTableRecord)transaction.GetObject(table[BlockTableRecord.ModelSpace], OpenMode.ForRead);
+    // Test each id's class before opening it, so only entities that can be a T
+    // are opened (and held by the transaction). The type check after the open
+    // stays, and a T without a registered class opens every entity as before.
+    var wanted = Autodesk.AutoCAD.Runtime.RXObject.GetClass(typeof(T));
     foreach (ObjectId id in modelSpace)
     {
       Check();
+      if (wanted != null && !id.ObjectClass.IsDerivedFrom(wanted))
+      {
+        continue;
+      }
+
       if (transaction.GetObject(id, OpenMode.ForRead) is T entity)
       {
         yield return entity;
