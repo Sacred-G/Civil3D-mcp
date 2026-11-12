@@ -23,12 +23,18 @@
 
 .PARAMETER Uninstall
   Remove the bundle instead of installing it.
+
+.PARAMETER LockTimeoutSeconds
+  How long to wait for another run on the same bundle to finish. Runs on one
+  bundle take turns, so one cannot delete another's rollback copy mid-swap.
 #>
 param(
   [string] $SourceDir,
   [string] $BundleRoot = (Join-Path $env:APPDATA "Autodesk\ApplicationPlugins"),
   [string] $BundleName = "Civil3DMcp.bundle",
-  [switch] $Uninstall
+  [switch] $Uninstall,
+  [ValidateRange(0, 3600)]
+  [int] $LockTimeoutSeconds = 120
 )
 
 $ErrorActionPreference = 'Stop'
@@ -76,67 +82,94 @@ function Get-LockedBundleFile([string] $dir) {
   return $null
 }
 
-$locked = Get-LockedBundleFile $bundleDir
-if ($locked) {
-  throw "'$locked' is loaded by a running Civil 3D. Close it completely, then re-run."
+# Two runs on one bundle would race on the swap and on the .staging-/.old-
+# cleanup: one could delete the folder that is the other's only rollback copy.
+# They take turns on a named mutex keyed by the bundle's full path (Global\ so
+# runs from other logon sessions take turns too). The OS releases the mutex if
+# a run dies; the next run then sweeps the folders it left.
+$lockPath = [System.IO.Path]::GetFullPath(
+  $ExecutionContext.SessionState.Path.GetUnresolvedProviderPathFromPSPath($bundleDir)).ToLowerInvariant()
+$sha = [System.Security.Cryptography.SHA256]::Create()
+try {
+  $lockHash = -join ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($lockPath)) | ForEach-Object { $_.ToString('x2') })
+} finally {
+  $sha.Dispose()
+}
+$installLock = New-Object System.Threading.Mutex($false, "Global\Civil3DMcpInstall-$lockHash")
+$haveLock = $false
+try {
+  $haveLock = $installLock.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
+} catch [System.Threading.AbandonedMutexException] {
+  # The previous holder died mid-run; the mutex is ours now.
+  $haveLock = $true
+}
+if (-not $haveLock) {
+  $installLock.Dispose()
+  throw "Another install-bundle run for $bundleDir is still running; re-run when it has finished."
 }
 
-# Folders an interrupted earlier run left behind. Their names do not end in
-# .bundle, so AutoCAD never loads them. Literal prefixes, not -like: a name
-# may contain [ or ]. A moved-aside previous bundle (.old-) is deleted only
-# while the bundle itself is in place; otherwise it may be the only copy, so
-# it is kept and reported.
-$stagingPrefix = ".$BundleName.staging-"
-$oldPrefix     = ".$BundleName.old-"
-foreach ($leftover in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue)) {
-  if ($leftover.Name.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-    Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
-  } elseif ($leftover.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-    if (Test-Path -LiteralPath $bundleDir) {
+try {
+  $locked = Get-LockedBundleFile $bundleDir
+  if ($locked) {
+    throw "'$locked' is loaded by a running Civil 3D. Close it completely, then re-run."
+  }
+
+  # Folders an interrupted earlier run left behind. Their names do not end in
+  # .bundle, so AutoCAD never loads them. Literal prefixes, not -like: a name
+  # may contain [ or ]. A moved-aside previous bundle (.old-) is deleted only
+  # while the bundle itself is in place; otherwise it may be the only copy, so
+  # it is kept and reported.
+  $stagingPrefix = ".$BundleName.staging-"
+  $oldPrefix     = ".$BundleName.old-"
+  foreach ($leftover in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue)) {
+    if ($leftover.Name.StartsWith($stagingPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
       Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
-    } else {
-      Write-Warning "A previous bundle was left at $($leftover.FullName) by an interrupted install; rename it to $BundleName to restore it, or delete it."
+    } elseif ($leftover.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+      if (Test-Path -LiteralPath $bundleDir) {
+        Remove-Item -LiteralPath $leftover.FullName -Recurse -Force -ErrorAction SilentlyContinue
+      } else {
+        Write-Warning "A previous bundle was left at $($leftover.FullName) by an interrupted install; rename it to $BundleName to restore it, or delete it."
+      }
     }
   }
-}
 
-if ($Uninstall) {
-  if (Test-Path -LiteralPath $bundleDir) {
-    Remove-Item -LiteralPath $bundleDir -Recurse -Force
-    Write-Host "Removed $bundleDir"
-  } else {
-    Write-Host "Nothing to remove at $bundleDir"
+  if ($Uninstall) {
+    if (Test-Path -LiteralPath $bundleDir) {
+      Remove-Item -LiteralPath $bundleDir -Recurse -Force
+      Write-Host "Removed $bundleDir"
+    } else {
+      Write-Host "Nothing to remove at $bundleDir"
+    }
+    Write-Host "Restart Civil 3D for the change to take effect."
+    # return, not exit: run with -File or .\install-bundle.ps1 both end the
+    # same way, and a dot-sourced run does not close the session.
+    return
   }
-  Write-Host "Restart Civil 3D for the change to take effect."
-  # return, not exit: run with -File or .\install-bundle.ps1 both end the
-  # same way, and a dot-sourced run does not close the session.
-  return
-}
 
-if (-not $SourceDir) {
-  $SourceDir = Join-Path $repoRoot "Civil3D-MCP-Plugin\bin\Release\net10.0-windows"
-}
-$dll = Join-Path $SourceDir "Civil3DMcpPlugin.dll"
-if (-not (Test-Path -LiteralPath $dll)) {
-  throw "Plugin not built at '$dll'. Run scripts\build-2027.ps1 first."
-}
+  if (-not $SourceDir) {
+    $SourceDir = Join-Path $repoRoot "Civil3D-MCP-Plugin\bin\Release\net10.0-windows"
+  }
+  $dll = Join-Path $SourceDir "Civil3DMcpPlugin.dll"
+  if (-not (Test-Path -LiteralPath $dll)) {
+    throw "Plugin not built at '$dll'. Run scripts\build-2027.ps1 first."
+  }
 
-# The bundle's RuntimeRequirements series must match the Civil 3D release the
-# DLL was compiled against, or AutoCAD silently never loads it. The build's
-# target framework (last path segment of the output dir) tells us which:
-# net8.0-windows is the 2026 build (R25.1), net10.0-windows the 2027 build (R26.0).
-$tfm = Split-Path -Leaf $SourceDir
-$series = switch ($tfm) {
-  "net8.0-windows"  { "R25.1" }
-  "net10.0-windows" { "R26.0" }
-  default { throw "Cannot infer the Civil 3D series from '$tfm'. Pass a build output dir named by target framework (net8.0-windows or net10.0-windows)." }
-}
+  # The bundle's RuntimeRequirements series must match the Civil 3D release the
+  # DLL was compiled against, or AutoCAD silently never loads it. The build's
+  # target framework (last path segment of the output dir) tells us which:
+  # net8.0-windows is the 2026 build (R25.1), net10.0-windows the 2027 build (R26.0).
+  $tfm = Split-Path -Leaf $SourceDir
+  $series = switch ($tfm) {
+    "net8.0-windows"  { "R25.1" }
+    "net10.0-windows" { "R26.0" }
+    default { throw "Cannot infer the Civil 3D series from '$tfm'. Pass a build output dir named by target framework (net8.0-windows or net10.0-windows)." }
+  }
 
-$appVersion = (Get-Item -LiteralPath $dll).VersionInfo.FileVersion
-if (-not $appVersion) { $appVersion = "1.0.0.0" }
+  $appVersion = (Get-Item -LiteralPath $dll).VersionInfo.FileVersion
+  if (-not $appVersion) { $appVersion = "1.0.0.0" }
 
-# Stable GUIDs so reinstalls upgrade in place rather than registering a duplicate.
-$xml = @"
+  # Stable GUIDs so reinstalls upgrade in place rather than registering a duplicate.
+  $xml = @"
 <?xml version="1.0" encoding="utf-8"?>
 <ApplicationPackage
   SchemaVersion="1.0"
@@ -158,65 +191,69 @@ $xml = @"
 </ApplicationPackage>
 "@
 
-# Build the complete bundle next to the real one first.
-$suffix  = [guid]::NewGuid().ToString("N").Substring(0, 8)
-$staging = Join-Path $BundleRoot ".$BundleName.staging-$suffix"
-$old     = Join-Path $BundleRoot ".$BundleName.old-$suffix"
+  # Build the complete bundle next to the real one first.
+  $suffix  = [guid]::NewGuid().ToString("N").Substring(0, 8)
+  $staging = Join-Path $BundleRoot ".$BundleName.staging-$suffix"
+  $old     = Join-Path $BundleRoot ".$BundleName.old-$suffix"
 
-New-Item -ItemType Directory -Path $BundleRoot -Force | Out-Null
-$rollbackError = $null
-try {
-  $contents = Join-Path $staging "Contents"
-  New-Item -ItemType Directory -Path $contents -Force | Out-Null
-
-  # The six Autodesk references are Private=false in the csproj, so they never
-  # land in bin\; deny-list them anyway so a hand-copied set can't be shipped.
-  $autodeskRefs = @("accoremgd.dll", "AcDbMgd.dll", "acmgd.dll", "AecBaseMgd.dll", "AeccDbMgd.dll", "AeccPressurePipesMgd.dll")
-  $copied = 0
-  foreach ($f in Get-ChildItem -LiteralPath $SourceDir -File) {
-    if ($autodeskRefs -contains $f.Name) { continue }
-    Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $contents $f.Name) -Force
-    $copied++
-  }
-
-  # PackageContents.xml must be UTF-8 without BOM or AutoCAD ignores the bundle.
-  [System.IO.File]::WriteAllText(
-    (Join-Path $staging "PackageContents.xml"),
-    $xml,
-    (New-Object System.Text.UTF8Encoding($false)))
-
-  # Swap: move the current bundle aside, move the new one in, then delete the
-  # old one. Folder renames in one parent are atomic, and a failed second
-  # rename puts the old bundle back.
-  $hadBundle = Test-Path -LiteralPath $bundleDir
-  if ($hadBundle) { [System.IO.Directory]::Move($bundleDir, $old) }
+  New-Item -ItemType Directory -Path $BundleRoot -Force | Out-Null
+  $rollbackError = $null
   try {
-    [System.IO.Directory]::Move($staging, $bundleDir)
-  } catch {
-    if ($hadBundle) {
-      try {
-        [System.IO.Directory]::Move($old, $bundleDir)
-      } catch {
-        $rollbackError = $_.Exception.Message
-      }
-    }
-    throw
-  }
-} catch {
-  if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
-  if ($rollbackError) {
-    throw "Install failed and the previous bundle could not be moved back: it is at $old. Rename it to $BundleName to restore it. $($_.Exception.Message) ($rollbackError)"
-  }
-  throw "Install failed; the previous bundle (if any) is unchanged at $bundleDir. $($_.Exception.Message)"
-}
+    $contents = Join-Path $staging "Contents"
+    New-Item -ItemType Directory -Path $contents -Force | Out-Null
 
-# The new bundle is in place: the previous one moved aside by this run, and
-# any an interrupted earlier run left (kept above while no bundle existed),
-# are no longer needed.
-foreach ($previous in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue |
-    Where-Object { $_.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase) })) {
-  Remove-Item -LiteralPath $previous.FullName -Recurse -Force -ErrorAction SilentlyContinue
-  if (Test-Path -LiteralPath $previous.FullName) { Write-Warning "Could not delete the previous bundle at $($previous.FullName); delete it by hand." }
+    # The six Autodesk references are Private=false in the csproj, so they never
+    # land in bin\; deny-list them anyway so a hand-copied set can't be shipped.
+    $autodeskRefs = @("accoremgd.dll", "AcDbMgd.dll", "acmgd.dll", "AecBaseMgd.dll", "AeccDbMgd.dll", "AeccPressurePipesMgd.dll")
+    $copied = 0
+    foreach ($f in Get-ChildItem -LiteralPath $SourceDir -File) {
+      if ($autodeskRefs -contains $f.Name) { continue }
+      Copy-Item -LiteralPath $f.FullName -Destination (Join-Path $contents $f.Name) -Force
+      $copied++
+    }
+
+    # PackageContents.xml must be UTF-8 without BOM or AutoCAD ignores the bundle.
+    [System.IO.File]::WriteAllText(
+      (Join-Path $staging "PackageContents.xml"),
+      $xml,
+      (New-Object System.Text.UTF8Encoding($false)))
+
+    # Swap: move the current bundle aside, move the new one in, then delete the
+    # old one. Folder renames in one parent are atomic, and a failed second
+    # rename puts the old bundle back.
+    $hadBundle = Test-Path -LiteralPath $bundleDir
+    if ($hadBundle) { [System.IO.Directory]::Move($bundleDir, $old) }
+    try {
+      [System.IO.Directory]::Move($staging, $bundleDir)
+    } catch {
+      if ($hadBundle) {
+        try {
+          [System.IO.Directory]::Move($old, $bundleDir)
+        } catch {
+          $rollbackError = $_.Exception.Message
+        }
+      }
+      throw
+    }
+  } catch {
+    if (Test-Path -LiteralPath $staging) { Remove-Item -LiteralPath $staging -Recurse -Force -ErrorAction SilentlyContinue }
+    if ($rollbackError) {
+      throw "Install failed and the previous bundle could not be moved back: it is at $old. Rename it to $BundleName to restore it. $($_.Exception.Message) ($rollbackError)"
+    }
+    throw "Install failed; the previous bundle (if any) is unchanged at $bundleDir. $($_.Exception.Message)"
+  }
+
+  # The new bundle is in place: the previous one moved aside by this run, and
+  # any an interrupted earlier run left (kept above while no bundle existed),
+  # are no longer needed.
+  foreach ($previous in @(Get-ChildItem -LiteralPath $BundleRoot -Directory -Force -ErrorAction SilentlyContinue |
+      Where-Object { $_.Name.StartsWith($oldPrefix, [System.StringComparison]::OrdinalIgnoreCase) })) {
+    Remove-Item -LiteralPath $previous.FullName -Recurse -Force -ErrorAction SilentlyContinue
+    if (Test-Path -LiteralPath $previous.FullName) { Write-Warning "Could not delete the previous bundle at $($previous.FullName); delete it by hand." }
+  }
+} finally {
+  $installLock.ReleaseMutex()
+  $installLock.Dispose()
 }
 
 Write-Host "Installed bundle: $bundleDir"

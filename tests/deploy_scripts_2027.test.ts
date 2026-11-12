@@ -121,10 +121,72 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
           ? Promise.resolve()
           : new Promise<void>((resolve) => holder.once("exit", () => resolve()));
         holder.kill();
-        await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 15_000))]);
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([exited, new Promise<void>((resolve) => { timer = setTimeout(resolve, 15_000); })]);
+        clearTimeout(timer);
       }
       const contents = path.join(bundleRoot, "Civil3DMcp.bundle", "Contents");
       expect(readFileSync(path.join(contents, "Civil3DMcpPlugin.dll"), "utf8")).toBe("v1");
+      expect(readdirSync(bundleRoot)).toEqual(["Civil3DMcp.bundle"]);
+    } finally {
+      cleanup();
+    }
+  }, 120_000);
+
+  it("install-bundle waits for another run on the same bundle and leaves its folders alone", async () => {
+    try {
+      const root = tempDir("bundle-lock");
+      const bundleRoot = path.join(root, "ApplicationPlugins");
+      const good = fakeBuild(path.join(root, "a"), "net10.0-windows", { "Civil3DMcpPlugin.dll": "v1" });
+      expect(run(shell, installBundle, ["-SourceDir", good, "-BundleRoot", bundleRoot]).status).toBe(0);
+      // Stand-in for the moved-aside bundle of a run that is mid-swap.
+      const inFlight = path.join(bundleRoot, ".Civil3DMcp.bundle.old-inflight");
+      mkdirSync(inFlight);
+      writeFileSync(path.join(inFlight, "keep.txt"), "keep");
+
+      // Hold the install mutex the way a concurrent run would.
+      const bundleDir = path.join(bundleRoot, "Civil3DMcp.bundle").replace(/'/g, "''");
+      const holder = spawn("powershell", ["-NoProfile", "-Command", [
+        `$p = [System.IO.Path]::GetFullPath('${bundleDir}').ToLowerInvariant()`,
+        "$sha = [System.Security.Cryptography.SHA256]::Create()",
+        "$h = -join ($sha.ComputeHash([System.Text.Encoding]::UTF8.GetBytes($p)) | ForEach-Object { $_.ToString('x2') })",
+        "$m = New-Object System.Threading.Mutex($false, \"Global\\Civil3DMcpInstall-$h\")",
+        "[void]$m.WaitOne()",
+        "'locked'",
+        "Start-Sleep -Seconds 60",
+      ].join("; ")], { env: shellEnv("powershell"), stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let locked = false;
+          holder.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+            if (chunk.includes("locked")) {
+              locked = true;
+              resolve();
+            }
+          });
+          holder.once("exit", () => { if (!locked) reject(new Error("lock holder exited before taking the lock")); });
+        });
+        const v2 = fakeBuild(path.join(root, "b"), "net10.0-windows", { "Civil3DMcpPlugin.dll": "v2" });
+        const blocked = run(shell, installBundle, ["-SourceDir", v2, "-BundleRoot", bundleRoot, "-LockTimeoutSeconds", "1"]);
+        expect(blocked.status, blocked.output).not.toBe(0);
+        expect(blocked.output).toContain("Another install-bundle run");
+        expect(readFileSync(path.join(inFlight, "keep.txt"), "utf8")).toBe("keep");
+        expect(readFileSync(path.join(bundleRoot, "Civil3DMcp.bundle", "Contents", "Civil3DMcpPlugin.dll"), "utf8")).toBe("v1");
+      } finally {
+        const exited = holder.exitCode !== null || holder.signalCode !== null
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => holder.once("exit", () => resolve()));
+        holder.kill();
+        let timer: NodeJS.Timeout | undefined;
+        await Promise.race([exited, new Promise<void>((resolve) => { timer = setTimeout(resolve, 15_000); })]);
+        clearTimeout(timer);
+      }
+
+      // Once the other run is gone, an install proceeds and sweeps its folder.
+      const v3 = fakeBuild(path.join(root, "c"), "net10.0-windows", { "Civil3DMcpPlugin.dll": "v3" });
+      const after = run(shell, installBundle, ["-SourceDir", v3, "-BundleRoot", bundleRoot, "-LockTimeoutSeconds", "30"]);
+      expect(after.status, after.output).toBe(0);
+      expect(readFileSync(path.join(bundleRoot, "Civil3DMcp.bundle", "Contents", "Civil3DMcpPlugin.dll"), "utf8")).toBe("v3");
       expect(readdirSync(bundleRoot)).toEqual(["Civil3DMcp.bundle"]);
     } finally {
       cleanup();
