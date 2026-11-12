@@ -132,7 +132,15 @@ if (args[0] === "install") {
 }
 `);
   writeFileSync(path.join(bin, "npm.cmd"), `@"${process.execPath}" "%~dp0fake-npm.mjs" %*\r\n@exit /b %ERRORLEVEL%\r\n`);
-  writeFileSync(path.join(bin, "node.cmd"), `@echo off\r\n>>"%~dp0node-calls.txt" echo %*\r\nexit /b 0\r\n`);
+  // Records each node call. Not cmd's >> redirect: two launchers starting node
+  // at once make one of the appends fail on a sharing violation, which cmd
+  // reports on stderr while the script still exits 0, so a call went missing.
+  // Node's append mode shares the file and appends atomically.
+  writeFileSync(path.join(bin, "fake-node.mjs"), `
+import { appendFileSync } from "node:fs";
+appendFileSync(${JSON.stringify(path.join(bin, "node-calls.txt"))}, process.argv.slice(2).join(" ") + "\\n");
+`);
+  writeFileSync(path.join(bin, "node.cmd"), `@"${process.execPath}" "%~dp0fake-node.mjs" %*\r\n@exit /b 0\r\n`);
 
   const env: NodeJS.ProcessEnv = {};
   for (const [key, value] of Object.entries(process.env)) {
