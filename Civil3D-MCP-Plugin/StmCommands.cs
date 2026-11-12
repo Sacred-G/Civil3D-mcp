@@ -31,8 +31,11 @@ public static class StmCommands
       // If a filePath is provided, we note it for the user; the dialog will still appear.
       var commandString = "ExportSSA\n";
 
-      // Sent after the operation; a send that fails fails the request with
-      // CIVIL3D.COMMAND_FAILED or HOST_BUSY (CivilExecution.SendCommandLineAsync).
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
       CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
@@ -68,8 +71,11 @@ public static class StmCommands
       // The ImportSSA command opens the Storm and Sanitary Analysis import dialog.
       var commandString = "ImportSSA\n";
 
-      // Sent after the operation; a send that fails fails the request with
-      // CIVIL3D.COMMAND_FAILED or HOST_BUSY (CivilExecution.SendCommandLineAsync).
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
       CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
@@ -96,8 +102,11 @@ public static class StmCommands
     {
       var commandString = "AnalyzeGravityNetwork\n";
 
-      // Sent after the operation; a send that fails fails the request with
-      // CIVIL3D.COMMAND_FAILED or HOST_BUSY (CivilExecution.SendCommandLineAsync).
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
       CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
