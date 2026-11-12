@@ -152,7 +152,10 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
       expect(readdirSync(bundleRoot).sort()).toEqual([`.${name}.old-dead0001`, ".Other.bundle.staging-dead0003"]);
 
       const build = fakeBuild(root, "net10.0-windows", { "Civil3DMcpPlugin.dll": "v1" });
-      expect(run(shell, installBundle, ["-SourceDir", build, "-BundleRoot", bundleRoot, "-BundleName", name]).status).toBe(0);
+      // The first install that succeeds removes the kept copy.
+      result = run(shell, installBundle, ["-SourceDir", build, "-BundleRoot", bundleRoot, "-BundleName", name]);
+      expect(result.status, result.output).toBe(0);
+      expect(readdirSync(bundleRoot).sort()).toEqual([".Other.bundle.staging-dead0003", name]);
       result = run(shell, installBundle, ["-SourceDir", build, "-BundleRoot", bundleRoot, "-BundleName", name]);
       expect(result.status, result.output).toBe(0);
       expect(readdirSync(bundleRoot).sort()).toEqual([".Other.bundle.staging-dead0003", name]);
