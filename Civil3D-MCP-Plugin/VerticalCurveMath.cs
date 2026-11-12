@@ -19,10 +19,14 @@ public static class VerticalCurveMath
 
   /// <summary>
   /// US customary: design speed in mph, K in ft/%. AASHTO Green Book stopping
-  /// sight distance design K (crest: Table 3-34; sag: Table 3-36).
+  /// sight distance design K (crest: Table 3-34; sag: Table 3-36), from 15 mph
+  /// like the tables themselves.
   /// </summary>
   public static readonly IReadOnlyList<KRow> MphTable =
   [
+    new(15, 3, 10),
+    new(20, 7, 17),
+    new(25, 12, 26),
     new(30, 19, 37),
     new(35, 29, 49),
     new(40, 44, 64),
@@ -126,13 +130,21 @@ public static class VerticalCurveMath
 
   /// <summary>
   /// The design row for a speed. An exact row is used when one exists;
-  /// otherwise the next HIGHER speed row (conservative). Speeds outside the
-  /// table throw ArgumentOutOfRangeException.
+  /// otherwise the next HIGHER speed row (conservative). A speed within
+  /// SpeedTolerance of a row is that row. Speeds outside the table throw
+  /// ArgumentOutOfRangeException; speed units other than the canonical
+  /// <see cref="Mph"/> / <see cref="Kmh"/> (see NormalizeSpeedUnits) throw
+  /// ArgumentException instead of silently using the km/h table.
   /// </summary>
   public static KLookup LookupRow(string speedUnits, double designSpeed)
   {
-    var table = speedUnits == Mph ? MphTable : KmhTable;
-    if (double.IsNaN(designSpeed) || designSpeed < table[0].Speed - 1e-9 || designSpeed > table[^1].Speed + 1e-9)
+    var table = speedUnits switch
+    {
+      Mph => MphTable,
+      Kmh => KmhTable,
+      _ => throw new ArgumentException($"speedUnits must be \"{Mph}\" or \"{Kmh}\", not '{speedUnits}'.", nameof(speedUnits)),
+    };
+    if (double.IsNaN(designSpeed) || designSpeed < table[0].Speed - SpeedTolerance || designSpeed > table[^1].Speed + SpeedTolerance)
     {
       throw new ArgumentOutOfRangeException(
         nameof(designSpeed),
@@ -141,7 +153,9 @@ public static class VerticalCurveMath
 
     foreach (var row in table)
     {
-      if (Math.Abs(row.Speed - designSpeed) < 1e-9)
+      // Same expressions as the range check, so a speed it admits just above
+      // the last row (or just below the first) is matched to that row here.
+      if (designSpeed >= row.Speed - SpeedTolerance && designSpeed <= row.Speed + SpeedTolerance)
       {
         return new KLookup(row, true, speedUnits, KUnitsFor(speedUnits), null);
       }
@@ -157,9 +171,13 @@ public static class VerticalCurveMath
       }
     }
 
-    // Unreachable: the range check above guarantees a row.
-    return new KLookup(table[^1], false, speedUnits, KUnitsFor(speedUnits), null);
+    // Unreachable: the range check admits at most the last row's speed plus
+    // SpeedTolerance, and that speed matches the last row as an exact row above.
+    throw new InvalidOperationException($"No AASHTO K row for {designSpeed} {speedUnits}.");
   }
+
+  /// <summary>How close a design speed must be to a table row to count as that row.</summary>
+  public const double SpeedTolerance = 1e-9;
 
   /// <summary>Algebraic grade difference A in percent from decimal grades.</summary>
   public static double GradeDifferencePercent(double gradeIn, double gradeOut) => 100.0 * Math.Abs(gradeOut - gradeIn);

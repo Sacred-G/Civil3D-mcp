@@ -47,7 +47,8 @@
   difference (0.028) instead of percent (2.8) — a 280 ft curve reported
   K ≈ 9,980 — and always used a metric table, so 50 (mph) required sag 9 /
   crest 4. K is now L / (100·|g2−g1|), checked against the AASHTO
-  stopping-sight-distance design K tables in mph (ft/%) or km/h (m/%). New
+  stopping-sight-distance design K tables in mph (ft/%, 15-80 mph) or km/h
+  (m/%, 20-130 km/h). New
   optional `speedUnits` (`mph` | `km/h`) defaults from the drawing's length
   unit; speeds between rows use the next higher row (and say so); speeds
   outside the table are `CIVIL3D.INVALID_INPUT`. Per curve it now returns

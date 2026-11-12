@@ -172,7 +172,10 @@ public static class ProfileCommands
       ["profileName"] = profile.Name,
       ["created"] = true,
       ["handle"] = CivilObjectUtils.GetHandle(profile),
-      ["style"] = profile.StyleId.IsNull ? null : CivilObjectUtils.GetName(transaction.GetObject(profile.StyleId, OpenMode.ForRead)),
+      // A string, as in get and list (empty when the profile has no style).
+      ["style"] = profile.StyleId.IsNull
+        ? string.Empty
+        : CivilObjectUtils.GetName(transaction.GetObject(profile.StyleId, OpenMode.ForRead)) ?? string.Empty,
       ["layer"] = profile.Layer,
     };
   }

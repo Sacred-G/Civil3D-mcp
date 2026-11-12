@@ -200,7 +200,7 @@ public static class ProfileEditCommands
       {
         lookup = VerticalCurveMath.LookupRow(speedUnits, designSpeed);
       }
-      catch (ArgumentOutOfRangeException ex)
+      catch (ArgumentException ex)
       {
         throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", ex.Message.Split(Environment.NewLine)[0]);
       }
