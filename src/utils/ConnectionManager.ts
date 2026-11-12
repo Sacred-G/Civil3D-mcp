@@ -50,6 +50,20 @@ async function sendSingleCommand(command: string, params: unknown, options: Send
           clearTimeout(timeout);
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
+          signal?.removeEventListener("abort", onAbort);
+        };
+
+        // A caller that aborts while the TCP connection is still being set up
+        // is settled at once. cancel() destroys the socket, which raises
+        // neither "connect" nor "error", so without this the request would
+        // stay alive until the connect timeout.
+        const onAbort = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanup();
+          reject(cancellationError);
         };
 
         const onConnect = () => {
@@ -77,6 +91,7 @@ async function sendSingleCommand(command: string, params: unknown, options: Send
 
         appClient.socket.on("connect", onConnect);
         appClient.socket.on("error", onError);
+        signal?.addEventListener("abort", onAbort, { once: true });
 
         const timeout = setTimeout(() => {
           if (settled) {

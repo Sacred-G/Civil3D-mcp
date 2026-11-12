@@ -94,19 +94,42 @@
   - command-line input (undo, redo, Storm and Sanitary, data-shortcut
     commands) is sent through COM `SendCommand` after the operation instead of
     `SendStringToExecute`, whose queued input mixed with the plugin command's;
-  - `redoDrawing` sends `MREDO n` (`REDO` takes no count), and undo and redo
-    run without a document lock, which empties the redo stack.
+  - `redoDrawing` sends `MREDO n` (`REDO` takes no count). Undo and redo take
+    no document lock, because taking one (even for a read) empties the redo
+    stack. Both requests return only after the command has run (or fail with
+    `CIVIL3D.HOST_BUSY` if it is still running after 15 s);
+  - pay item and cost estimate CSV exports use the plugin command only when
+    they compute earthwork (a scratch volume surface); pipe and structure
+    quantities alone are a plain read.
 
-  While a command or prompt stays active for 15 s, requests now fail with
-  `CIVIL3D.HOST_BUSY` instead of timing out. Plugin calls no longer cancel a
-  command or prompt the user has open.
+  While a command is active for 15 s, requests fail with `CIVIL3D.HOST_BUSY`
+  instead of timing out. Requests that need the plugin command or a quiescent
+  editor (writes, the reads above, command-line input) also wait for a prompt
+  with `CMDACTIVE` 0, such as a LISP `getstring`, and fail the same way. A
+  plain read is not held up by such a prompt and runs while it is open. A COM
+  call that Civil 3D keeps rejecting is also `CIVIL3D.HOST_BUSY`, and a request
+  whose operation fails always ends with that error instead of waiting with
+  the plugin's execution gate held. Plugin calls no longer cancel a command or
+  prompt the user has open.
+
+  A request cancelled while its operation is already running (client
+  disconnect or timeout) still returns at once, but the next request now
+  waits until that operation has finished; before, it could start beside it.
+  Work that had not started when the request ended never runs. Command-line
+  input that Civil 3D rejects or that fails to send now fails the request
+  (`CIVIL3D.HOST_BUSY` or `CIVIL3D.COMMAND_FAILED`) instead of being reported
+  as `initiated`; a command that opens a dialog is reported once Civil 3D has
+  accepted it.
 - While a modal dialog was open (e.g. the Drawing Recovery notice at startup)
   requests timed out after 120 s: Civil 3D raises no `Application.Idle` inside
   a modal loop. A watchdog on the timer thread now fails the request with
   `CIVIL3D.HOST_BUSY` after 15 s without an Idle tick.
 - With no document open, drawing-dependent requests hung and wedged the
   plugin's execution gate; they now fail fast with `CIVIL3D.NO_DRAWING`, and
-  `civil3d_drawing new` works from zero documents.
+  `civil3d_drawing new` works from zero documents. A client that aborts a
+  request while its TCP connection is still being set up is now settled at
+  once instead of after the connect timeout (`verify-live-plugin.mjs`'s
+  no-drawing watchdog relies on this).
 
 ## v1.2.1 — 2026-07-14
 

@@ -18,6 +18,7 @@
     "test": "vitest run",
     "test:p2-boundaries": "dotnet run --project ./tests/FileBoundaryHarness/FileBoundaryHarness.csproj",
     "test:run-code-compiler": "dotnet run --project ./tests/RunCodeHarness/RunCodeHarness.csproj -f net8.0",
+    "test:host-gate": "dotnet run --project ./tests/HostGateHarness/HostGateHarness.csproj",
     "test:watch": "vitest",
     "test:live-plugin": "npm run build && node ./scripts/verify-live-plugin.mjs",
     "test:live-host": "npm run build && node ./scripts/live-host-smoke.mjs",
