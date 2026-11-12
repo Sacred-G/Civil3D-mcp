@@ -19,6 +19,7 @@ import { GRADING_DOMAIN_DEFINITION } from "./domains/gradingDomain.js";
 import { PARCEL_DOMAIN_DEFINITION } from "./domains/parcelDomain.js";
 import { SURVEY_DOMAIN_DEFINITION } from "./domains/surveyDomain.js";
 import { PLAN_PRODUCTION_DOMAIN_DEFINITION } from "./domains/planProductionDomain.js";
+import { PLOT_DOMAIN_DEFINITION } from "./domains/plotDomain.js";
 import { PROJECT_DOMAIN_DEFINITION } from "./domains/projectDomain.js";
 import { STANDARDS_DOMAIN_DEFINITION } from "./domains/standardsDomain.js";
 import { QC_DOMAIN_DEFINITION } from "./domains/qcDomain.js";
@@ -52,6 +53,7 @@ export const MIGRATED_DOMAIN_DEFINITIONS = [
   PARCEL_DOMAIN_DEFINITION,
   SURVEY_DOMAIN_DEFINITION,
   PLAN_PRODUCTION_DOMAIN_DEFINITION,
+  PLOT_DOMAIN_DEFINITION,
   PROJECT_DOMAIN_DEFINITION,
   STANDARDS_DOMAIN_DEFINITION,
   QC_DOMAIN_DEFINITION,

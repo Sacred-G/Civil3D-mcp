@@ -29,6 +29,7 @@ export type ToolDomain =
   | "cost_estimation"
   | "survey"
   | "plan_production"
+  | "plot"
   | "docs"
   | "help"
   | "catchment"
