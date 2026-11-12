@@ -196,7 +196,8 @@ public static class AlignmentCommands
     //   'polylineHandle', where the alignment should trace the polyline exactly.
     // Neither curves option: straight tangents that follow the source geometry.
     var curveRadius = PluginRuntime.GetOptionalDouble(parameters, "curveRadius");
-    var addCurves = PluginRuntime.GetOptionalBool(parameters, "addCurves") ?? string.IsNullOrWhiteSpace(polylineHandle);
+    var addCurvesGiven = PluginRuntime.GetOptionalBool(parameters, "addCurves");
+    var addCurves = addCurvesGiven ?? string.IsNullOrWhiteSpace(polylineHandle);
 
     // radii: one radius per interior PI in station order, for a design whose
     // corners differ. A null entry, or a PI past the end of the list, stays sharp.
@@ -220,6 +221,7 @@ public static class AlignmentCommands
 
       ObjectId polylineId;
       bool eraseSource;
+      var sourceArcs = 0;   // arcs already in the source polyline (bulged segments)
 
       if (!string.IsNullOrWhiteSpace(polylineHandle))
       {
@@ -236,10 +238,19 @@ public static class AlignmentCommands
             "CIVIL3D.OBJECT_NOT_FOUND", $"Could not resolve polyline handle '{polylineHandle}': {ex.Message}");
         }
 
-        if (transaction.GetObject(existingId, OpenMode.ForRead) is not Polyline)
+        if (transaction.GetObject(existingId, OpenMode.ForRead) is not Polyline source)
         {
           throw new JsonRpcDispatchException(
             "CIVIL3D.INVALID_INPUT", $"Handle '{polylineHandle}' is not a polyline.");
+        }
+
+        var segments = source.Closed ? source.NumberOfVertices : source.NumberOfVertices - 1;
+        for (var segment = 0; segment < segments; segment++)
+        {
+          if (source.GetBulgeAt(segment) != 0)
+          {
+            sourceArcs++;
+          }
         }
 
         polylineId = existingId;
@@ -279,6 +290,12 @@ public static class AlignmentCommands
       var siteId = LookupUtils.GetSiteId(civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "site"));
 
       var alignmentId = Alignment.Create(civilDoc, polylineOptions, name, siteId, layerId, styleId, labelSetId);
+
+      // Curves Civil 3D fitted itself (AddCurvesBetweenTangents) are not
+      // reported by Create; count them so the result says what was built.
+      var curvesAutoFitted = polylineOptions.AddCurvesBetweenTangents
+        ? Math.Max(0, CountArcs(CivilObjectUtils.GetRequiredObject<Alignment>(transaction, alignmentId, OpenMode.ForRead)) - sourceArcs)
+        : 0;
 
       // Insert a curve at each interior PI -- wherever two tangents meet at an
       // angle, in station order: curveRadius at every PI, or radii[n] at PI n.
@@ -345,6 +362,14 @@ public static class AlignmentCommands
 
       var alignment = CivilObjectUtils.GetRequiredObject<Alignment>(transaction, alignmentId, OpenMode.ForRead);
 
+      var warnings = new List<string>();
+      if (curvesAutoFitted > 0 && addCurvesGiven == null)
+      {
+        warnings.Add(
+          $"Civil 3D fitted {curvesAutoFitted} curve(s) at the drawing's default radius because 'addCurves' defaults to true for 'points'. " +
+          "Pass addCurves=false for straight tangents through the points, or curveRadius/radii for exact radii.");
+      }
+
       return new Dictionary<string, object?>
       {
         ["name"] = alignment.Name,
@@ -354,12 +379,36 @@ public static class AlignmentCommands
         ["sourcePolylineErased"] = eraseSource,
         ["curveRadius"] = curveRadius,
         ["radii"] = radii,
-        ["curvesAdded"] = curvesAdded,
+        ["addCurves"] = polylineOptions.AddCurvesBetweenTangents,
+        // Every curve this call added: fitted by Civil 3D plus inserted at curveRadius/radii.
+        ["curvesAdded"] = curvesAutoFitted + curvesAdded,
+        ["curvesAutoFitted"] = curvesAutoFitted,
+        ["curveCount"] = CountArcs(alignment),
+        ["warnings"] = warnings,
         ["curvesSkipped"] = curvesSkipped,
         ["curveFailures"] = curveFailures,
         ["created"] = true,
       };
     });
+  }
+
+  // Circular arcs in the alignment, including the arc inside a spiral-curve-spiral group.
+  private static int CountArcs(Alignment alignment)
+  {
+    var arcs = 0;
+    for (var index = 0; index < alignment.Entities.Count; index++)
+    {
+      var entity = alignment.Entities[index];
+      for (var sub = 0; sub < entity.SubEntityCount; sub++)
+      {
+        if (entity[sub].SubEntityType == AlignmentSubEntityType.Arc)
+        {
+          arcs++;
+        }
+      }
+    }
+
+    return arcs;
   }
 
   private static List<double?>? ReadRadii(JsonObject? parameters)

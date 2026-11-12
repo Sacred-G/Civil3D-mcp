@@ -117,7 +117,9 @@ const canonicalAlignmentInputShape = {
   polylineHandle: z.string().optional(),
   curveRadius: z.number().positive().optional(),
   radii: z.array(z.number().positive().nullable()).optional(),
-  addCurves: z.boolean().optional(),
+  addCurves: z.boolean().optional().describe(
+    "create: let Civil 3D fit curves at the drawing's default radius. Defaults to true for points and false for polylineHandle; pass false for straight tangents through the points.",
+  ),
   station: z.number().optional(),
   offset: z.number().optional(),
   x: z.number().optional(),
@@ -187,7 +189,9 @@ const AlignmentCreateArgsSchema = z.object({
   // PI past the end of the list, stays sharp); it cannot be combined with
   // curveRadius.
   // addCurves lets Civil 3D fit curves at its own default radius; it defaults to
-  // true for points (original behavior) and false for polylineHandle.
+  // true for points (original behavior) and false for polylineHandle. The
+  // result's curvesAdded counts those fitted curves too (curvesAutoFitted), and
+  // a warning says when the default fitted any.
   curveRadius: z.number().positive().optional(),
   radii: z.array(z.number().positive().nullable()).min(1).optional(),
   addCurves: z.boolean().optional(),
