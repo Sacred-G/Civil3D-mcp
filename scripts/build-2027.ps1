@@ -12,8 +12,10 @@
   Run scripts\gather-refs-2027.ps1 first to stage the six Autodesk references.
 
   -Install deploys via scripts\install-bundle.ps1. Bundles under
-  ApplicationPlugins are implicitly trusted and auto-load, which the APPLOAD
-  Startup Suite cannot do while SECURELOAD=1 and TRUSTEDPATHS is empty.
+  ApplicationPlugins auto-load, which the APPLOAD Startup Suite cannot do while
+  SECURELOAD=1 and TRUSTEDPATHS is empty. The per-user bundle folder is not a
+  trusted location, so Civil 3D asks about the unsigned DLL at each start
+  (answer Load Once).
 
 .EXAMPLE
   .\scripts\build-2027.ps1 -Install

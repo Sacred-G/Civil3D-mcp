@@ -19,7 +19,9 @@
   2027's assemblies target .NET 10 — without changing the 2026 default.
 - `scripts/install-bundle.ps1` deploys the plugin as an ApplicationPlugins
   bundle, which auto-loads under the default `SECURELOAD=1` policy that rejects
-  Startup Suite entries outside `TRUSTEDPATHS`.
+  Startup Suite entries outside `TRUSTEDPATHS`. The per-user bundle folder is
+  not a trusted location, so Civil 3D 2026 asks about the unsigned
+  `Civil3DMcpPlugin.dll` at every start (answer Load Once).
 
 ## v1.2.1 — 2026-07-14
 
