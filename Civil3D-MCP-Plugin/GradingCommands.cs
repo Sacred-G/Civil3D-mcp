@@ -60,7 +60,7 @@ public static class GradingCommands
     var useProjection = PluginRuntime.GetOptionalBool(parameters, "useProjection") ?? false;
     // Optional: name the site the group is created in. If it does not exist yet, a site with that
     // name is created and used, so a fresh drawing with no sites does not need a separate
-    // create-site step (Civil 3D only creates sites implicitly through the ribbon UI).
+    // create-site step.
     var siteParam = PluginRuntime.GetOptionalString(parameters, "site");
 
     return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
@@ -71,15 +71,7 @@ public static class GradingCommands
       if (!string.IsNullOrWhiteSpace(siteParam))
       {
         // A requested site: found by name, or created when it does not exist yet.
-        foreach (ObjectId id in civilDoc.GetSiteIds())
-        {
-          if (string.Equals(CivilObjectUtils.GetName(transaction.GetObject(id, OpenMode.ForRead)), siteParam, StringComparison.OrdinalIgnoreCase))
-          {
-            siteId = id;
-            break;
-          }
-        }
-
+        siteId = LookupUtils.GetSiteId(civilDoc, transaction, siteParam);
         if (siteId == ObjectId.Null)
         {
           siteId = Autodesk.Civil.DatabaseServices.Site.Create(civilDoc, siteParam);

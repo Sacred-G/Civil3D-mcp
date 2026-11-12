@@ -55,7 +55,7 @@ const canonicalGradingInputShape = {
   name: z.string().optional(),
   description: z.string().optional(),
   useProjection: z.boolean().optional(),
-  site: z.string().optional().describe(
+  site: z.string().min(1).optional().describe(
     "group_create: site that holds the group, created when it does not exist. Default: the first site, or a new '<name> Site' when the drawing has none.",
   ),
   surfaceName: z.string().optional(),
@@ -446,7 +446,9 @@ export const GRADING_DOMAIN_DEFINITION: DomainToolDefinition = {
         name: z.string(),
         description: z.string().optional(),
         useProjection: z.boolean().optional(),
-        site: z.string().optional(),
+        site: z.string().min(1).optional().describe(
+          "Site that holds the group, created when it does not exist. Default: the first site, or a new '<name> Site' when the drawing has none.",
+        ),
       },
       supportedActions: ["group_create"],
       resolveAction: (rawArgs) => ({
