@@ -22,6 +22,36 @@
   Startup Suite entries outside `TRUSTEDPATHS`. The per-user bundle folder is
   not a trusted location, so Civil 3D 2026 asks about the unsigned
   `Civil3DMcpPlugin.dll` at every start (answer Load Once).
+- `scripts/install-trusted.ps1`: installs the plugin into a trusted folder
+  (`-Destination`, which must be in `TRUSTEDPATHS`; default
+  `C:\CAD-Tools\plugins\Civil3DMcp`, one `R<series>` folder per release) and
+  NETLOADs it from a
+  marked `acaddoc.lsp` block, so Civil 3D no longer asks "Security - Unsigned
+  Executable File" at every start as it does for the `%APPDATA%` bundle; removes
+  the bundle; `-Uninstall` reverses. The plugin then loads when a drawing opens.
+  An `acaddoc.lsp` further down the support path, which the new file would
+  shadow, is loaded first (so its `S::STARTUP` is chained, not lost) and stays
+  chained when the installer runs again, also after user code was added to the
+  file or while that file is unreachable (only `-Uninstall` drops it, with a
+  warning when user code keeps the file). Every lock (a changed build, the old
+  bundle) is checked before anything is changed; `-Uninstall` leaves
+  `acaddoc.lsp` files without our block untouched; ANSI files keep their
+  encoding under PowerShell 7 too.
+- `claude-bootstrap-and-run.ps1` runs `npm install --no-save` (the committed
+  `package-lock.json` stays as it is) when `package.json` or
+  `package-lock.json` changed since the last install, and rebuilds when any
+  build input changed (source files, including deletions and renames, the
+  package files, `tsconfig.json`, the copied assets), not only when there is no
+  build: after a `git pull`, new tools appear without a manual build. A failed
+  or interrupted build is rebuilt at the next start instead of running half a
+  build. Concurrent starts of one clone take turns through a named mutex and
+  reuse the first one's install and build; a start with nothing to do never
+  waits. npm output goes to `%TEMP%\civil3d-mcp-bootstrap-<clone key>.log`
+  (its tail to stderr on failure), never to stdout, and an npm notice on
+  stderr no longer stops the start under Windows PowerShell 5.1.
+- `gather-refs-2027.ps1` hashes with .NET SHA-256 instead of `Get-FileHash`,
+  which Windows PowerShell 5.1 cannot load when started from PowerShell 7
+  (it inherits 7's `PSModulePath`).
 
 ## v1.2.1 — 2026-07-14
 
