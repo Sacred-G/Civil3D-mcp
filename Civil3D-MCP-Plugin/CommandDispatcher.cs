@@ -171,6 +171,21 @@ public static class CommandDispatcher
       "referenceDataShortcut" => DataShortcutCommands.ReferenceDataShortcutAsync(parameters),
       "syncDataShortcuts" => DataShortcutCommands.SyncDataShortcutsAsync(parameters),
       "createDataShortcutReference" => DataShortcutCommands.CreateDataShortcutReferenceAsync(parameters),
+      "listDataShortcutReferences" => DataShortcutCommands.ListDataShortcutReferencesAsync(parameters),
+      "repairDataShortcutReference" => DataShortcutCommands.RepairDataShortcutReferenceAsync(parameters),
+      // Xrefs
+      "listXrefs" => XrefCommands.ListXrefsAsync(parameters),
+      "attachXref" => XrefCommands.AttachXrefAsync(parameters),
+      "overlayXref" => XrefCommands.OverlayXrefAsync(parameters),
+      "detachXrefs" => XrefCommands.DetachXrefAsync(parameters),
+      "reloadXrefs" => XrefCommands.ReloadXrefsAsync(parameters),
+      "unloadXrefs" => XrefCommands.UnloadXrefsAsync(parameters),
+      "bindXrefs" => XrefCommands.BindXrefsAsync(parameters),
+      "repathXref" => XrefCommands.RepathXrefAsync(parameters),
+      // Drawing comparison (read-only)
+      "compareDrawings" => CompareCommands.CompareDrawingsAsync(parameters),
+      "writeDrawingSnapshot" => CompareCommands.WriteDrawingSnapshotAsync(parameters),
+      "compareDrawingSnapshot" => CompareCommands.CompareDrawingSnapshotAsync(parameters),
       // Point groups
       "createPointGroup" => PointGroupCommands.CreatePointGroupAsync(parameters),
       "updatePointGroup" => PointGroupCommands.UpdatePointGroupAsync(parameters),

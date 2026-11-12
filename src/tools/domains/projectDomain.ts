@@ -33,6 +33,55 @@ const DataShortcutListResponseSchema = z.object({
 
 const GenericProjectResponseSchema = z.object({}).passthrough();
 
+export const DataShortcutReferenceStatusSchema = z.enum(["current", "out_of_date", "broken", "source_missing", "unknown"]);
+
+export const DataShortcutReferenceSchema = z.object({
+  objectName: z.string(),
+  objectType: z.enum([
+    "surface",
+    "alignment",
+    "profile",
+    "pipe_network",
+    "pressure_network",
+    "corridor",
+    "view_frame_group",
+  ]),
+  handle: z.string(),
+  layer: z.string().nullish(),
+  status: DataShortcutReferenceStatusSchema,
+  // null when Civil 3D could not report it; status is then "unknown".
+  isValid: z.boolean().nullable(),
+  isStale: z.boolean().nullable(),
+  isPartial: z.boolean(),
+  sourceDrawing: z.string().nullish(),
+  sourceDrawingExists: z.boolean().nullish(),
+  sourceObjectName: z.string().nullish(),
+  sourceObjectType: z.string().nullish(),
+  sourceObjectHandle: z.string().nullish(),
+  sourceLocation: z.enum(["current_project", "other_project_in_working_folder", "outside_working_folder", "unknown"]),
+});
+
+export const DataShortcutReferencesResponseSchema = z.object({
+  workingFolder: z.string().nullish(),
+  currentProjectFolder: z.string().nullish(),
+  currentProjectPath: z.string().nullish(),
+  drawingProjectId: z.string().nullish(),
+  count: z.number().int(),
+  statusCounts: z.record(z.number().int()),
+  references: z.array(DataShortcutReferenceSchema),
+  notes: z.array(z.string()),
+});
+
+const RepairableReferenceTypeSchema = z.enum([
+  "surface",
+  "alignment",
+  "profile",
+  "pipe_network",
+  "pressure_network",
+  "corridor",
+  "view_frame_group",
+]);
+
 const canonicalProjectInputShape = {
   action: z.enum([
     "data_shortcut_list",
@@ -41,10 +90,14 @@ const canonicalProjectInputShape = {
     "data_shortcut_reference",
     "data_shortcut_sync",
     "data_shortcut_create_reference",
+    "data_shortcut_references",
+    "data_shortcut_repair",
   ]),
   sourceFilePath: z.string().optional(),
   objectName: z.string().optional(),
-  objectType: DataShortcutObjectTypeSchema.optional(),
+  // data_shortcut_repair also accepts view_frame_group; the per-action
+  // schemas narrow this to what each action supports.
+  objectType: z.union([DataShortcutObjectTypeSchema, RepairableReferenceTypeSchema]).optional(),
   description: z.string().optional(),
   projectFolder: z.string().optional(),
   shortcutName: z.string().optional(),
@@ -53,6 +106,9 @@ const canonicalProjectInputShape = {
   layer: z.string().optional(),
   shortcutNames: z.array(z.string()).optional(),
   dryRun: z.boolean().optional(),
+  onlyProblems: z.boolean().optional(),
+  sourcePath: z.string().optional(),
+  autoRepairOther: z.boolean().optional(),
 };
 
 const DataShortcutListArgsSchema = z.object({
@@ -94,6 +150,21 @@ const DataShortcutCreateReferenceArgsSchema = z.object({
   sourceFilePath: z.string(),
   objectName: z.string(),
   objectType: z.enum(["surface", "alignment", "profile", "pipe_network"]),
+});
+
+export const DataShortcutReferencesArgsSchema = z.object({
+  action: z.literal("data_shortcut_references"),
+  onlyProblems: z.boolean().optional(),
+});
+
+export const DataShortcutRepairArgsSchema = z.object({
+  action: z.literal("data_shortcut_repair"),
+  objectType: RepairableReferenceTypeSchema,
+  // Use objectName exactly as data_shortcut_references lists it (for profiles,
+  // the profile's own name, not "<alignment>/<profile>").
+  objectName: z.string().min(1),
+  sourcePath: z.string().min(1).regex(/\.dwg$/i, "sourcePath must point to the source .dwg."),
+  autoRepairOther: z.boolean().optional(),
 });
 
 export const PROJECT_DOMAIN_DEFINITION: DomainToolDefinition = {
@@ -177,6 +248,37 @@ export const PROJECT_DOMAIN_DEFINITION: DomainToolDefinition = {
         }),
       ),
     },
+    data_shortcut_references: {
+      action: "data_shortcut_references",
+      inputSchema: DataShortcutReferencesArgsSchema,
+      responseSchema: DataShortcutReferencesResponseSchema,
+      capabilities: ["query", "inspect"],
+      requiresActiveDrawing: true,
+      safeForRetry: true,
+      pluginMethods: ["listDataShortcutReferences"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("listDataShortcutReferences", {
+          onlyProblems: args.onlyProblems ?? false,
+        }),
+      ),
+    },
+    data_shortcut_repair: {
+      action: "data_shortcut_repair",
+      inputSchema: DataShortcutRepairArgsSchema,
+      responseSchema: GenericProjectResponseSchema,
+      capabilities: ["edit", "manage"],
+      requiresActiveDrawing: true,
+      safeForRetry: false,
+      pluginMethods: ["repairDataShortcutReference"],
+      execute: async (args) => await withApplicationConnection(
+        async (appClient) => await appClient.sendCommand("repairDataShortcutReference", {
+          objectType: args.objectType,
+          objectName: args.objectName,
+          sourcePath: args.sourcePath,
+          autoRepairOther: args.autoRepairOther ?? false,
+        }),
+      ),
+    },
     data_shortcut_create_reference: {
       action: "data_shortcut_create_reference",
       inputSchema: DataShortcutCreateReferenceArgsSchema,
@@ -198,7 +300,7 @@ export const PROJECT_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_project",
       displayName: "Civil 3D Project",
-      description: "Manages Civil 3D project collaboration workflows including data-shortcut listing, publishing, referencing, promotion, and synchronization through a single domain tool.",
+      description: "Manages Civil 3D project collaboration workflows including data-shortcut listing, publishing, referencing, promotion, and synchronization through a single domain tool. data_shortcut_references lists the references in the current drawing with their source drawing/object and status (current, out_of_date, broken, source_missing, unknown); data_shortcut_sync synchronizes out-of-date references; data_shortcut_repair repoints a reference to a new source drawing (path must be inside the plugin's import roots); data_shortcut_promote converts a reference into a local copy.",
       inputShape: canonicalProjectInputShape,
       supportedActions: [
         "data_shortcut_list",
@@ -207,6 +309,8 @@ export const PROJECT_DOMAIN_DEFINITION: DomainToolDefinition = {
         "data_shortcut_reference",
         "data_shortcut_sync",
         "data_shortcut_create_reference",
+        "data_shortcut_references",
+        "data_shortcut_repair",
       ],
       resolveAction: (rawArgs) => ({ action: String(rawArgs.action ?? ""), args: rawArgs }),
     },

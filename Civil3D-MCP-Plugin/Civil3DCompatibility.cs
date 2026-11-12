@@ -318,6 +318,50 @@ internal static class Civil3DCompatibility
     return false;
   }
 
+  /// <summary>
+  /// Resolves a type from a Civil 3D managed assembly that ships next to a
+  /// referenced anchor assembly but is not itself a build reference (for
+  /// example AeccDataShortcutMgd.dll beside AeccDbMgd.dll). Already-loaded
+  /// assemblies win; otherwise the sibling file is loaded from the anchor's
+  /// install folder. Returns null when the file or type is absent.
+  /// </summary>
+  public static Type? FindSiblingAssemblyType(Type anchorType, string assemblyFileName, string fullTypeName)
+  {
+    var loaded = FindLoadedType(fullTypeName);
+    if (loaded != null)
+    {
+      return loaded;
+    }
+
+    try
+    {
+      var directory = Path.GetDirectoryName(anchorType.Assembly.Location);
+      if (string.IsNullOrWhiteSpace(directory))
+      {
+        return null;
+      }
+
+      var candidate = Path.Combine(directory, assemblyFileName);
+      if (!File.Exists(candidate))
+      {
+        return null;
+      }
+
+      var assembly = Assembly.LoadFrom(candidate);
+      var type = assembly.GetType(fullTypeName, throwOnError: false, ignoreCase: false);
+      if (type != null)
+      {
+        TypeCache[fullTypeName] = new CachedType(type);
+      }
+
+      return type;
+    }
+    catch
+    {
+      return null;
+    }
+  }
+
   public static Type? FindLoadedType(params string[] fullNames)
   {
     foreach (var fullName in fullNames)

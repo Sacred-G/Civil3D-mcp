@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- DrawingFingerprint.cs is host-independent by design so its diff can be
+       exercised here without Civil 3D. -->
+  <ItemGroup>
+    <Compile Include="..\..\Civil3D-MCP-Plugin\DrawingFingerprint.cs" Link="DrawingFingerprint.cs" />
+    <Compile Include="..\FileBoundaryHarness\JsonRpcDispatchException.cs" Link="JsonRpcDispatchException.cs" />
+  </ItemGroup>
+</Project>

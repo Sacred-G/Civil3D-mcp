@@ -2,8 +2,8 @@
 
 Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 
-- Catalog entries: 206
-- Domains: 29
+- Catalog entries: 208
+- Domains: 31
 
 | Tool | Domain | Operations | Plugin methods | Safe retry |
 |---|---|---|---|---|
@@ -28,6 +28,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_assembly_create` | assembly | — | createAssembly | no |
 | `civil3d_assembly_edit` | assembly | — | editAssembly | no |
 | `civil3d_subassembly_create` | assembly | — | createSubassembly | no |
+| `civil3d_compare` | compare | drawing, snapshot, compare_snapshot | compareDrawings, writeDrawingSnapshot, compareDrawingSnapshot | no |
 | `civil3d_coordinate_system` | coordinate_system | info, transform | getCoordinateSystemInfo, transformCoordinates | yes |
 | `civil3d_corridor` | corridor | list, get, rebuild, get_surfaces, get_feature_lines, compute_volumes, summary, target_mapping_get, target_mapping_set, region_add, region_delete | listCorridors, getCorridor, rebuildCorridor, getCorridorSurfaces, getCorridorFeatureLines, computeCorridorVolumes, getCorridorTargetMappings, setCorridorTargetMappings, addCorridorRegion, deleteCorridorRegion | no |
 | `civil3d_corridor_region_add` | corridor | — | addCorridorRegion | no |
@@ -145,7 +146,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_data_shortcut_promote` | project | — | promoteDataShortcut | no |
 | `civil3d_data_shortcut_reference` | project | — | referenceDataShortcut | no |
 | `civil3d_data_shortcut_sync` | project | — | syncDataShortcuts | no |
-| `civil3d_project` | project | data_shortcut_list, data_shortcut_create, data_shortcut_promote, data_shortcut_reference, data_shortcut_sync, data_shortcut_create_reference | listDataShortcuts, createDataShortcut, promoteDataShortcut, referenceDataShortcut, syncDataShortcuts, createDataShortcutReference | no |
+| `civil3d_project` | project | data_shortcut_list, data_shortcut_create, data_shortcut_promote, data_shortcut_reference, data_shortcut_sync, data_shortcut_create_reference, data_shortcut_references, data_shortcut_repair | listDataShortcuts, createDataShortcut, promoteDataShortcut, referenceDataShortcut, syncDataShortcuts, createDataShortcutReference, listDataShortcutReferences, repairDataShortcutReference | no |
 | `civil3d_qc` | qc | check_alignment, check_profile, check_corridor, check_pipe_network, check_surface, generate_report | qcCheckAlignment, qcCheckProfile, qcCheckCorridor, qcCheckPipeNetwork, qcCheckSurface, qcReportGenerate | no |
 | `civil3d_qc_check_alignment` | qc | — | qcCheckAlignment | yes |
 | `civil3d_qc_check_corridor` | qc | — | qcCheckCorridor | yes |
@@ -213,3 +214,4 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_workflow_project_startup` | workflow | — | projectStartupWorkflow | no |
 | `civil3d_workflow_qc_fix_and_verify` | workflow | — | qcFixAndVerifyWorkflow | no |
 | `civil3d_workflow_surface_comparison_report` | workflow | — | surfaceComparisonReportWorkflow | yes |
+| `civil3d_xref` | xref | list, attach, overlay, detach, reload, unload, bind, repath | listXrefs, attachXref, overlayXref, detachXrefs, reloadXrefs, unloadXrefs, bindXrefs, repathXref | no |
