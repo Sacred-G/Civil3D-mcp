@@ -208,6 +208,7 @@ public static class CommandDispatcher
       "profileCheckKValues" => ProfileEditCommands.CheckKValuesAsync(parameters),
       "profileViewCreate" => ProfileEditCommands.ProfileViewCreateAsync(parameters),
       "profileViewBandSet" => ProfileEditCommands.ProfileViewBandSetAsync(parameters),
+      "profileViewUpdate" => ProfileEditCommands.ProfileViewUpdateAsync(parameters),
       // Plan production
       "listSheetSets" => PlanProductionCommands.ListSheetSetsAsync(),
       "getSheetSetInfo" => PlanProductionCommands.GetSheetSetInfoAsync(parameters),

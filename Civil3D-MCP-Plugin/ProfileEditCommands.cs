@@ -1,14 +1,17 @@
 using System.Text.Json.Nodes;
 using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.Geometry;
+using Autodesk.Civil;
 using Autodesk.Civil.DatabaseServices;
+using Autodesk.Civil.DatabaseServices.Styles;
 
 namespace Civil3DMcpPlugin;
 
 /// <summary>
 /// Editing commands for Civil 3D vertical profiles and profile views:
 /// add_pvi, delete_pvi, add_curve, set_grade, get_elevation,
-/// check_k_values, profile_view_create, profile_view_band_set.
+/// check_k_values, profile_view_create, profile_view_band_set,
+/// profile_view_update.
 /// </summary>
 public static class ProfileEditCommands
 {
@@ -139,83 +142,162 @@ public static class ProfileEditCommands
 
   // ─── profileCheckKValues ──────────────────────────────────────────────────
 
+  /// <summary>The drawing's length unit from INSUNITS, else the Civil 3D drawing units; null when neither is known.</summary>
+  private static string? ResolveDrawingLengthUnit(Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Database database)
+  {
+    string? civilDrawingUnits = null;
+    string? imperialToMetric = null;
+    try
+    {
+      var unitZone = civilDoc.Settings.DrawingSettings.UnitZoneSettings;
+      civilDrawingUnits = unitZone.DrawingUnits.ToString();
+      imperialToMetric = unitZone.ImperialToMetricConversion.ToString();
+    }
+    catch (System.Exception)
+    {
+      // Fall back to INSUNITS alone.
+    }
+
+    return VerticalCurveMath.ResolveLengthUnit(database.Insunits.ToString(), civilDrawingUnits, imperialToMetric);
+  }
+
   public static Task<object?> CheckKValuesAsync(JsonObject? parameters)
   {
     var alignmentName = PluginRuntime.GetRequiredString(parameters, "alignmentName");
     var profileName = PluginRuntime.GetRequiredString(parameters, "profileName");
     var designSpeed = PluginRuntime.GetRequiredDouble(parameters, "designSpeed");
+    string? requestedSpeedUnits;
+    try
+    {
+      requestedSpeedUnits = VerticalCurveMath.NormalizeSpeedUnits(PluginRuntime.GetOptionalString(parameters, "speedUnits"));
+    }
+    catch (ArgumentException ex)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", ex.Message);
+    }
 
     return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var alignment = CivilObjectUtils.FindAlignmentByName(civilDoc, transaction, alignmentName);
       var profile = CivilObjectUtils.FindProfileByName(alignment, transaction, profileName, OpenMode.ForRead);
 
-      var entities = CivilObjectUtils.GetPropertyValue<object>(profile, "Entities");
-      if (entities == null)
+      var warnings = new List<string>();
+      var lengthUnit = ResolveDrawingLengthUnit(civilDoc, database);
+      var metersPerUnit = VerticalCurveMath.MetersPerUnit(lengthUnit);
+      var speedUnits = requestedSpeedUnits ?? VerticalCurveMath.DefaultSpeedUnitsForLengthUnit(lengthUnit);
+      var speedUnitsSource = requestedSpeedUnits != null ? "parameter" : "drawingUnits";
+      if (speedUnits == null)
       {
         throw new JsonRpcDispatchException(
-          "CIVIL3D.TRANSACTION_FAILED",
-          $"Profile '{profileName}' does not expose an Entities collection.");
+          "CIVIL3D.INVALID_INPUT",
+          $"The drawing's length unit ('{lengthUnit ?? "unknown"}') does not imply a speed unit; pass speedUnits \"mph\" or \"km/h\".");
       }
 
-      // AASHTO minimum K values table (metric km/h → K_sag, K_crest)
-      // Source: AASHTO Green Book 2011 Table 3-36 / 3-37
-      var kTable = BuildAashtoKTable();
-      var (kSagMin, kCrestMin) = LookupKValues(kTable, designSpeed);
+      if (metersPerUnit == null)
+      {
+        warnings.Add($"The drawing's length unit is unknown; curve lengths were taken to be in {(speedUnits == VerticalCurveMath.Mph ? "feet" : "meters")}.");
+      }
+
+      VerticalCurveMath.KLookup lookup;
+      try
+      {
+        lookup = VerticalCurveMath.LookupRow(speedUnits, designSpeed);
+      }
+      catch (ArgumentException ex)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", ex.Message.Split(Environment.NewLine)[0]);
+      }
+
+      if (lookup.Note != null)
+      {
+        warnings.Add(lookup.Note);
+      }
 
       var results = new List<Dictionary<string, object?>>();
       var index = 0;
-      foreach (var entity in (System.Collections.IEnumerable)entities)
+      foreach (ProfileEntity entity in profile.Entities)
       {
-        var entityType = entity?.GetType().Name ?? string.Empty;
-        var isCurve = entityType.ToLowerInvariant().Contains("parabola")
-          || entityType.ToLowerInvariant().Contains("curve");
-        if (!isCurve)
+        var currentIndex = index++;
+        double gradeIn, gradeOut, pviStation;
+        string entityType;
+        switch (entity)
         {
-          index++;
-          continue;
+          case ProfileParabolaSymmetric symmetric:
+            (gradeIn, gradeOut, pviStation, entityType) = (symmetric.GradeIn, symmetric.GradeOut, symmetric.PVIStation, "symmetric_parabola");
+            break;
+          case ProfileParabolaAsymmetric asymmetric:
+            (gradeIn, gradeOut, pviStation, entityType) = (asymmetric.GradeIn, asymmetric.GradeOut, asymmetric.PVIStation, "asymmetric_parabola");
+            break;
+          case ProfileCircular circular:
+            (gradeIn, gradeOut, pviStation, entityType) = (circular.GradeIn, circular.GradeOut, circular.PVIStation, "circular_curve");
+            break;
+          default:
+            continue;
         }
 
-        var curveLength = CivilObjectUtils.GetPropertyValue<double?>(entity, "Length") ?? 0;
-        var gradeIn = CivilObjectUtils.GetPropertyValue<double?>(entity, "GradeIn")
-          ?? CivilObjectUtils.GetPropertyValue<double?>(entity, "StartGrade") ?? 0;
-        var gradeOut = CivilObjectUtils.GetPropertyValue<double?>(entity, "GradeOut")
-          ?? CivilObjectUtils.GetPropertyValue<double?>(entity, "EndGrade") ?? 0;
-        var algebraicDiff = Math.Abs(gradeOut - gradeIn);
-        var kValue = algebraicDiff > 1e-10 ? curveLength / algebraicDiff : double.PositiveInfinity;
-
-        var isSag = gradeOut > gradeIn;
-        var requiredK = isSag ? kSagMin : kCrestMin;
-        var passes = kValue >= requiredK || double.IsPositiveInfinity(kValue);
+        var curveLength = entity.Length;
+        var tableLength = VerticalCurveMath.LengthToTableUnits(curveLength, metersPerUnit, speedUnits);
+        var aPercent = VerticalCurveMath.GradeDifferencePercent(gradeIn, gradeOut);
+        var kValue = VerticalCurveMath.ComputeK(tableLength, gradeIn, gradeOut);
+        var isSag = VerticalCurveMath.IsSag(gradeIn, gradeOut);
+        var requiredK = isSag ? lookup.Row.KSag : lookup.Row.KCrest;
+        var passes = kValue == null || kValue.Value >= requiredK;
 
         results.Add(new Dictionary<string, object?>
         {
-          ["entityIndex"] = index,
+          ["entityIndex"] = currentIndex,
+          ["entityType"] = entityType,
           ["curveType"] = isSag ? "sag" : "crest",
+          ["startStation"] = entity.StartStation,
+          ["endStation"] = entity.EndStation,
+          ["pviStation"] = pviStation,
           ["curveLength"] = curveLength,
           ["gradeIn"] = gradeIn,
           ["gradeOut"] = gradeOut,
-          ["algebraicDifference"] = algebraicDiff,
-          ["kValue"] = double.IsPositiveInfinity(kValue) ? null : (object?)kValue,
+          ["gradeInPercent"] = gradeIn * 100.0,
+          ["gradeOutPercent"] = gradeOut * 100.0,
+          ["algebraicDifferencePercent"] = aPercent,
+          ["kValue"] = kValue,
           ["requiredK"] = requiredK,
           ["passes"] = passes,
         });
-        index++;
       }
 
-      var allPass = results.All(r => (bool)(r["passes"] ?? false));
+      var failing = results.Count(r => !(bool)(r["passes"] ?? false));
+      // No curves means nothing was checked, which is not a pass.
+      var allPass = results.Count > 0 && failing == 0;
+      if (results.Count == 0)
+      {
+        warnings.Add($"Profile '{profile.Name}' has no vertical curves, so no K values were checked.");
+      }
       return new Dictionary<string, object?>
       {
         ["alignmentName"] = alignment.Name,
         ["profileName"] = profile.Name,
         ["designSpeed"] = designSpeed,
-        ["kSagMinimum"] = kSagMin,
-        ["kCrestMinimum"] = kCrestMin,
+        ["speedUnits"] = speedUnits,
+        ["speedUnitsSource"] = speedUnitsSource,
+        ["drawingLengthUnit"] = lengthUnit,
+        ["kUnits"] = lookup.KUnits,
+        ["gradeUnits"] = "gradeIn/gradeOut are decimal ratios; *Percent fields and A are percent; K = L / A",
+        ["tableRow"] = new Dictionary<string, object?>
+        {
+          ["designSpeed"] = lookup.Row.Speed,
+          ["kCrest"] = lookup.Row.KCrest,
+          ["kSag"] = lookup.Row.KSag,
+          ["exactMatch"] = lookup.ExactMatch,
+          ["source"] = "AASHTO Green Book stopping sight distance design K (crest Table 3-34, sag Table 3-36)",
+        },
+        ["kSagMinimum"] = lookup.Row.KSag,
+        ["kCrestMinimum"] = lookup.Row.KCrest,
         ["curves"] = results,
         ["allPass"] = allPass,
-        ["summary"] = allPass
-          ? $"All {results.Count} vertical curve(s) meet minimum K values for {designSpeed} design speed."
-          : $"{results.Count(r => !(bool)(r["passes"] ?? false))} of {results.Count} curve(s) fail minimum K value requirements.",
+        ["warnings"] = warnings,
+        ["summary"] = results.Count == 0
+          ? $"Profile '{profile.Name}' has no vertical curves; no K values were checked."
+          : allPass
+          ? $"All {results.Count} vertical curve(s) meet the minimum K for {designSpeed} {speedUnits} (table row {lookup.Row.Speed} {speedUnits}: crest {lookup.Row.KCrest}, sag {lookup.Row.KSag} {lookup.KUnits})."
+          : $"{failing} of {results.Count} vertical curve(s) are below the minimum K for {designSpeed} {speedUnits} (table row {lookup.Row.Speed} {speedUnits}: crest {lookup.Row.KCrest}, sag {lookup.Row.KSag} {lookup.KUnits}).",
       };
     });
   }
@@ -228,53 +310,165 @@ public static class ProfileEditCommands
     var profileViewName = PluginRuntime.GetRequiredString(parameters, "profileViewName");
     var insertX = PluginRuntime.GetRequiredDouble(parameters, "insertX");
     var insertY = PluginRuntime.GetRequiredDouble(parameters, "insertY");
+    var requestedStyle = PluginRuntime.GetOptionalString(parameters, "style");
+    var requestedBandSet = PluginRuntime.GetOptionalString(parameters, "bandSet");
+    var requestedLayer = PluginRuntime.GetOptionalString(parameters, "layer");
+    var settings = ProfileViewSettings.Read(parameters, includeStyle: false);
 
     return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var alignment = CivilObjectUtils.FindAlignmentByName(civilDoc, transaction, alignmentName);
       var insertionPoint = new Point3d(insertX, insertY, 0);
 
-      var blockTable = CivilObjectUtils.GetRequiredObject<BlockTable>(
-        transaction, database.BlockTableId, OpenMode.ForRead);
-      var modelSpace = CivilObjectUtils.GetRequiredObject<BlockTableRecord>(
-        transaction, blockTable[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
+      // Resolve the layer first so an invalid name fails before anything is created.
+      var layerId = string.IsNullOrWhiteSpace(requestedLayer)
+        ? ObjectId.Null
+        : LookupUtils.GetLayerId(database, transaction, requestedLayer);
 
-      var styleId = LookupUtils.GetProfileViewStyleId(
-        civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "style"));
-      var bandSetId = LookupUtils.GetProfileViewBandSetId(
-        civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "bandSet"));
+      // With no name, both lookups use the drawing's first style / band set,
+      // so Create never gets a Null id unless the drawing has none at all. A
+      // name that does not exist is CIVIL3D.INVALID_INPUT (listing the
+      // available names) rather than a silent substitution.
+      var styleId = LookupUtils.GetProfileViewStyleId(civilDoc, transaction, requestedStyle);
+      var bandSetId = LookupUtils.GetProfileViewBandSetId(civilDoc, transaction, requestedBandSet, fallbackToFirst: true);
+      var styleName = NameOf(transaction, styleId);
+      var bandSetName = NameOf(transaction, bandSetId);
 
-      // ProfileView.Create(profileViewName, alignmentId, styleId, insertionPoint)
-      // or ProfileView.Create(profileViewName, alignmentId, insertionPoint, styleId, bandSetId)
-      var profileViewType = typeof(ProfileView);
-      var pvId = (ObjectId?)(
-        CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, insertionPoint, styleId, bandSetId)
-        ?? CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, styleId, insertionPoint)
-        ?? CivilObjectUtils.InvokeStaticMethod(profileViewType, "Create",
-          profileViewName, alignment.ObjectId, insertionPoint));
+      var warnings = new List<string>();
 
-      if (pvId == null || pvId.Value.IsNull)
+      ObjectId pvId;
+      var createdWithBoth = !styleId.IsNull && !bandSetId.IsNull;
+      if (createdWithBoth)
       {
-        throw new JsonRpcDispatchException(
-          "CIVIL3D.TRANSACTION_FAILED",
-          "ProfileView.Create returned null — this Civil 3D version may require a different API signature.");
+        // Civil 3D 2027 (verified from AeccDbMgd metadata):
+        // static ObjectId Create(ObjectId alignmentId, Point3d insertPosition,
+        //   string profileViewName, ObjectId profileViewBandSetId, ObjectId profileViewStyleId)
+        try
+        {
+          pvId = ProfileView.Create(alignment.ObjectId, insertionPoint, profileViewName, bandSetId, styleId);
+        }
+        catch (System.ArgumentException ex)
+        {
+          // Civil 3D rejects the name here (for example "Duplicate ProfileView
+          // name.") before anything is created.
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.INVALID_INPUT",
+            $"Civil 3D could not create the profile view '{profileViewName}': {ex.Message}");
+        }
+      }
+      else
+      {
+        // The drawing lacks a style or a band set. Every 2027 Create overload
+        // that takes a style also takes a band set (AeccDbMgd metadata), so the
+        // view is created with Civil 3D's defaults and whichever of the two the
+        // drawing does have is applied to it below.
+        pvId = ProfileView.Create(alignment.ObjectId, insertionPoint);
       }
 
-      var profileView = CivilObjectUtils.GetRequiredObject<ProfileView>(
-        transaction, pvId.Value, OpenMode.ForRead);
+      if (pvId.IsNull)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.TRANSACTION_FAILED", "ProfileView.Create did not return a profile view.");
+      }
 
-      return new Dictionary<string, object?>
+      var profileView = CivilObjectUtils.GetRequiredObject<ProfileView>(transaction, pvId, OpenMode.ForWrite);
+      if (!createdWithBoth)
+      {
+        if (!styleId.IsNull)
+        {
+          ApplyToProfileView(() => profileView.StyleId = styleId, "profile view style", styleName, requestedStyle, warnings);
+        }
+        if (!bandSetId.IsNull)
+        {
+          if (!ApplyToProfileView(() => profileView.Bands.ImportBandSetStyle(bandSetId), "profile view band set", bandSetName, requestedBandSet, warnings))
+          {
+            // Civil 3D's default band set stayed on the view; don't report the
+            // drawing's band set as applied.
+            bandSetName = null;
+          }
+        }
+
+        var missing = new List<string>();
+        if (styleId.IsNull) missing.Add("profile view style");
+        if (bandSetId.IsNull) missing.Add("profile view band set");
+        warnings.Add($"The drawing has no {string.Join(" and no ", missing)}; Civil 3D's default {string.Join(" and ", missing)} {(missing.Count == 1 ? "was" : "were")} used.");
+      }
+
+      if (!string.Equals(profileView.Name, profileViewName, StringComparison.Ordinal))
+      {
+        try
+        {
+          profileView.Name = profileViewName;
+        }
+        catch (System.Exception ex)
+        {
+          // A view under another name is not what was asked for; failing here
+          // rolls the whole create back.
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.INVALID_INPUT",
+            $"Civil 3D could not name the profile view '{profileViewName}': {ex.Message}");
+        }
+      }
+
+      if (!layerId.IsNull)
+      {
+        profileView.LayerId = layerId;
+      }
+
+      var styleSharedWith = ApplyViewSettings(civilDoc, transaction, profileView, settings, warnings);
+
+      var result = new Dictionary<string, object?>
       {
         ["profileViewName"] = profileView.Name,
+        ["name"] = profileView.Name,
         ["handle"] = CivilObjectUtils.GetHandle(profileView),
         ["alignmentName"] = alignment.Name,
+        ["layer"] = profileView.Layer,
+        ["style"] = NameOf(transaction, profileView.StyleId) ?? styleName,
+        ["bandSet"] = bandSetName,
         ["insertX"] = insertX,
         ["insertY"] = insertY,
-        ["success"] = true,
       };
+      AddViewState(transaction, profileView, result, styleSharedWith);
+      result["warnings"] = warnings;
+      result["success"] = true;
+      return result;
     });
+  }
+
+  // Applies a style or band set to a new profile view. One the caller named
+  // must be applied or the call fails (CIVIL3D.INVALID_INPUT, which rolls the
+  // create back); the drawing's first one, used when no name was given, is
+  // reported in a warning when it cannot be applied. Returns whether it was
+  // applied.
+  private static bool ApplyToProfileView(Action apply, string kind, string? name, string? requestedName, List<string> warnings)
+  {
+    try
+    {
+      apply();
+      return true;
+    }
+    catch (System.Exception ex) when (ex is not JsonRpcDispatchException)
+    {
+      if (!string.IsNullOrWhiteSpace(requestedName))
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.INVALID_INPUT",
+          $"The requested {kind} '{name ?? requestedName}' could not be applied to the new profile view: {ex.Message}");
+      }
+
+      warnings.Add($"The drawing's {kind} '{name}' could not be applied; Civil 3D's default was used: {ex.Message}");
+      return false;
+    }
+  }
+
+  private static string? NameOf(Transaction transaction, ObjectId objectId)
+  {
+    if (objectId.IsNull)
+    {
+      return null;
+    }
+
+    return CivilObjectUtils.GetName(transaction.GetObject(objectId, OpenMode.ForRead));
   }
 
   // ─── profileViewBandSet ───────────────────────────────────────────────────
@@ -301,6 +495,278 @@ public static class ProfileEditCommands
         ["success"] = true,
       };
     });
+  }
+
+  // ─── profileViewUpdate ────────────────────────────────────────────────────
+
+  public static Task<object?> ProfileViewUpdateAsync(JsonObject? parameters)
+  {
+    var profileViewName = PluginRuntime.GetRequiredString(parameters, "profileViewName");
+    var requestedLayer = PluginRuntime.GetOptionalString(parameters, "layer");
+    var settings = ProfileViewSettings.Read(parameters, includeStyle: true);
+    if (!settings.Any && string.IsNullOrWhiteSpace(requestedLayer))
+    {
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        "profileViewUpdate needs at least one of: style, verticalExaggeration, stationStart, stationEnd, stationRange, elevationMin, elevationMax, elevationRange, layer.");
+    }
+
+    return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
+    {
+      var found = FindProfileViewByName(civilDoc, transaction, profileViewName);
+      var profileView = CivilObjectUtils.GetRequiredObject<ProfileView>(transaction, found.ObjectId, OpenMode.ForWrite);
+      var warnings = new List<string>();
+
+      if (!string.IsNullOrWhiteSpace(requestedLayer))
+      {
+        profileView.LayerId = LookupUtils.GetLayerId(database, transaction, requestedLayer);
+      }
+
+      var styleSharedWith = ApplyViewSettings(civilDoc, transaction, profileView, settings, warnings);
+
+      var result = new Dictionary<string, object?>
+      {
+        ["profileViewName"] = profileView.Name,
+        ["handle"] = CivilObjectUtils.GetHandle(profileView),
+        ["layer"] = profileView.Layer,
+        ["style"] = NameOf(transaction, profileView.StyleId),
+      };
+      AddViewState(transaction, profileView, result, styleSharedWith);
+      result["warnings"] = warnings;
+      result["success"] = true;
+      return result;
+    });
+  }
+
+  // Style, vertical exaggeration and station/elevation ranges for a profile
+  // view. A range given as numbers switches that range to user-specified; a
+  // range of "auto" switches it back to Civil 3D's automatic range. Values
+  // that are not given leave the view as it is.
+  private sealed record ProfileViewSettings(
+    string? Style,
+    double? VerticalExaggeration,
+    double? StationStart,
+    double? StationEnd,
+    bool StationAuto,
+    double? ElevationMin,
+    double? ElevationMax,
+    bool ElevationAuto)
+  {
+    public bool Any => Style != null || VerticalExaggeration != null
+      || StationStart != null || StationEnd != null || StationAuto
+      || ElevationMin != null || ElevationMax != null || ElevationAuto;
+
+    // profileViewCreate resolves its own style (it is needed by Create), so it
+    // reads everything else here.
+    public static ProfileViewSettings Read(JsonObject? parameters, bool includeStyle)
+    {
+      var stationAuto = ReadRangeMode(parameters, "stationRange");
+      var elevationAuto = ReadRangeMode(parameters, "elevationRange");
+      var settings = new ProfileViewSettings(
+        includeStyle ? PluginRuntime.GetOptionalString(parameters, "style") : null,
+        PluginRuntime.GetOptionalDouble(parameters, "verticalExaggeration"),
+        PluginRuntime.GetOptionalDouble(parameters, "stationStart"),
+        PluginRuntime.GetOptionalDouble(parameters, "stationEnd"),
+        stationAuto,
+        PluginRuntime.GetOptionalDouble(parameters, "elevationMin"),
+        PluginRuntime.GetOptionalDouble(parameters, "elevationMax"),
+        elevationAuto);
+
+      if (settings.VerticalExaggeration is <= 0)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'verticalExaggeration' must be greater than zero.");
+      }
+      if (stationAuto && (settings.StationStart != null || settings.StationEnd != null))
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "stationRange 'auto' cannot be combined with stationStart/stationEnd.");
+      }
+      if (elevationAuto && (settings.ElevationMin != null || settings.ElevationMax != null))
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "elevationRange 'auto' cannot be combined with elevationMin/elevationMax.");
+      }
+      if (settings.StationStart != null && settings.StationEnd != null && settings.StationStart >= settings.StationEnd)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'stationStart' must be less than 'stationEnd'.");
+      }
+      if (settings.ElevationMin != null && settings.ElevationMax != null && settings.ElevationMin >= settings.ElevationMax)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'elevationMin' must be less than 'elevationMax'.");
+      }
+
+      return settings;
+    }
+
+    private static bool ReadRangeMode(JsonObject? parameters, string name)
+    {
+      var value = PluginRuntime.GetOptionalString(parameters, name);
+      if (value == null)
+      {
+        return false;
+      }
+      if (string.Equals(value, "auto", StringComparison.OrdinalIgnoreCase))
+      {
+        return true;
+      }
+
+      // Numbers make a range user-specified; "auto" is the only mode to ask for.
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"'{name}' must be 'auto'; give numbers for a user-specified range.");
+    }
+  }
+
+  // Applies the settings to a profile view open for write. Vertical
+  // exaggeration belongs to the profile view style, so it changes every view
+  // that uses the style; returns those views' names (null when it was not set).
+  private static List<string>? ApplyViewSettings(
+    Autodesk.Civil.ApplicationServices.CivilDocument civilDoc,
+    Transaction transaction,
+    ProfileView profileView,
+    ProfileViewSettings settings,
+    List<string> warnings)
+  {
+    if (settings.Style != null)
+    {
+      var styleId = LookupUtils.GetProfileViewStyleId(civilDoc, transaction, settings.Style);
+      Apply(() => profileView.StyleId = styleId, $"style '{settings.Style}'");
+    }
+
+    if (settings.StationAuto)
+    {
+      Apply(() => profileView.StationRangeMode = StationRangeType.Automatic, "the automatic station range");
+    }
+    else if (settings.StationStart != null || settings.StationEnd != null)
+    {
+      var start = settings.StationStart ?? profileView.StationStart;
+      var end = settings.StationEnd ?? profileView.StationEnd;
+      if (start >= end)
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.INVALID_INPUT", $"The station range {start:0.###} to {end:0.###} is empty; give both stationStart and stationEnd.");
+      }
+
+      Apply(() =>
+      {
+        profileView.StationRangeMode = StationRangeType.UserSpecified;
+        // When the new range starts past the current end, move the end first
+        // so the start never passes the end on the way.
+        if (start >= profileView.StationEnd)
+        {
+          profileView.StationEnd = end;
+          profileView.StationStart = start;
+        }
+        else
+        {
+          profileView.StationStart = start;
+          profileView.StationEnd = end;
+        }
+      }, $"the station range {start:0.###} to {end:0.###}");
+    }
+
+    if (settings.ElevationAuto)
+    {
+      Apply(() => profileView.ElevationRangeMode = ElevationRangeType.Automatic, "the automatic elevation range");
+    }
+    else if (settings.ElevationMin != null || settings.ElevationMax != null)
+    {
+      var min = settings.ElevationMin ?? profileView.ElevationMin;
+      var max = settings.ElevationMax ?? profileView.ElevationMax;
+      if (min >= max)
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.INVALID_INPUT", $"The elevation range {min:0.###} to {max:0.###} is empty; give both elevationMin and elevationMax.");
+      }
+
+      Apply(() =>
+      {
+        profileView.ElevationRangeMode = ElevationRangeType.UserSpecified;
+        if (min >= profileView.ElevationMax)
+        {
+          profileView.ElevationMax = max;
+          profileView.ElevationMin = min;
+        }
+        else
+        {
+          profileView.ElevationMin = min;
+          profileView.ElevationMax = max;
+        }
+      }, $"the elevation range {min:0.###} to {max:0.###}");
+    }
+
+    if (settings.VerticalExaggeration == null)
+    {
+      return null;
+    }
+
+    var exaggeration = settings.VerticalExaggeration.Value;
+    var style = CivilObjectUtils.GetRequiredObject<ProfileViewStyle>(transaction, profileView.StyleId, OpenMode.ForWrite);
+    Apply(() => style.GraphStyle.VerticalExaggeration = exaggeration, $"vertical exaggeration {exaggeration:0.###}");
+
+    var sharedWith = ProfileViewsUsingStyle(civilDoc, transaction, profileView.StyleId);
+    var others = sharedWith.Where(name => !string.Equals(name, profileView.Name, StringComparison.Ordinal)).ToList();
+    if (others.Count > 0)
+    {
+      warnings.Add(
+        $"Vertical exaggeration is part of the profile view style '{style.Name}', so it also changed for: {string.Join(", ", others)}. " +
+        "Give this view its own style to change it alone.");
+    }
+
+    return sharedWith;
+
+    static void Apply(Action action, string what)
+    {
+      try
+      {
+        action();
+      }
+      catch (System.Exception ex) when (ex is not JsonRpcDispatchException)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", $"Civil 3D could not apply {what} to the profile view: {ex.Message}");
+      }
+    }
+  }
+
+  private static List<string> ProfileViewsUsingStyle(
+    Autodesk.Civil.ApplicationServices.CivilDocument civilDoc, Transaction transaction, ObjectId styleId)
+  {
+    var names = new List<string>();
+    foreach (ObjectId alignmentId in civilDoc.GetAlignmentIds())
+    {
+      if (transaction.GetObject(alignmentId, OpenMode.ForRead) is not Alignment alignment)
+      {
+        continue;
+      }
+
+      foreach (ObjectId viewId in alignment.GetProfileViewIds())
+      {
+        if (transaction.GetObject(viewId, OpenMode.ForRead) is ProfileView view && view.StyleId == styleId)
+        {
+          names.Add(view.Name);
+        }
+      }
+    }
+
+    return names;
+  }
+
+  // The view's resulting ranges and vertical exaggeration. Extents are left out:
+  // a style change (vertical exaggeration) does not reach them until the
+  // transaction commits.
+  private static void AddViewState(
+    Transaction transaction, ProfileView profileView, Dictionary<string, object?> result, List<string>? styleSharedWith)
+  {
+    result["stationRange"] = profileView.StationRangeMode == StationRangeType.Automatic ? "auto" : "user";
+    result["stationStart"] = profileView.StationStart;
+    result["stationEnd"] = profileView.StationEnd;
+    result["elevationRange"] = profileView.ElevationRangeMode == ElevationRangeType.Automatic ? "auto" : "user";
+    result["elevationMin"] = profileView.ElevationMin;
+    result["elevationMax"] = profileView.ElevationMax;
+    if (transaction.GetObject(profileView.StyleId, OpenMode.ForRead) is ProfileViewStyle style)
+    {
+      result["verticalExaggeration"] = style.GraphStyle.VerticalExaggeration;
+    }
+    if (styleSharedWith != null)
+    {
+      result["styleSharedWith"] = styleSharedWith;
+    }
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────
@@ -348,56 +814,5 @@ public static class ProfileEditCommands
     }
 
     return closest;
-  }
-
-  /// <summary>
-  /// AASHTO minimum K values (metric, km/h).
-  /// Returns (K_sag_min, K_crest_min).
-  /// Source: AASHTO A Policy on Geometric Design of Highways and Streets, 2011.
-  /// </summary>
-  private static List<(double speed, double kSag, double kCrest)> BuildAashtoKTable() =>
-  [
-    (30, 3, 1),
-    (40, 7, 2),
-    (50, 9, 4),
-    (60, 11, 6),
-    (70, 14, 10),
-    (80, 19, 17),
-    (90, 24, 29),
-    (100, 30, 44),
-    (110, 37, 60),
-    (120, 46, 84),
-    (130, 57, 114),
-  ];
-
-  private static (double kSag, double kCrest) LookupKValues(
-    List<(double speed, double kSag, double kCrest)> table,
-    double designSpeed)
-  {
-    // Find exact match first
-    var exact = table.FirstOrDefault(t => Math.Abs(t.speed - designSpeed) < 0.5);
-    if (exact != default)
-    {
-      return (exact.kSag, exact.kCrest);
-    }
-
-    // Interpolate between nearest values
-    var lower = table.LastOrDefault(t => t.speed <= designSpeed);
-    var upper = table.FirstOrDefault(t => t.speed > designSpeed);
-
-    if (lower == default)
-    {
-      return (table[0].kSag, table[0].kCrest);
-    }
-
-    if (upper == default)
-    {
-      return (table[^1].kSag, table[^1].kCrest);
-    }
-
-    var ratio = (designSpeed - lower.speed) / (upper.speed - lower.speed);
-    return (
-      lower.kSag + ratio * (upper.kSag - lower.kSag),
-      lower.kCrest + ratio * (upper.kCrest - lower.kCrest));
   }
 }

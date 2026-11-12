@@ -108,12 +108,16 @@ public static class StyleCommands
       "point" => civilDoc.Styles.PointStyles.Cast<ObjectId>(),
       "section" => civilDoc.Styles.SectionStyles.Cast<ObjectId>(),
       "assembly" => civilDoc.Styles.AssemblyStyles.Cast<ObjectId>(),
+      "profile_view" => civilDoc.Styles.ProfileViewStyles.Cast<ObjectId>(),
+      "profile_view_band_set" => civilDoc.Styles.ProfileViewBandSetStyles.Cast<ObjectId>(),
+      "section_view" => civilDoc.Styles.SectionViewStyles.Cast<ObjectId>(),
+      "section_view_band_set" => civilDoc.Styles.SectionViewBandSetStyles.Cast<ObjectId>(),
       "label" => throw new JsonRpcDispatchException(
         "CIVIL3D.INVALID_INPUT",
         "'label' is a hierarchy of label-style collections, not one enumerable style collection. Use the civil3d_label tool for label-style operations."),
       _ => throw new JsonRpcDispatchException(
         "CIVIL3D.INVALID_INPUT",
-        $"Unsupported style object type '{objectType}'. Valid values: surface, alignment, profile, corridor, pipe, structure, point, section, assembly."),
+        $"Unsupported style object type '{objectType}'. Valid values: surface, alignment, profile, corridor, pipe, structure, point, section, assembly, profile_view, profile_view_band_set, section_view, section_view_band_set."),
     };
   }
 }

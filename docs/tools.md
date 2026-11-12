@@ -648,7 +648,7 @@ Returns detailed properties of a specific profile.
   entities: [
     {
       index: number,
-      type: "tangent" | "circular_curve" | "parabola" | "asymmetric_parabola",
+      type: "tangent" | "circular_curve" | "symmetric_parabola" | "asymmetric_parabola",
       startStation: number,
       endStation: number,
       startElevation: number,

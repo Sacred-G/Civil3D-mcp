@@ -498,7 +498,7 @@ one or more operations; alias rows show an em dash in the **Operations** column.
 </details>
 
 <details>
-<summary><strong>Profile (10 tools)</strong></summary>
+<summary><strong>Profile (11 tools)</strong></summary>
 
 | Tool | Description |
 |------|-------------|
@@ -510,7 +510,8 @@ one or more operations; alias rows show an em dash in the **Operations** column.
 | `civil3d_profile_delete_pvi` | Deletes the PVI nearest to a specified station |
 | `civil3d_profile_set_grade` | Sets the grade of a tangent entity |
 | `civil3d_profile_check_k_values` | Validates K-values against AASHTO minimums for design speed |
-| `civil3d_profile_view_create` | Creates a profile view at a specified insertion point |
+| `civil3d_profile_view_create` | Creates a profile view at a specified insertion point, optionally with station/elevation ranges and vertical exaggeration |
+| `civil3d_profile_view_update` | Changes an existing profile view's style, layer, station/elevation ranges (or back to automatic) and vertical exaggeration |
 | `civil3d_profile_view_band_set` | Applies a band set style to an existing profile view |
 
 </details>
@@ -873,7 +874,7 @@ one or more operations; alias rows show an em dash in the **Operations** column.
 | `civil3d_standards_lookup` | Looks up Civil 3D standards, template governance, layer/style guidance, and labeling conventions |
 | `civil3d_assembly` | Lists and inspects assemblies and subassemblies |
 | `civil3d_label` | Manages labels on Civil 3D objects |
-| `civil3d_style` | Lists and inspects Civil 3D styles |
+| `civil3d_style` | Lists and inspects Civil 3D styles, including profile/section view styles and band sets |
 | `civil3d_parcel` | Reads parcel and site data |
 | `civil3d_data_shortcut` | Manages data shortcuts: listing, syncing, creating references |
 | `civil3d_orchestrate` | Routes natural-language Civil 3D requests to the best tool |

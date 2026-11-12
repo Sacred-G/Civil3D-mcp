@@ -134,7 +134,7 @@ internal static class FileBoundary
     {
       throw new JsonRpcDispatchException(
         "CIVIL3D.PATH_NOT_ALLOWED",
-        $"The {operation} path is outside the configured roots: {canonicalPath}");
+        DescribeOutsideRoots(operation, canonicalPath, roots));
     }
 
     RejectReparsePointTraversal(canonicalPath, matchedRoot);
@@ -151,6 +151,23 @@ internal static class FileBoundary
     }
 
     return canonicalPath;
+  }
+
+  /// <summary>
+  /// The PATH_NOT_ALLOWED message: the path, the roots in force, and which
+  /// variable to change. The shared CIVIL3D_FILE_ROOTS is read only while the
+  /// operation's own variable is unset (see LoadRoots), so it is suggested
+  /// only then.
+  /// </summary>
+  private static string DescribeOutsideRoots(string operation, string path, IEnumerable<string> roots)
+  {
+    var operationVariable = operation == "import" ? ImportRootsVariable : ExportRootsVariable;
+    var howToAdd = string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable(operationVariable))
+      ? $"Add a folder with {operationVariable} or {SharedRootsVariable}"
+      : $"Add the folder to {operationVariable} ({SharedRootsVariable} is not used while {operationVariable} is set)";
+    return $"The {operation} path is outside the configured {operation} roots: {path}. " +
+      $"Allowed roots: {string.Join("; ", roots)}. {howToAdd} " +
+      "(semicolon-separated absolute paths, read when Civil 3D starts).";
   }
 
   private static string[] LoadRoots(string operationVariable)
@@ -259,7 +276,7 @@ internal static class FileBoundary
       .FirstOrDefault()
       ?? throw new JsonRpcDispatchException(
         "CIVIL3D.PATH_NOT_ALLOWED",
-        $"The export path is outside the configured roots: {canonicalDirectory}");
+        DescribeOutsideRoots("export", canonicalDirectory, ExportRoots.Value));
 
     if (!Directory.Exists(matchedRoot))
     {

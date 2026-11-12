@@ -83,7 +83,11 @@ function buildToolErrorResult(toolName: string, actionName: string | undefined, 
     && typeof error.code === "string"
     ? error.code
     : undefined;
-  const errorCode = typedErrorCode ?? inferDomainErrorCode(message);
+  // Arguments that fail an action's input schema (including its refinements,
+  // whose messages the text patterns below do not know) are invalid input,
+  // as the HTTP bridge already classifies them.
+  const errorCode = typedErrorCode
+    ?? (error instanceof Error && error.name === "ZodError" ? "CIVIL3D.INVALID_INPUT" : inferDomainErrorCode(message));
   const typedRpcCode = error && typeof error === "object" && "rpcCode" in error
     && typeof error.rpcCode === "number"
     ? error.rpcCode

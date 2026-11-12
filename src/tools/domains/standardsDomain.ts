@@ -19,6 +19,10 @@ const StyleObjectTypeSchema = z.enum([
   "point",
   "section",
   "assembly",
+  "profile_view",
+  "profile_view_band_set",
+  "section_view",
+  "section_view_band_set",
 ]);
 
 const GenericStandardsResponseSchema = z.object({}).passthrough();
@@ -348,7 +352,7 @@ export const STANDARDS_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_style",
       displayName: "Civil 3D Style",
-      description: "Lists and inspects Civil 3D styles for supported object types.",
+      description: "Lists and inspects Civil 3D styles for supported object types, including profile and section view styles (profile_view, section_view) and their band sets (profile_view_band_set, section_view_band_set).",
       inputShape: {
         action: z.enum(["list", "get"]),
         objectType: StyleObjectTypeSchema,

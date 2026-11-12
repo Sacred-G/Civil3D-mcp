@@ -2,7 +2,7 @@
 
 Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 
-- Catalog entries: 206
+- Catalog entries: 207
 - Domains: 29
 
 | Tool | Domain | Operations | Plugin methods | Safe retry |
@@ -130,7 +130,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_point_group_update` | point | — | updatePointGroup | no |
 | `civil3d_point_transform` | point | — | transformCogoPoints | no |
 | `create_cogo_point` | point | — | createCogoPoints | no |
-| `civil3d_profile` | profile | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete, report, add_pvi, delete_pvi, add_curve, set_grade, check_k_values, view_create, view_band_set | listProfiles, getProfile, getProfileElevation, sampleProfileElevations, createProfileFromSurface, createLayoutProfile, deleteProfile, profileAddPvi, profileDeletePvi, profileAddCurve, profileSetGrade, profileCheckKValues, profileViewCreate, profileViewBandSet | no |
+| `civil3d_profile` | profile | list, get, get_elevation, sample_elevations, create_from_surface, create_layout, delete, report, add_pvi, delete_pvi, add_curve, set_grade, check_k_values, view_create, view_band_set, view_update | listProfiles, getProfile, getProfileElevation, sampleProfileElevations, createProfileFromSurface, createLayoutProfile, deleteProfile, profileAddPvi, profileDeletePvi, profileAddCurve, profileSetGrade, profileCheckKValues, profileViewCreate, profileViewBandSet, profileViewUpdate | no |
 | `civil3d_profile_add_curve` | profile | — | profileAddCurve | no |
 | `civil3d_profile_add_pvi` | profile | — | profileAddPvi | no |
 | `civil3d_profile_check_k_values` | profile | — | profileCheckKValues | yes |
@@ -140,6 +140,7 @@ Generated from the runtime manifest for civil3d-mcp 1.2.1. Do not edit by hand.
 | `civil3d_profile_set_grade` | profile | — | profileSetGrade | no |
 | `civil3d_profile_view_band_set` | profile | — | profileViewBandSet | no |
 | `civil3d_profile_view_create` | profile | — | profileViewCreate | no |
+| `civil3d_profile_view_update` | profile | — | profileViewUpdate | no |
 | `civil3d_data_shortcut` | project | list, sync, create_reference | listDataShortcuts, syncDataShortcuts, createDataShortcutReference | no |
 | `civil3d_data_shortcut_create` | project | — | createDataShortcut | no |
 | `civil3d_data_shortcut_promote` | project | — | promoteDataShortcut | no |

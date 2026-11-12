@@ -21,6 +21,21 @@ public static class CivilObjectUtils
       return null;
     }
 
+    // Styles, label sets and band sets derive from the Civil DBObject, whose
+    // Name getter is hidden by StyleBase's set-only Name in Civil 3D 2027.
+    // Read it through the documented base-class member.
+    if (value is Autodesk.Civil.DatabaseServices.DBObject civilObject)
+    {
+      try
+      {
+        return civilObject.Name;
+      }
+      catch (System.Exception)
+      {
+        // Fall through to the reflective read below.
+      }
+    }
+
     return Civil3DCompatibility.GetPropertyValue(value, "Name")?.ToString();
   }
 

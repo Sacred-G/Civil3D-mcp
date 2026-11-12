@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <!-- Both files are host-independent: StyleNameMatch is the name matching
+       behind the LookupUtils style lookups, and Civil3DCompatibility is the
+       reflection boundary whose property resolution read every Civil 3D 2027
+       style name as null. -->
+  <ItemGroup>
+    <Compile Include="..\..\Civil3D-MCP-Plugin\StyleNameMatch.cs" Link="StyleNameMatch.cs" />
+    <Compile Include="..\..\Civil3D-MCP-Plugin\Civil3DCompatibility.cs" Link="Civil3DCompatibility.cs" />
+  </ItemGroup>
+</Project>
