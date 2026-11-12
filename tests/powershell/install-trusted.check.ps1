@@ -9,8 +9,9 @@ $work = Join-Path ([IO.Path]::GetTempPath()) ('c3dmcp-install-check-' + [guid]::
 New-Item -ItemType Directory $work | Out-Null
 $failures = 0
 
+$checkPrefix = ''
 function Check([string] $name, [bool] $ok, [string] $detail = '') {
-  if ($ok) { "PASS $name" } else { "FAIL $name $detail"; $script:failures++ }
+  if ($ok) { "PASS $script:checkPrefix$name" } else { "FAIL $script:checkPrefix$name $detail"; $script:failures++ }
 }
 function Hex([byte[]] $bytes) { ($bytes | ForEach-Object { '{0:X2}' -f $_ }) -join ' ' }
 function New-CaseFile([string] $name) {
@@ -169,62 +170,68 @@ try {
   Check 'uninstall deletes a file that held only our block, without a warning' ((-not (Test-Path $f)) -and -not ($out | Where-Object { $_ -is [Management.Automation.WarningRecord] }))
   $fakeOther = $null
 
-  # --- Full-script cases with a temp APPDATA: every lock is checked before the first change.
-  $appData = Join-Path $work 'appdata'
-  $support = Join-Path $appData 'Autodesk\C3D 2026\enu\Support'
-  $bundle = Join-Path $appData 'Autodesk\ApplicationPlugins\Civil3DMcp.bundle'
-  $bundleDll = Join-Path $bundle 'Contents\Civil3DMcpPlugin.dll'
-  $src = Join-Path $work 'src\net8.0-windows'
-  $dest = Join-Path $work 'dest'
-  $target = Join-Path $dest 'R25.1'
-  $acaddoc = Join-Path $support 'acaddoc.lsp'
-  foreach ($d in $support, (Split-Path $bundleDll), $src) { New-Item -ItemType Directory -Force $d | Out-Null }
-  [IO.File]::WriteAllBytes($bundleDll, [byte[]](1, 2, 3))
-  [IO.File]::WriteAllBytes((Join-Path $src 'Civil3DMcpPlugin.dll'), [byte[]](4, 5, 6))
-  $env:APPDATA = $appData
+  # --- Full-script cases with a temp APPDATA: every lock is checked before the first change. Run for each
+  # release the installer maps (build folder -> support folder and R<series> DLL folder), each in its own folder.
+  foreach ($release in @{ Tfm = 'net8.0-windows'; Year = 2026; Series = 'R25.1' }, @{ Tfm = 'net10.0-windows'; Year = 2027; Series = 'R26.0' }) {
+    $script:checkPrefix = "$($release.Year): "
+    $case = Join-Path $work "full-$($release.Year)"
+    $appData = Join-Path $case 'appdata'
+    $support = Join-Path $appData "Autodesk\C3D $($release.Year)\enu\Support"
+    $bundle = Join-Path $appData 'Autodesk\ApplicationPlugins\Civil3DMcp.bundle'
+    $bundleDll = Join-Path $bundle 'Contents\Civil3DMcpPlugin.dll'
+    $src = Join-Path $case "src\$($release.Tfm)"
+    $dest = Join-Path $case 'dest'
+    $target = Join-Path $dest $release.Series
+    $acaddoc = Join-Path $support 'acaddoc.lsp'
+    foreach ($d in $support, (Split-Path $bundleDll), $src) { New-Item -ItemType Directory -Force $d | Out-Null }
+    [IO.File]::WriteAllBytes($bundleDll, [byte[]](1, 2, 3))
+    [IO.File]::WriteAllBytes((Join-Path $src 'Civil3DMcpPlugin.dll'), [byte[]](4, 5, 6))
+    $env:APPDATA = $appData
 
-  # A loaded DLL can be read (hashed) but not opened for writing: hold it the same way.
-  $threw = $null
-  $handle = [IO.File]::Open($bundleDll, 'Open', 'Read', 'Read')
-  try { & $installer -SourceDir $src -Destination $dest | Out-Null } catch { $threw = $_.Exception.Message } finally { $handle.Dispose() }
-  Check 'locked bundle: install refused' ($threw -and $threw.Contains('Civil3DMcp.bundle')) "threw: $threw"
-  Check 'locked bundle: acaddoc.lsp not written' (-not (Test-Path $acaddoc))
-  Check 'locked bundle: nothing copied' (-not (Test-Path $target))
-  Check 'locked bundle: bundle kept' (Test-Path $bundleDll)
+    # A loaded DLL can be read (hashed) but not opened for writing: hold it the same way.
+    $threw = $null
+    $handle = [IO.File]::Open($bundleDll, 'Open', 'Read', 'Read')
+    try { & $installer -SourceDir $src -Destination $dest | Out-Null } catch { $threw = $_.Exception.Message } finally { $handle.Dispose() }
+    Check 'locked bundle: install refused' ($threw -and $threw.Contains('Civil3DMcp.bundle')) "threw: $threw"
+    Check 'locked bundle: acaddoc.lsp not written' (-not (Test-Path $acaddoc))
+    Check 'locked bundle: nothing copied' (-not (Test-Path $target))
+    Check 'locked bundle: bundle kept' (Test-Path $bundleDll)
 
-  $out = & $installer -SourceDir $src -Destination $dest
-  Check 'unlocked: acaddoc.lsp holds the block' ((Test-Path $acaddoc) -and [IO.File]::ReadAllText($acaddoc).Contains($beginMarker)) ($out -join ' | ')
-  Check 'unlocked: bundle removed' (-not (Test-Path $bundle))
-  Check 'unlocked: DLL installed' ((Test-Path "$target\Civil3DMcpPlugin.dll") -and (Get-FileHash "$target\Civil3DMcpPlugin.dll").Hash -eq (Get-FileHash "$src\Civil3DMcpPlugin.dll").Hash)
+    $out = & $installer -SourceDir $src -Destination $dest
+    Check 'unlocked: acaddoc.lsp holds the block' ((Test-Path $acaddoc) -and [IO.File]::ReadAllText($acaddoc).Contains($beginMarker)) ($out -join ' | ')
+    Check 'unlocked: bundle removed' (-not (Test-Path $bundle))
+    Check 'unlocked: DLL installed' ((Test-Path "$target\Civil3DMcpPlugin.dll") -and (Get-FileHash "$target\Civil3DMcpPlugin.dll").Hash -eq (Get-FileHash "$src\Civil3DMcpPlugin.dll").Hash)
 
-  # A changed build while the installed DLL is loaded: refused before acaddoc.lsp or the bundle is touched.
-  Remove-Item $acaddoc
-  New-Item -ItemType Directory -Force (Split-Path $bundleDll) | Out-Null
-  [IO.File]::WriteAllBytes($bundleDll, [byte[]](1, 2, 3))
-  [IO.File]::WriteAllBytes((Join-Path $src 'Civil3DMcpPlugin.dll'), [byte[]](7, 8, 9))
-  $threw = $null
-  $handle = [IO.File]::Open("$target\Civil3DMcpPlugin.dll", 'Open', 'Read', 'Read')
-  try { & $installer -SourceDir $src -Destination $dest | Out-Null } catch { $threw = $_.Exception.Message } finally { $handle.Dispose() }
-  Check 'locked target: install refused' ($threw -and $threw.Contains('build changed')) "threw: $threw"
-  Check 'locked target: acaddoc.lsp not written' (-not (Test-Path $acaddoc))
-  Check 'locked target: bundle kept' (Test-Path $bundleDll)
-  Check 'locked target: old DLL kept' ((Hex ([IO.File]::ReadAllBytes("$target\Civil3DMcpPlugin.dll"))) -eq '04 05 06')
+    # A changed build while the installed DLL is loaded: refused before acaddoc.lsp or the bundle is touched.
+    Remove-Item $acaddoc
+    New-Item -ItemType Directory -Force (Split-Path $bundleDll) | Out-Null
+    [IO.File]::WriteAllBytes($bundleDll, [byte[]](1, 2, 3))
+    [IO.File]::WriteAllBytes((Join-Path $src 'Civil3DMcpPlugin.dll'), [byte[]](7, 8, 9))
+    $threw = $null
+    $handle = [IO.File]::Open("$target\Civil3DMcpPlugin.dll", 'Open', 'Read', 'Read')
+    try { & $installer -SourceDir $src -Destination $dest | Out-Null } catch { $threw = $_.Exception.Message } finally { $handle.Dispose() }
+    Check 'locked target: install refused' ($threw -and $threw.Contains('build changed')) "threw: $threw"
+    Check 'locked target: acaddoc.lsp not written' (-not (Test-Path $acaddoc))
+    Check 'locked target: bundle kept' (Test-Path $bundleDll)
+    Check 'locked target: old DLL kept' ((Hex ([IO.File]::ReadAllBytes("$target\Civil3DMcpPlugin.dll"))) -eq '04 05 06')
 
-  # Uninstall (a child process: the script ends with exit) after a second language folder appeared with
-  # someone else's acaddoc.lsp: ours is removed, theirs is left byte-for-byte and unwritten.
-  & $installer -SourceDir $src -Destination $dest | Out-Null
-  $esp = Join-Path $appData 'Autodesk\C3D 2026\esp\Support'
-  New-Item -ItemType Directory -Force $esp | Out-Null
-  $foreign = Join-Path $esp 'acaddoc.lsp'
-  [IO.File]::WriteAllBytes($foreign, [byte[]](@(0x3B, 0x20, 0x63, 0x61, 0x66, 0xE9, 0x0D, 0x0A)))
-  [IO.File]::SetLastWriteTimeUtc($foreign, $oldTime)
-  $exe = (Get-Process -Id $PID).Path
-  $out = & $exe -NoProfile -ExecutionPolicy Bypass -File $installer -Uninstall -SourceDir $src -Destination $dest
-  Check 'uninstall exits 0' ($LASTEXITCODE -eq 0) ($out -join ' | ')
-  Check 'uninstall removes our file' (-not (Test-Path $acaddoc))
-  Check 'uninstall removes the plugin folder' (-not (Test-Path $target))
-  Check 'uninstall leaves the foreign file' ((Hex ([IO.File]::ReadAllBytes($foreign))) -eq '3B 20 63 61 66 E9 0D 0A' -and [IO.File]::GetLastWriteTimeUtc($foreign) -eq $oldTime)
-  Check 'uninstall backs up no foreign file' (-not (Test-Path "$foreign.c3dmcp-backup"))
+    # Uninstall (a child process: the script ends with exit) after a second language folder appeared with
+    # someone else's acaddoc.lsp: ours is removed, theirs is left byte-for-byte and unwritten.
+    & $installer -SourceDir $src -Destination $dest | Out-Null
+    $esp = Join-Path $appData "Autodesk\C3D $($release.Year)\esp\Support"
+    New-Item -ItemType Directory -Force $esp | Out-Null
+    $foreign = Join-Path $esp 'acaddoc.lsp'
+    [IO.File]::WriteAllBytes($foreign, [byte[]](@(0x3B, 0x20, 0x63, 0x61, 0x66, 0xE9, 0x0D, 0x0A)))
+    [IO.File]::SetLastWriteTimeUtc($foreign, $oldTime)
+    $exe = (Get-Process -Id $PID).Path
+    $out = & $exe -NoProfile -ExecutionPolicy Bypass -File $installer -Uninstall -SourceDir $src -Destination $dest
+    Check 'uninstall exits 0' ($LASTEXITCODE -eq 0) ($out -join ' | ')
+    Check 'uninstall removes our file' (-not (Test-Path $acaddoc))
+    Check 'uninstall removes the plugin folder' (-not (Test-Path $target))
+    Check 'uninstall leaves the foreign file' ((Hex ([IO.File]::ReadAllBytes($foreign))) -eq '3B 20 63 61 66 E9 0D 0A' -and [IO.File]::GetLastWriteTimeUtc($foreign) -eq $oldTime)
+    Check 'uninstall backs up no foreign file' (-not (Test-Path "$foreign.c3dmcp-backup"))
+  }
+  $script:checkPrefix = ''
 } catch {
   "FAIL unexpected error: $($_.Exception.Message) at $($_.InvocationInfo.PositionMessage)"
   $failures++
