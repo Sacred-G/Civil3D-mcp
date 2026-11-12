@@ -4,14 +4,15 @@
 
 ### Fixed
 
-- `createAlignment` from `points` reported `curvesAdded: 0` while Civil 3D
-  fitted curves at the drawing's default radius (`addCurves` defaults to true
-  for points), so an alignment meant to follow the points came out shorter with
-  nothing in the result to say why. `curvesAdded` now counts those curves too,
-  with `curvesAutoFitted` and `curveCount` (arcs on the finished alignment;
-  arcs already in a traced polyline are not counted as fitted). A warning
-  names the default when it fitted curves the caller did not ask for, and the
-  `addCurves` field describes its default.
+- `createAlignment` from `points` let Civil 3D fit curves at the drawing's
+  default radius without saying so (`addCurves` defaults to true for points),
+  so an alignment meant to follow the points came out shorter with nothing in
+  the result to say why. The result now counts them: `curvesAutoFitted`,
+  included in `curvesAdded` (the counter of inserted curves from the
+  `curveRadius`/`radii` work), and `curveCount` (arcs on the finished
+  alignment; arcs already in a traced polyline are not counted as fitted). A
+  warning names the default when it fitted curves the caller did not ask for,
+  and the `addCurves` field describes its default.
 
 ## v1.2.1 — 2026-07-14
 

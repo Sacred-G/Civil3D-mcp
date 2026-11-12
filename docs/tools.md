@@ -578,6 +578,28 @@ Give exactly one of `points` or `polylineHandle`.
 | layer     | string                          | no       | Layer name. Uses drawing default if omitted               |
 | labelSet  | string                          | no       | Label set name. Uses default if omitted                   |
 
+**Response data:**
+
+```
+{
+  name: string,
+  handle: string,
+  length: number,
+  sourcePolyline: string | null,
+  sourcePolylineErased: boolean,
+  curveRadius: number | null,
+  radii: (number | null)[] | null,
+  addCurves: boolean,           // whether Civil 3D fitted curves at its default radius
+  curvesAdded: number,          // every curve this call added: curvesAutoFitted plus those inserted at curveRadius/radii
+  curvesAutoFitted: number,     // curves Civil 3D fitted itself (arcs already in a traced polyline are not counted)
+  curveCount: number,           // arcs on the finished alignment, including arcs inside spiral-curve-spiral groups
+  warnings: string[],           // e.g. when the addCurves default fitted curves the caller did not ask for
+  curvesSkipped: number,
+  curveFailures: string[],      // one message per PI where a requested curve could not be inserted
+  created: true
+}
+```
+
 #### `delete`
 
 Deletes an alignment and optionally its dependent objects.
