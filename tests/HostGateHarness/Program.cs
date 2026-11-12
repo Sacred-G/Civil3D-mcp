@@ -212,7 +212,7 @@ foreach (var viaCommand in new[] { false, true })
   var third = host.Request(async () => { actionStarted.SetResult(); await finishAction.Task; }, viaCommand, early.Token);
   await actionStarted.Task;
   early.Cancel();
-  await Fault(third);
+  Expect(await CompletesWithin(Fault(third), 1000) && third.IsCanceled, $"{route} command line: cancelled during the action, the caller gets the cancellation at once");
   finishAction.SetResult();
   host.CommandLine = null;
   var fourth = host.Request(() => Task.CompletedTask, viaCommand, CancellationToken.None);
