@@ -58,18 +58,46 @@ public static class GradingCommands
     var name = PluginRuntime.GetRequiredString(parameters, "name");
     var description = PluginRuntime.GetOptionalString(parameters, "description") ?? string.Empty;
     var useProjection = PluginRuntime.GetOptionalBool(parameters, "useProjection") ?? false;
+    // Optional: name the site the group is created in. If it does not exist yet, a site with that
+    // name is created and used, so a fresh drawing with no sites does not need a separate
+    // create-site step (Civil 3D only creates sites implicitly through the ribbon UI).
+    var siteParam = PluginRuntime.GetOptionalString(parameters, "site");
 
     return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
     {
-      var siteIds = civilDoc.GetSiteIds().Cast<ObjectId>();
-      var firstSiteId = siteIds.FirstOrDefault();
+      var siteId = ObjectId.Null;
+      var siteCreated = false;
 
-      if (firstSiteId == ObjectId.Null)
+      if (!string.IsNullOrWhiteSpace(siteParam))
       {
-        throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", "No site found in the drawing. Create a site first before adding a grading group.");
+        // A requested site: found by name, or created when it does not exist yet.
+        foreach (ObjectId id in civilDoc.GetSiteIds())
+        {
+          if (string.Equals(CivilObjectUtils.GetName(transaction.GetObject(id, OpenMode.ForRead)), siteParam, StringComparison.OrdinalIgnoreCase))
+          {
+            siteId = id;
+            break;
+          }
+        }
+
+        if (siteId == ObjectId.Null)
+        {
+          siteId = Autodesk.Civil.DatabaseServices.Site.Create(civilDoc, siteParam);
+          siteCreated = true;
+        }
+      }
+      else
+      {
+        // No site requested: the first one, or a new one when the drawing has none.
+        siteId = civilDoc.GetSiteIds().Cast<ObjectId>().FirstOrDefault();
+        if (siteId == ObjectId.Null)
+        {
+          siteId = Autodesk.Civil.DatabaseServices.Site.Create(civilDoc, name + " Site");
+          siteCreated = true;
+        }
       }
 
-      var siteObj = transaction.GetObject(firstSiteId, OpenMode.ForRead);
+      var siteObj = transaction.GetObject(siteId, OpenMode.ForRead);
       var gradingGroups = Civil3DCompatibility.GetPropertyValue(siteObj, "GradingGroups");
 
       // Try Add(name, useProjection) or Add(name)
@@ -92,6 +120,8 @@ public static class GradingCommands
         ["name"] = name,
         ["handle"] = CivilObjectUtils.GetHandle(newGroup),
         ["description"] = description,
+        ["site"] = CivilObjectUtils.GetName(siteObj),
+        ["siteCreated"] = siteCreated,
         ["created"] = true,
       };
     });
