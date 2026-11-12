@@ -24,7 +24,11 @@ const ProfileListResponseSchema = z.object({
 
 const ProfileEntitySchema = z.object({
   index: z.number(),
-  type: z.enum(["tangent", "circular_curve", "parabola", "asymmetric_parabola"]),
+  // "parabola" was in this enum before the ParabolaSymmetric mapping fix and
+  // stays accepted for schema back-compat. Pre-fix plugins never sent it for a
+  // real curve: their substring match found "asymmetric" inside
+  // "parabolasymmetric", so symmetric curves came back as "asymmetric_parabola".
+  type: z.enum(["tangent", "circular_curve", "symmetric_parabola", "asymmetric_parabola", "parabola"]),
   startStation: z.number(),
   endStation: z.number(),
   startElevation: z.number(),
@@ -191,14 +195,17 @@ const ProfileSetGradeArgsSchema = z.object({
   grade: z.number(),
 });
 
-const ProfileCheckKValuesArgsSchema = z.object({
+export const SpeedUnitsSchema = z.enum(["mph", "km/h"]);
+
+export const ProfileCheckKValuesArgsSchema = z.object({
   action: z.literal("check_k_values"),
   alignmentName: z.string(),
   profileName: z.string(),
   designSpeed: z.number().positive(),
+  speedUnits: SpeedUnitsSchema.optional(),
 });
 
-const ProfileViewCreateArgsSchema = z.object({
+export const ProfileViewCreateArgsSchema = z.object({
   action: z.literal("view_create"),
   alignmentName: z.string(),
   profileViewName: z.string(),
@@ -206,6 +213,7 @@ const ProfileViewCreateArgsSchema = z.object({
   insertY: z.number(),
   style: z.string().optional(),
   bandSet: z.string().optional(),
+  layer: z.string().optional(),
 });
 
 const ProfileViewBandSetArgsSchema = z.object({
@@ -253,6 +261,7 @@ const canonicalProfileInputShape = {
   entityIndex: z.number().int().min(0).optional(),
   grade: z.number().optional(),
   designSpeed: z.number().positive().optional(),
+  speedUnits: SpeedUnitsSchema.optional(),
   insertX: z.number().optional(),
   insertY: z.number().optional(),
   bandSet: z.string().optional(),
@@ -544,6 +553,7 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           alignmentName: args.alignmentName,
           profileName: args.profileName,
           designSpeed: args.designSpeed,
+          speedUnits: args.speedUnits,
         }),
       ),
     },
@@ -563,6 +573,7 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           insertY: args.insertY,
           style: args.style,
           bandSet: args.bandSet,
+          layer: args.layer,
         }),
       ),
     },
@@ -747,11 +758,12 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
     {
       toolName: "civil3d_profile_check_k_values",
       displayName: "Civil 3D Profile Check K Values",
-      description: "Validates the K value of every vertical curve in a Civil 3D layout profile against AASHTO minimum K values for the specified design speed. Returns a pass/fail report per curve.",
+      description: "Validates the K value (K = L / A, A = algebraic grade difference in percent) of every vertical curve in a Civil 3D layout profile against AASHTO stopping-sight-distance minimum K for the design speed. speedUnits (mph or km/h) defaults from the drawing's length unit (feet -> mph, meters -> km/h); speeds between table rows use the next higher row. Returns a pass/fail report per curve.",
       inputShape: {
         alignmentName: z.string(),
         profileName: z.string(),
         designSpeed: z.number().positive(),
+        speedUnits: SpeedUnitsSchema.optional(),
       },
       supportedActions: ["check_k_values"],
       resolveAction: (rawArgs) => ({
@@ -761,13 +773,14 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           alignmentName: rawArgs.alignmentName,
           profileName: rawArgs.profileName,
           designSpeed: rawArgs.designSpeed,
+          speedUnits: rawArgs.speedUnits,
         },
       }),
     },
     {
       toolName: "civil3d_profile_view_create",
       displayName: "Civil 3D Profile View Create",
-      description: "Creates a Civil 3D profile view at the specified insertion point in model space. Optionally applies a style and band set.",
+      description: "Creates a Civil 3D profile view at the specified insertion point in model space. Optionally applies a style, band set and layer (created if missing); without a style or band set the drawing's first one is used, and a style or band set name that does not exist is an error listing the available names.",
       inputShape: {
         alignmentName: z.string(),
         profileViewName: z.string(),
@@ -775,6 +788,7 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
         insertY: z.number(),
         style: z.string().optional(),
         bandSet: z.string().optional(),
+        layer: z.string().optional(),
       },
       supportedActions: ["view_create"],
       resolveAction: (rawArgs) => ({
@@ -787,6 +801,7 @@ export const PROFILE_DOMAIN_DEFINITION: DomainToolDefinition = {
           insertY: rawArgs.insertY,
           style: rawArgs.style,
           bandSet: rawArgs.bandSet,
+          layer: rawArgs.layer,
         },
       }),
     },

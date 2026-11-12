@@ -1,5 +1,64 @@
 # Changelog
 
+## Unreleased
+
+### Fixed
+
+- Style lookups by name never matched on Civil 3D 2027, so a requested style
+  was silently replaced by the drawing's first one: `create_layout` with style
+  "Design Profile" got "Existing Ground Profile", and `view_create` with style
+  "Profile View" warned the style was missing. Civil 3D 2027's `StyleBase`
+  declares a set-only `Name` that hides the readable base-class `Name`, so the
+  reflective name read returned null for every style, label set and band set.
+  Names are now read through the documented `DBObject.Name`, and the
+  reflection boundary resolves a readable (or writable) declaration when a
+  derived class hides one. A style, label set or band set name that does not
+  exist is now `CIVIL3D.INVALID_INPUT` listing the available names instead of
+  a silent substitution. No name still means the drawing's first one, except
+  the section view band set and group plot style lookups, which pass Civil
+  3D's default (a null id), and the profile view band set lookup, which uses
+  the first band set only where the caller asks for it (`view_create` does).
+  `create_layout` / `create_from_surface` now report the style and layer
+  applied. Affects every `LookupUtils` style lookup (alignment, profile,
+  surface, alignment/profile label set, profile view style and band set,
+  parcel style, parcel area label style, section view style and band set,
+  group plot style) and the name reads in the label and pipe-network style
+  lookups.
+- `civil3d_profile view_create` always failed on Civil 3D 2027 ("ProfileView.Create
+  returned null"): the plugin probed `ProfileView.Create` by reflection with
+  argument orders that do not exist. It now calls the typed
+  `Create(alignmentId, insertPosition, name, bandSetId, styleId)` overload,
+  falling back to the drawing's first profile view style and band set when none
+  is named. When the drawing has only one of the two, the view is created with
+  Civil 3D's defaults, the one that exists is applied to it, and a warning
+  names the one that was missing; a named style or band set that cannot be
+  applied, or a view that cannot be given the requested name, fails with
+  `CIVIL3D.INVALID_INPUT` and nothing is created. New optional `layer`; the
+  result reports name, handle, layer, style and band set.
+- The profile view band-set lookup read `ProfileViewBandSetStyles` from the
+  label-set styles root, where it does not exist, so it always returned a null
+  id (`view_band_set` imported nothing). It now reads `Styles.ProfileViewBandSetStyles`.
+- A requested layer that did not exist was silently replaced by the current
+  layer (e.g. `create_layout layer:"C-ROAD-DES"` landed on layer 0). Missing
+  layers are now created; an invalid layer name is `CIVIL3D.INVALID_INPUT`.
+  Applies to every create path that takes `layer` (profiles, alignments,
+  offset alignments, polylines, text, lines, profile views).
+- `civil3d_profile check_k_values` computed K with A as a decimal grade
+  difference (0.028) instead of percent (2.8) — a 280 ft curve reported
+  K ≈ 9,980 — and always used a metric table, so 50 (mph) required sag 9 /
+  crest 4. K is now L / (100·|g2−g1|), checked against the AASHTO
+  stopping-sight-distance design K tables in mph (ft/%, 15-80 mph) or km/h
+  (m/%, 20-130 km/h). New
+  optional `speedUnits` (`mph` | `km/h`) defaults from the drawing's length
+  unit; speeds between rows use the next higher row (and say so); speeds
+  outside the table are `CIVIL3D.INVALID_INPUT`. Per curve it now returns
+  grades in percent, A in percent, K, required K, start/end and PVI station.
+  A profile with no vertical curves reports `allPass: false` with a warning,
+  since nothing was checked.
+- `civil3d_profile get` reported symmetric parabolas as `asymmetric_parabola`
+  ("parabolasymmetric" contains "asymmetric"); they are now
+  `symmetric_parabola`. The response schema still accepts the old `parabola`.
+
 ## v1.2.1 — 2026-07-14
 
 ### Production readiness

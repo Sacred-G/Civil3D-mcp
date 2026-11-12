@@ -16,7 +16,9 @@ internal static class Civil3DCompatibility
   private sealed record CachedField(FieldInfo? Value);
   private sealed record CachedType(Type? Value);
 
-  private readonly record struct PropertyKey(Type Type, string Name, bool IsStatic);
+  internal enum PropertyAccess { Any, Read, Write }
+
+  private readonly record struct PropertyKey(Type Type, string Name, bool IsStatic, PropertyAccess Access = PropertyAccess.Any);
   private readonly record struct MethodKey(Type Type, string Name, bool IsStatic, int ArgumentCount);
   private readonly record struct MethodFamilyKey(Type Type, string Name, bool IsStatic);
   private readonly record struct LoadedStaticMethodKey(string Name, Type FirstParameterType, int ArgumentCount);
@@ -65,7 +67,7 @@ internal static class Civil3DCompatibility
       return null;
     }
 
-    var property = ResolveProperty(target.GetType(), propertyName, isStatic: false);
+    var property = ResolveProperty(target.GetType(), propertyName, isStatic: false, PropertyAccess.Read);
     if (property == null)
     {
       return null;
@@ -127,7 +129,7 @@ internal static class Civil3DCompatibility
       return false;
     }
 
-    var property = ResolveProperty(target.GetType(), propertyName, isStatic: false);
+    var property = ResolveProperty(target.GetType(), propertyName, isStatic: false, PropertyAccess.Write);
     if (property?.CanWrite != true)
     {
       return false;
@@ -354,14 +356,68 @@ internal static class Civil3DCompatibility
     return null;
   }
 
-  private static PropertyInfo? ResolveProperty(Type type, string propertyName, bool isStatic)
+  private static PropertyInfo? ResolveProperty(Type type, string propertyName, bool isStatic, PropertyAccess access = PropertyAccess.Any)
   {
-    var key = new PropertyKey(type, propertyName, isStatic);
+    var key = new PropertyKey(type, propertyName, isStatic, access);
     return PropertyCache.GetOrAdd(key, static item =>
     {
       var flags = BindingFlags.Public | (item.IsStatic ? BindingFlags.Static : BindingFlags.Instance);
-      return new CachedProperty(item.Type.GetProperty(item.Name, flags));
+      return new CachedProperty(FindProperty(item.Type, item.Name, flags, item.Access));
     }).Value;
+  }
+
+  /// <summary>
+  /// Type.GetProperty, made safe for properties that a derived class hides
+  /// with a <c>new</c> declaration that has only one accessor. Civil 3D 2027's
+  /// <c>StyleBase</c> declares a set-only <c>Name</c> that hides the readable
+  /// <c>Autodesk.Civil.DatabaseServices.DBObject.Name</c>: plain GetProperty
+  /// then returns the set-only property (GetValue throws, so every style name
+  /// read as null) or throws AmbiguousMatchException. That made every style
+  /// lookup by name miss and silently use the first style. For a read (or a
+  /// write) this walks the hierarchy from the most derived type and takes the
+  /// nearest declaration that has the needed accessor.
+  /// </summary>
+  internal static PropertyInfo? FindProperty(Type type, string propertyName, BindingFlags flags, PropertyAccess access)
+  {
+    PropertyInfo? property;
+    try
+    {
+      property = type.GetProperty(propertyName, flags);
+    }
+    catch (AmbiguousMatchException)
+    {
+      property = null;
+    }
+
+    if (access == PropertyAccess.Any || (property != null && HasAccessor(property, access)))
+    {
+      return property;
+    }
+
+    for (var current = type; current != null; current = current.BaseType)
+    {
+      foreach (var candidate in current.GetProperties(flags | BindingFlags.DeclaredOnly))
+      {
+        if (string.Equals(candidate.Name, propertyName, StringComparison.Ordinal)
+          && candidate.GetIndexParameters().Length == 0
+          && HasAccessor(candidate, access))
+        {
+          return candidate;
+        }
+      }
+    }
+
+    return property;
+  }
+
+  private static bool HasAccessor(PropertyInfo property, PropertyAccess access)
+  {
+    return access switch
+    {
+      PropertyAccess.Read => property.GetGetMethod() != null,
+      PropertyAccess.Write => property.GetSetMethod() != null,
+      _ => true,
+    };
   }
 
   private static bool TryInvokeCandidates(

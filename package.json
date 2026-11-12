@@ -17,6 +17,8 @@
     "start": "node ./build/index.js",
     "test": "vitest run",
     "test:p2-boundaries": "dotnet run --project ./tests/FileBoundaryHarness/FileBoundaryHarness.csproj",
+    "test:vertical-curve-math": "dotnet run --project ./tests/VerticalCurveMathHarness/VerticalCurveMathHarness.csproj",
+    "test:style-lookups": "dotnet run --project ./tests/StyleLookupHarness/StyleLookupHarness.csproj",
     "test:watch": "vitest",
     "test:live-plugin": "npm run build && node ./scripts/verify-live-plugin.mjs",
     "test:live-host": "npm run build && node ./scripts/live-host-smoke.mjs",
