@@ -182,7 +182,9 @@ public static class CivilExecution
       {
         cancellationToken.ThrowIfCancellationRequested();
         RequireExpectedDocument(expectedDrawingIdentity, "No commands were run.");
-        QueueCommandLine(input);
+        // UNDO / MREDO never open a dialog, so the request waits until they
+        // have run instead of reporting them done while they still execute.
+        QueueCommandLine(input, waitForCompletion: true);
         return Task.CompletedTask;
       }, needsCommand: false, needsQuietEditor: true, cancellationToken);
 
@@ -194,16 +196,19 @@ public static class CivilExecution
   // Command-line input requested by the running host operation; sent through
   // COM SendCommand once the operation (and C3DMCPHOP) has finished. Only
   // touched on the main thread, one host operation at a time.
-  private static readonly List<string> PendingCommandLine = new();
+  private static readonly List<(string Text, bool Wait)> PendingCommandLine = new();
 
   // Main thread, inside a host operation: run this command-line input (for
   // example "_.UNDO 2 ") right after the operation. Document.SendStringToExecute
   // cannot be used: queued input mixes with C3DMCPHOP's COM input (seen live:
   // UNDO received "C3DMCPHOP" as its answer instead of the count).
-  public static void QueueCommandLine(string input)
+  // waitForCompletion: the request waits until the input has run (up to
+  // HostBusyTimeout). Without it the request stops waiting after a few
+  // seconds, for commands that open a dialog and keep it open.
+  public static void QueueCommandLine(string input, bool waitForCompletion = false)
   {
     // COM SendCommand needs a trailing space (or Enter) to submit the input.
-    PendingCommandLine.Add(input.TrimEnd('\r', '\n', ' ') + " ");
+    PendingCommandLine.Add((input.TrimEnd('\r', '\n', ' ') + " ", waitForCompletion));
   }
 
   private static Document RequireExpectedDocument(string? expectedDrawingIdentity, string noChanges)
@@ -346,11 +351,15 @@ public static class CivilExecution
       }
       catch (Exception ex)
       {
+        // Also when the operation had already claimed the request (it ran and
+        // faulted operationDone, for example with CONFLICT from
+        // RequireExpectedDocument): the request must end with this exception,
+        // or it would wait with HostExecutionGate held. When the busy watcher
+        // or the no-Idle watchdog has already ended the request, done is
+        // complete and this does nothing.
         CoreApp.Idle -= idle;
-        if (Interlocked.Exchange(ref claimed, 1) == 0)
-        {
-          done.TrySetException(ex);
-        }
+        Interlocked.Exchange(ref claimed, 1);
+        done.TrySetException(ex);
       }
     };
     CoreApp.Idle += idle;
@@ -465,12 +474,27 @@ public static class CivilExecution
   // has consumed the input. A command that opens a dialog or stops at a
   // prompt keeps it from returning; after a few seconds the request completes
   // anyway, so the host gate is not held while the user works in the dialog.
-  private static async Task SendCommandLineAsync(object acadDocument, IReadOnlyList<string> input)
+  // Input queued with waitForCompletion (UNDO, MREDO) is waited for up to
+  // HostBusyTimeout; if it is still running then, the request fails with
+  // HOST_BUSY instead of reporting it done.
+  private static async Task SendCommandLineAsync(object acadDocument, IReadOnlyList<(string Text, bool Wait)> input)
   {
-    foreach (var text in input)
+    foreach (var (text, wait) in input)
     {
       var call = Task.Run(() => SendCommandWithRetry(acadDocument, text));
-      await Task.WhenAny(call, Task.Delay(TimeSpan.FromSeconds(3)));
+      await Task.WhenAny(call, Task.Delay(wait ? HostBusyTimeout : TimeSpan.FromSeconds(3)));
+      if (!call.IsCompleted && wait)
+      {
+        _ = call.ContinueWith(
+          t => PluginLog.Warn("Host", $"Command-line input '{text.Trim()}' failed.", t.Exception),
+          CancellationToken.None,
+          TaskContinuationOptions.OnlyOnFaulted,
+          TaskScheduler.Default);
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.HOST_BUSY",
+          $"'{text.Trim()}' did not finish within {HostBusyTimeout.TotalSeconds:0} s and may still be running. Check Civil 3D before retrying.");
+      }
+
       if (!call.IsCompleted)
       {
         _ = call.ContinueWith(
@@ -486,9 +510,11 @@ public static class CivilExecution
     }
   }
 
+  private static readonly TimeSpan CallRejectedRetry = TimeSpan.FromSeconds(10);
+
   private static void SendCommandWithRetry(object acadDocument, string text)
   {
-    var deadline = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+    var deadline = DateTime.UtcNow + CallRejectedRetry;
     while (true)
     {
       try
@@ -496,8 +522,17 @@ public static class CivilExecution
         Civil3DCompatibility.InvokeComMethod(acadDocument, "SendCommand", text);
         return;
       }
-      catch (COMException ex) when (IsCallRejected(ex) && DateTime.UtcNow < deadline)
+      catch (COMException ex) when (IsCallRejected(ex))
       {
+        if (DateTime.UtcNow >= deadline)
+        {
+          // Still busy after the retries: the designed HOST_BUSY, not a raw
+          // RPC_E_CALL_REJECTED / RPC_E_SERVERCALL_RETRYLATER.
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.HOST_BUSY",
+            $"Civil 3D kept rejecting '{text.Trim()}' for {CallRejectedRetry.TotalSeconds:0} s (another command or a dialog may be active). Finish it or press Esc in Civil 3D, then retry.");
+        }
+
         Thread.Sleep(200);
       }
     }

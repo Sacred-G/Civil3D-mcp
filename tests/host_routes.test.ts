@@ -38,6 +38,34 @@ describe("host routes", () => {
     expect(execution).toMatch(/route == HostRoute\.Idle\s*\?\s*database\.TransactionManager\.StartOpenCloseTransaction\(\)/);
     expect(execution).toContain("needsCommand: write || inCommand");
     expect(execution).toMatch(/if \(needsCommand\)\s*\{\s*await StartPluginCommandAsync\(/);
+    // The route starts from an Idle tick: RunOnHostAsync subscribes its
+    // handler, and the handler unsubscribes itself before it runs the work.
+    const run = execution.slice(execution.indexOf("private static async Task RunOnHostAsync"));
+    expect(run).toContain("CoreApp.Idle += idle;");
+    expect(run.indexOf("CoreApp.Idle += idle;")).toBeLessThan(run.indexOf("await AwaitHostContextAsync(done.Task, cancellationToken)"));
+    expect(run).toMatch(/CoreApp\.Idle -= idle;\s*Interlocked\.Exchange\(ref started, 1\);/);
+  });
+
+  it("ends the request with the operation's exception even after the operation claimed it", () => {
+    const run = execution.slice(execution.indexOf("private static async Task RunOnHostAsync"));
+    expect(run).toMatch(/catch \(Exception ex\)\s*\{\s*CoreApp\.Idle -= idle;\s*Interlocked\.Exchange\(ref claimed, 1\);\s*done\.TrySetException\(ex\);/);
+  });
+
+  it("waits for undo and redo to finish and reports a COM call still rejected as HOST_BUSY", () => {
+    expect(execution).toContain("QueueCommandLine(input, waitForCompletion: true)");
+    expect(execution).toContain("Task.Delay(wait ? HostBusyTimeout : TimeSpan.FromSeconds(3))");
+    const retry = execution.slice(execution.indexOf("private static void SendCommandWithRetry"));
+    expect(retry).toMatch(/catch \(COMException ex\) when \(IsCallRejected\(ex\)\)\s*\{\s*if \(DateTime\.UtcNow >= deadline\)\s*\{\s*throw new JsonRpcDispatchException\(\s*"CIVIL3D\.HOST_BUSY"/);
+  });
+
+  it("uses the plugin command for cost quantities only when earthwork creates a scratch volume surface", () => {
+    const cost = withoutComments(source("CostEstimationCommands.cs"));
+    expect(cost).toMatch(/computesEarthwork\s*\?\s*CivilExecution\.ReadInCommandAsync\(action\)\s*:\s*CivilExecution\.ReadAsync\(action\)/);
+    expect(cost.match(/return ReadQuantitiesAsync\(computesEarthwork,/g)?.length).toBe(2);
+    expect(cost).toContain("var computesEarthwork = includeEarthwork && !string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface);");
+    expect(cost).toContain("if (includeEarthwork && !string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface))");
+    expect(cost).toContain("var computesEarthwork = !string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface);");
+    expect(cost).toContain("if (!string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface))");
   });
 
   it("runs writes inside the plugin's own command", () => {
@@ -64,7 +92,7 @@ describe("host routes", () => {
   it("keeps scratch objects, pickfirst and command-line input out of plain reads", () => {
     const scratch = ["GetVolumeProperties(", "ComputeVolumeBetweenSurfaces(", "GetEarthworkVolumes(", "TinVolumeSurface.Create("];
     const pickfirst = ["SetImpliedSelection(", "SelectImplied(", "BuildSelectedCivilObjects("];
-    const commandLine = ["QueueCommandLine(", "SendCommand(doc"];
+    const commandLine = ["QueueCommandLine(", "SendCommand("];
     const writes = ["UpgradeOpen(", "OpenMode.ForWrite", ".Commit("];
     const offenders: string[] = [];
     const counts: Record<string, number> = {};

@@ -33,7 +33,8 @@ public static class CostEstimationCommands
     var payItemsNode = parameters?["payItems"] as JsonArray;
     var payItems = ParsePayItems(payItemsNode);
 
-    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
+    var computesEarthwork = includeEarthwork && !string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface);
+    return ReadQuantitiesAsync(computesEarthwork, (doc, civilDoc, database, transaction) =>
     {
       var quantityLines = new List<Dictionary<string, object?>>();
 
@@ -109,7 +110,8 @@ public static class CostEstimationCommands
       throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "At least one pay item with a unit price is required to generate a cost estimate.");
     }
 
-    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
+    var computesEarthwork = !string.IsNullOrWhiteSpace(baseSurface) && !string.IsNullOrWhiteSpace(designSurface);
+    return ReadQuantitiesAsync(computesEarthwork, (doc, civilDoc, database, transaction) =>
     {
       var lineItems = new List<Dictionary<string, object?>>();
       double subtotal = 0;
@@ -172,6 +174,19 @@ public static class CostEstimationCommands
   }
 
   // ─── Private helpers ─────────────────────────────────────────────────────────
+
+  // Earthwork volumes create a scratch TinVolumeSurface, which must disappear
+  // with the aborted transaction, so only then does the read need the
+  // C3DMCPHOP command (and a quiescent editor). Pipe and structure quantities
+  // alone are a plain read on the Idle route.
+  private static Task<object?> ReadQuantitiesAsync(
+    bool computesEarthwork,
+    Func<Autodesk.AutoCAD.ApplicationServices.Document, Autodesk.Civil.ApplicationServices.CivilDocument, Database, Transaction, object?> action)
+  {
+    return computesEarthwork
+      ? CivilExecution.ReadInCommandAsync(action)
+      : CivilExecution.ReadAsync(action);
+  }
 
   private sealed record PayItem(string Code, string Description, string Unit, double UnitPrice);
 
