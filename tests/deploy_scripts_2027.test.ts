@@ -44,7 +44,7 @@ function tempDir(label: string) {
 }
 
 function cleanup() {
-  for (const dir of tempRoots.splice(0)) rmSync(dir, { recursive: true, force: true });
+  for (const dir of tempRoots.splice(0)) rmSync(dir, { recursive: true, force: true, maxRetries: 10, retryDelay: 200 });
 }
 
 function fakeBuild(root: string, tfm: string, files: Record<string, string>) {
@@ -101,14 +101,27 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
         { env: shellEnv("powershell"), stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
       try {
         await new Promise<void>((resolve, reject) => {
-          holder.stdout.setEncoding("utf8").on("data", (chunk: string) => { if (chunk.includes("locked")) resolve(); });
-          holder.on("exit", () => reject(new Error("lock holder exited")));
+          let locked = false;
+          holder.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+            if (chunk.includes("locked")) {
+              locked = true;
+              resolve();
+            }
+          });
+          // Only an exit before the lock was taken is a failure.
+          holder.once("exit", () => { if (!locked) reject(new Error("lock holder exited before taking the lock")); });
         });
         const result = run(shell, installBundle, ["-SourceDir", broken, "-BundleRoot", bundleRoot]);
         expect(result.status, result.output).not.toBe(0);
         expect(result.output).toContain("the previous bundle (if any) is unchanged");
       } finally {
+        // Wait until the holder is gone, so its lock is released before the
+        // temp folder is deleted.
+        const exited = holder.exitCode !== null || holder.signalCode !== null
+          ? Promise.resolve()
+          : new Promise<void>((resolve) => holder.once("exit", () => resolve()));
         holder.kill();
+        await Promise.race([exited, new Promise<void>((resolve) => setTimeout(resolve, 15_000))]);
       }
       const contents = path.join(bundleRoot, "Civil3DMcp.bundle", "Contents");
       expect(readFileSync(path.join(contents, "Civil3DMcpPlugin.dll"), "utf8")).toBe("v1");
