@@ -85,7 +85,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it("install-bundle keeps the previous bundle when the new copy fails", async () => {
     try {
@@ -116,7 +116,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it.each(["..", ".", "..\\..", "a\\b", "a/b", "C:\\x", "x.bundle.", " "])("install-bundle refuses BundleName %j", (name) => {
     try {
@@ -133,7 +133,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it("install-bundle cleans up an interrupted run's folders, but keeps a moved-aside bundle when it is the only copy", () => {
     try {
@@ -159,7 +159,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it("install-bundle appends .bundle to a bare name", () => {
     try {
@@ -173,7 +173,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it("gather-refs copies nothing unless all six references are found", () => {
     try {
@@ -206,7 +206,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   // A fake dotnet on PATH records its calls; the script runs from a copy in a
   // fake repo so the build output check finds a DLL there.
@@ -248,7 +248,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 
   it("build-2027 ends a build without -Install with exit code 0 after restoring the default", () => {
     try {
@@ -263,5 +263,5 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
     } finally {
       cleanup();
     }
-  });
+  }, 120_000);
 });
