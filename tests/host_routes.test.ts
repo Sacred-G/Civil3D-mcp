@@ -46,8 +46,8 @@ function literalsInBlock(name: string, patterns: RegExp[], label: string): strin
     search.lastIndex = from;
     const match = search.exec(parts.code);
     expect(match, `${label}: ${pattern} after index ${from}`).not.toBeNull();
-    from = match!.index;
     end = match!.index + match![0].length;
+    from = end;
   }
   const open = parts.code.indexOf("{", end - 1);
   return squash(parts.withoutComments.slice(open + 1, matchingClose(parts.code, open)));
