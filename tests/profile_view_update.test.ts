@@ -38,6 +38,21 @@ describe("civil3d_profile view_update schema", () => {
     expect(ProfileViewUpdateArgsSchema.safeParse({ ...update, verticalExaggeration: 0 }).success).toBe(false);
   });
 
+  it("reports a contradictory range through the MCP tool as CIVIL3D.INVALID_INPUT, without calling the plugin", async () => {
+    const { captureDomainToolHandlers } = await import("../src/tools/domainRuntime.js");
+    const { executeRegisteredTool } = await import("../src/tools/toolHandlerRegistry.js");
+    captureDomainToolHandlers(PROFILE_DOMAIN_DEFINITION);
+    for (const args of [
+      { ...update, stationStart: 100, stationEnd: 50 },
+      { ...update, elevationMin: 155, elevationMax: 105 },
+      update,
+    ]) {
+      const error = await executeRegisteredTool("civil3d_profile", args).then(() => undefined, (reason) => reason);
+      expect(error, JSON.stringify(args)).toMatchObject({ code: "CIVIL3D.INVALID_INPUT", rpcCode: -32602 });
+    }
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+
   it("forwards every setting to profileViewUpdate", async () => {
     const args = { ...update, style: "Profile View", layer: "C-PROF-VIEW", stationStart: -15, stationEnd: 422.15,
       elevationMin: 105, elevationMax: 155, verticalExaggeration: 5 };

@@ -5,7 +5,15 @@
 ### Fixed
 
 - A path outside the plugin's file roots now names the allowed roots and the
-  variables that add one, instead of only "outside the configured roots".
+  variables that add one, instead of only "outside the configured roots"
+  (also when the export directory is locked for a write).
+  `CIVIL3D_FILE_ROOTS` is suggested only while the operation's own
+  `CIVIL3D_IMPORT_ROOTS` / `CIVIL3D_EXPORT_ROOTS` is unset, since it is not
+  read otherwise.
+- Arguments that fail an action's input schema, including its refinements
+  (for example `view_update` with `stationStart` >= `stationEnd`), are
+  reported as `CIVIL3D.INVALID_INPUT` through the MCP tool, as the HTTP bridge
+  already did; they were `CIVIL3D.INTERNAL_ERROR`.
 
 - Style lookups by name never matched on Civil 3D 2027, so a requested style
   was silently replaced by the drawing's first one: `create_layout` with style
