@@ -857,7 +857,7 @@ The canonical `civil3d_project` tool also has:
 |------|-------------|
 | `data_shortcut_references` | List every data-shortcut reference in the current drawing with its source drawing, source object name/type/handle, whether the source lies in the current project, the working folder, or elsewhere, and a status of `current`, `out_of_date`, `broken`, `source_missing`, or `unknown` (Civil 3D could not report the reference's health; `isValid`/`isStale` are then null). Read-only, not gated. |
 | `data_shortcut_repair` | Point a broken or moved reference at a new source drawing (`objectType`, `objectName`, `sourcePath`, optional `autoRepairOther`) through `DataShortcuts.RepairBrokenDRef`. `sourcePath` must be a `.dwg` inside the plugin's import roots. Approval required. |
-| `data_shortcut_sync` | Now runs `_AeccSynchronizeReferences`, the command name taken from the 2027 CUIx. |
+| `data_shortcut_sync` | Now runs the synchronize command this Civil 3D defines: `AeccSynchronizeReferences` (the 2027 CUIx name) or `SynchronizeReferences`, and fails with a clear message if neither exists. |
 | `data_shortcut_promote` | Now preselects the reference and queues `_AeccPromoteReference`, so it no longer only returns manual steps. Corridors still cannot be promoted. |
 
 </details>
@@ -884,11 +884,13 @@ Every path passes the plugin's filesystem boundary: it must be absolute, inside 
 
 | Action | Description |
 |------|-------------|
-| `drawing` | Compare the active drawing with another DWG (`otherPath`), which is read as a side database with `Database.ReadDwgFile` and never opened as a document. Returns entities added, removed, and modified, grouped by type and layer and matched by handle, plus Civil 3D object changes matched by kind and name: alignment length, stations, and geometry hash; profile PVIs; surface point count, elevations, TIN surface triangle count, and 2D/3D area (TIN and grid surfaces); pipe network counts, pipe inverts, and structure rims and sumps; corridor baselines. |
+| `drawing` | Compare the active drawing with another DWG (`otherPath`), which is read as a side database with `Database.ReadDwgFile` and never opened as a document. Returns entities added, removed, and modified, grouped by type and layer and matched by handle, plus Civil 3D object changes matched by kind and name: alignment length, stations, and geometry hash; profile PVIs; surface point count, elevations, TIN surface triangle count, 2D/3D area, and a vertex hash that changes when any vertex moves (TIN and grid surfaces up to 2,000,000 vertices); pipe network counts, pipe inverts, and structure rims and sumps; corridor baselines. |
 | `snapshot` | Write a JSON fingerprint of the active drawing to `outputPath` (`.json`, inside the export roots, written atomically, `overwrite` defaults to false). |
-| `compare_snapshot` | Diff the active drawing against a snapshot (`snapshotPath`, `.json`, inside the import roots), for example to see what changed since the last submittal. |
+| `compare_snapshot` | Diff the active drawing against a snapshot (`snapshotPath`, `.json`, inside the import or export roots, so a snapshot this tool wrote can always be read back), for example to see what changed since the last submittal. |
 
-`snapshot` writes through the export roots and `compare_snapshot` reads through the import roots. Both default to `CIVIL3D_FILE_ROOTS`; if you set `CIVIL3D_EXPORT_ROOTS` and `CIVIL3D_IMPORT_ROOTS` separately, keep snapshots in a folder covered by both.
+`snapshot` writes through the export roots and `compare_snapshot` reads through the import or export roots, so a snapshot this tool wrote can be read back even when `CIVIL3D_EXPORT_ROOTS` and `CIVIL3D_IMPORT_ROOTS` differ.
+
+The comparison runs while Civil 3D is held, so a drawing with more than 100,000 layout entities is fingerprinted at `fast` detail: curves skip their extents (their start, end and length are still compared). Both sides of a comparison use the same detail, the result reports it as `entityDetail`, and `compare_snapshot` uses the snapshot's.
 
 `maxDetails` (default 200, maximum 5000) caps the rows listed in each detail group. It never caps the counts. `details.truncated` and `civil.truncated` report when rows were left out.
 
@@ -1018,7 +1020,7 @@ the current user's Documents folder.
 | `CIVIL3D_EXPORT_ROOTS` | `CIVIL3D_FILE_ROOTS` | Optional export-only roots for drawings and generated reports. |
 
 Xref (`attach`, `overlay`, `repath`), data-shortcut `data_shortcut_repair`, and
-`civil3d_compare` `drawing`/`compare_snapshot` read from the import roots;
+`civil3d_compare` `drawing` reads from the import roots, `compare_snapshot` from the import or export roots;
 `civil3d_compare snapshot` writes to the export roots. Import/export tools enforce operation-specific extensions. Generated text and
 CSV artifacts are written to a temporary file in the destination directory and
 then atomically moved into place. Existing files are rejected unless the tool

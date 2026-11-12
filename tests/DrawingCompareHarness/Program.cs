@@ -98,6 +98,34 @@ Assert((bool)((Dictionary<string, object?>)self["summary"]!)["identical"]!, "rou
 // to survive the round trip (summaries, handles, layers, warnings).
 Assert(roundTripped.ToJson() == current.ToJson(), "snapshot JSON should round-trip unchanged");
 
+// The capture detail level survives a snapshot round trip; older snapshots
+// without it read as full detail.
+var fastPrint = new DrawingFingerprint { EntityDetail = DrawingFingerprint.FastDetail };
+Assert(DrawingFingerprint.FromJson(fastPrint.ToJson()).IsFast, "fast detail should round-trip");
+Assert(!DrawingFingerprint.FromJson(new DrawingFingerprint().ToJson()).IsFast, "a snapshot without entityDetail is full detail");
+
+// Surface vertex hash: order-independent, sensitive to any one moved vertex.
+var points = new[] { (1.0, 2.0, 3.0), (4.5, 5.25, 6.125), (7_000_000.123456, 2_500_000.5, 101.25), (0.0, 0.0, 0.0) };
+string HashOf(IEnumerable<(double X, double Y, double Z)> set)
+{
+  var hash = new PointSetHash();
+  foreach (var (x, y, z) in set)
+  {
+    hash.Add(x, y, z);
+  }
+
+  return hash.Value;
+}
+
+var forward = HashOf(points);
+Assert(forward == HashOf(points.Reverse()), "vertex hash should not depend on order");
+Assert(forward != HashOf(points.Select((p, i) => i == 2 ? (p.Item1, p.Item2, p.Item3 + 0.001) : p)), "a re-elevated vertex should change the hash");
+Assert(forward != HashOf(points.Select((p, i) => i == 1 ? (p.Item2, p.Item1, p.Item3) : p)), "swapped x/y should change the hash");
+Assert(forward != HashOf(points.Take(3)), "a removed vertex should change the hash");
+// Two vertices trading elevations keep count, min, max and mean; the hash still changes.
+var traded = new[] { (1.0, 2.0, 6.125), (4.5, 5.25, 3.0), points[2], points[3] };
+Assert(forward != HashOf(traded), "vertices trading elevations should change the hash");
+
 // maxDetails truncates rows but never counts.
 var truncated = DrawingFingerprintDiff.Compare(baseline, current, 0);
 var truncatedDetails = (Dictionary<string, object?>)truncated["details"]!;

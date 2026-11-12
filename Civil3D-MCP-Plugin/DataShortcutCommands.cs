@@ -183,11 +183,12 @@ public static class DataShortcutCommands
 
     return await CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
     {
-      SendCommand(doc, "_AeccSynchronizeReferences");
+      var command = ResolveSynchronizeCommand();
+      SendCommand(doc, command);
 
       var notes = new List<string>
       {
-        "The _AeccSynchronizeReferences command (name verified in the Civil 3D 2027 CUIx) was launched in Civil 3D.",
+        $"The {command} command was launched in Civil 3D.",
       };
 
       if (!string.IsNullOrWhiteSpace(projectFolder))
@@ -209,7 +210,7 @@ public static class DataShortcutCommands
         ["targetReferences"] = staleReferences,
         ["status"] = "initiated",
         ["dialogRequired"] = false,
-        ["command"] = "_AeccSynchronizeReferences",
+        ["command"] = command,
         ["notes"] = notes,
       };
     });
@@ -765,6 +766,38 @@ public static class DataShortcutCommands
       .Where(value => !string.IsNullOrWhiteSpace(value))
       .Cast<string>()
       .ToList();
+  }
+
+  // The synchronize command's global name: AeccSynchronizeReferences in the
+  // Civil 3D 2027 CUIx, SynchronizeReferences in older plugin builds. Run the
+  // one this Civil 3D defines, so a release that names it differently fails
+  // here with a clear message instead of as an unknown command.
+  internal static readonly string[] SynchronizeCommandNames = { "AeccSynchronizeReferences", "SynchronizeReferences" };
+
+  private static string ResolveSynchronizeCommand()
+  {
+    foreach (var name in SynchronizeCommandNames)
+    {
+      bool defined;
+      try
+      {
+        defined = Autodesk.AutoCAD.Internal.Utils.IsCommandDefined(name);
+      }
+      catch (Exception)
+      {
+        // The lookup is an internal API; without it, try the 2027 name.
+        return "_" + SynchronizeCommandNames[0];
+      }
+
+      if (defined)
+      {
+        return "_" + name;
+      }
+    }
+
+    throw new JsonRpcDispatchException(
+      "CIVIL3D.COMMAND_FAILED",
+      $"This Civil 3D defines none of the data shortcut synchronize commands ({string.Join(", ", SynchronizeCommandNames)}). Synchronize from the Prospector's Data Shortcuts node instead.");
   }
 
   private static void SendCommand(Document doc, string commandName)

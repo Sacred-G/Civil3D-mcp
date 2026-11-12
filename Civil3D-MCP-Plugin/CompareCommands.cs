@@ -13,7 +13,7 @@ namespace Civil3DMcpPlugin;
 /// database with Database.ReadDwgFile (never as a document), fingerprinted,
 /// and released immediately. Snapshots are fingerprints written through
 /// FileBoundary (export roots, .json only, atomic, overwrite=false default)
-/// and read back through FileBoundary (import roots, .json only).
+/// and read back through FileBoundary (import or export roots, .json only).
 /// Nothing here modifies any drawing.
 /// </summary>
 public static class CompareCommands
@@ -21,6 +21,15 @@ public static class CompareCommands
   private const int DefaultMaxDetails = 200;
   private const int MaxRowsPerSummaryArray = 2000;
   private const long MaxSnapshotBytes = 256L * 1024 * 1024;
+
+  // Above this many layout entities a capture switches to fast detail (see
+  // DrawingFingerprint.EntityDetail), so a very large drawing does not hold
+  // Civil 3D for an extents computation per curve.
+  internal const int FastEntityThreshold = 100_000;
+
+  // Surfaces up to this many vertices get a full vertex hash; larger ones
+  // keep the statistics, triangle count and areas only.
+  internal const int MaxHashedSurfaceVertices = 2_000_000;
 
   public static async Task<object?> CompareDrawingsAsync(JsonObject? parameters)
   {
@@ -31,8 +40,13 @@ public static class CompareCommands
 
     return await CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
     {
-      var current = Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil);
-      var baseline = CaptureSideDatabase(otherPath, includeCivil);
+      using var side = OpenSideDatabase(otherPath, includeCivil, out var sideCivil, out var sideWarnings);
+      using var sideTransaction = side.TransactionManager.StartOpenCloseTransaction();
+      // One detail level for both drawings, chosen by the larger of the two.
+      var fast = Math.Max(CountLayoutEntities(database, transaction), CountLayoutEntities(side, sideTransaction)) > FastEntityThreshold;
+      var current = Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil, fast);
+      var baseline = Capture(side, sideTransaction, sideCivil, otherPath, "side_database", includeCivil && sideCivil != null, fast);
+      baseline.Warnings.InsertRange(0, sideWarnings);
       var result = DrawingFingerprintDiff.Compare(baseline, current, maxDetails);
       result["mode"] = "drawing";
       return result;
@@ -49,7 +63,8 @@ public static class CompareCommands
     FileBoundary.ResolveExportPath(outputPath, overwrite, ".json");
 
     var fingerprint = await CivilExecution.ReadAsync((doc, civilDoc, database, transaction) =>
-      Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil));
+      Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil,
+        CountLayoutEntities(database, transaction) > FastEntityThreshold));
 
     // Written outside the host gate: file IO never holds up Civil 3D.
     var json = fingerprint.ToJson();
@@ -72,7 +87,9 @@ public static class CompareCommands
   public static async Task<object?> CompareDrawingSnapshotAsync(JsonObject? parameters)
   {
     var rawPath = PluginRuntime.GetRequiredString(parameters, "snapshotPath");
-    var snapshotPath = FileBoundary.ResolveImportPath(rawPath, ".json");
+    // Snapshots are written through the export roots: read them back from
+    // either root set.
+    var snapshotPath = FileBoundary.ResolveReadBackPath(rawPath, ".json");
     var maxDetails = PluginRuntime.GetOptionalInt(parameters, "maxDetails") ?? DefaultMaxDetails;
     var includeCivil = PluginRuntime.GetOptionalBool(parameters, "includeCivilSummaries") ?? true;
 
@@ -94,7 +111,8 @@ public static class CompareCommands
 
     return await CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
     {
-      var current = Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil);
+      // Capture at the snapshot's own detail level so unchanged entities match.
+      var current = Capture(database, transaction, civilDoc, database.Filename, "active_drawing", includeCivil, baseline.IsFast);
       if (!includeCivil)
       {
         baseline.CivilObjects.Clear();
@@ -111,9 +129,39 @@ public static class CompareCommands
   // Capture
   // ---------------------------------------------------------------------------
 
-  private static DrawingFingerprint CaptureSideDatabase(string path, bool includeCivil)
+  // The caller disposes the returned database.
+  private static Database OpenSideDatabase(string path, bool includeCivil, out CivilDocument? sideCivil, out List<string> warnings)
   {
-    using var side = new Database(false, true);
+    var side = new Database(false, true);
+    try
+    {
+      ReadSideDatabase(side, path);
+    }
+    catch
+    {
+      side.Dispose();
+      throw;
+    }
+
+    sideCivil = null;
+    warnings = new List<string>();
+    if (includeCivil)
+    {
+      try
+      {
+        sideCivil = CivilDocument.GetCivilDocument(side);
+      }
+      catch (Exception exception)
+      {
+        warnings.Add($"Civil 3D objects in the other drawing could not be read: {exception.Message}");
+      }
+    }
+
+    return side;
+  }
+
+  private static void ReadSideDatabase(Database side, string path)
+  {
     try
     {
       side.ReadDwgFile(path, FileOpenMode.OpenForReadAndAllShare, true, string.Empty);
@@ -134,25 +182,28 @@ public static class CompareCommands
 
     // Load everything into memory and release the file handle at once.
     side.CloseInput(true);
+  }
 
-    CivilDocument? sideCivil = null;
-    var warnings = new List<string>();
-    if (includeCivil)
+  // Entities in all layouts (model and paper space), counted by id only.
+  private static int CountLayoutEntities(Database database, Transaction transaction)
+  {
+    var count = 0;
+    var blockTable = (BlockTable)transaction.GetObject(database.BlockTableId, OpenMode.ForRead);
+    foreach (ObjectId btrId in blockTable)
     {
-      try
+      var btr = (BlockTableRecord)transaction.GetObject(btrId, OpenMode.ForRead);
+      if (!btr.IsLayout)
       {
-        sideCivil = CivilDocument.GetCivilDocument(side);
+        continue;
       }
-      catch (Exception exception)
+
+      foreach (ObjectId _ in btr)
       {
-        warnings.Add($"Civil 3D objects in the other drawing could not be read: {exception.Message}");
+        count++;
       }
     }
 
-    using var transaction = side.TransactionManager.StartOpenCloseTransaction();
-    var fingerprint = Capture(side, transaction, sideCivil, path, "side_database", includeCivil && sideCivil != null);
-    fingerprint.Warnings.InsertRange(0, warnings);
-    return fingerprint;
+    return count;
   }
 
   internal static DrawingFingerprint Capture(
@@ -161,16 +212,24 @@ public static class CompareCommands
     CivilDocument? civilDoc,
     string? sourcePath,
     string sourceKind,
-    bool includeCivil)
+    bool includeCivil,
+    bool fast)
   {
     var fingerprint = new DrawingFingerprint
     {
       CapturedAtUtc = DateTime.UtcNow.ToString("O"),
       SourcePath = sourcePath,
       SourceKind = sourceKind,
+      EntityDetail = fast ? DrawingFingerprint.FastDetail : DrawingFingerprint.FullDetail,
     };
 
-    CaptureEntities(database, transaction, fingerprint);
+    if (fast)
+    {
+      fingerprint.Warnings.Add(
+        $"More than {FastEntityThreshold} layout entities: curves were fingerprinted without their extents (their start, end and length still are), to keep Civil 3D responsive.");
+    }
+
+    CaptureEntities(database, transaction, fingerprint, fast);
 
     if (includeCivil && civilDoc != null)
     {
@@ -180,7 +239,7 @@ public static class CompareCommands
     return fingerprint;
   }
 
-  private static void CaptureEntities(Database database, Transaction transaction, DrawingFingerprint fingerprint)
+  private static void CaptureEntities(Database database, Transaction transaction, DrawingFingerprint fingerprint, bool fast)
   {
     var blockTable = (BlockTable)transaction.GetObject(database.BlockTableId, OpenMode.ForRead);
     var skipped = 0;
@@ -230,7 +289,7 @@ public static class CompareCommands
             Type = type,
             Layer = entity.Layer,
             Space = space,
-            Hash = DrawingFingerprint.Hash(EntitySignature(entity, type, transaction)),
+            Hash = DrawingFingerprint.Hash(EntitySignature(entity, type, transaction, fast)),
           });
         }
         catch (Exception exception) when (exception is not JsonRpcDispatchException)
@@ -246,7 +305,7 @@ public static class CompareCommands
     }
   }
 
-  private static string EntitySignature(Autodesk.AutoCAD.DatabaseServices.Entity entity, string type, Transaction transaction)
+  private static string EntitySignature(Autodesk.AutoCAD.DatabaseServices.Entity entity, string type, Transaction transaction, bool fast)
   {
     var builder = new StringBuilder(160);
     builder.Append(type).Append('|').Append(entity.Layer)
@@ -255,20 +314,26 @@ public static class CompareCommands
       .Append('|').Append((int)entity.LineWeight)
       .Append('|').Append(entity.Visible ? '1' : '0');
 
-    try
+    // Fast detail skips the extents of curves: their start, end and length
+    // below pin them down without a geometry evaluation. Block references
+    // keep theirs, which is what shows a redefined block.
+    if (!(fast && entity is Curve))
     {
-      var extents = entity.GeometricExtents;
-      builder.Append("|ext:")
-        .Append(DrawingFingerprint.Num(extents.MinPoint.X)).Append(',')
-        .Append(DrawingFingerprint.Num(extents.MinPoint.Y)).Append(',')
-        .Append(DrawingFingerprint.Num(extents.MinPoint.Z)).Append(',')
-        .Append(DrawingFingerprint.Num(extents.MaxPoint.X)).Append(',')
-        .Append(DrawingFingerprint.Num(extents.MaxPoint.Y)).Append(',')
-        .Append(DrawingFingerprint.Num(extents.MaxPoint.Z));
-    }
-    catch (Exception exception) when (exception is not JsonRpcDispatchException)
-    {
-      builder.Append("|ext:none");
+      try
+      {
+        var extents = entity.GeometricExtents;
+        builder.Append("|ext:")
+          .Append(DrawingFingerprint.Num(extents.MinPoint.X)).Append(',')
+          .Append(DrawingFingerprint.Num(extents.MinPoint.Y)).Append(',')
+          .Append(DrawingFingerprint.Num(extents.MinPoint.Z)).Append(',')
+          .Append(DrawingFingerprint.Num(extents.MaxPoint.X)).Append(',')
+          .Append(DrawingFingerprint.Num(extents.MaxPoint.Y)).Append(',')
+          .Append(DrawingFingerprint.Num(extents.MaxPoint.Z));
+      }
+      catch (Exception exception) when (exception is not JsonRpcDispatchException)
+      {
+        builder.Append("|ext:none");
+      }
     }
 
     try
@@ -513,8 +578,9 @@ public static class CompareCommands
 
     // Count and min/max/mean miss edits that keep them unchanged (moving an
     // interior point, flipping an edge). Triangle count and 2D/3D area catch
-    // those cheaply; a full vertex hash would cost O(points) under the host
-    // lock on every comparison.
+    // most of those; vertexHash (an order-independent hash of every vertex)
+    // catches any vertex moved or re-elevated. It is one pass over the
+    // vertices, skipped above MaxHashedSurfaceVertices.
     try
     {
       switch (surface)
@@ -522,9 +588,23 @@ public static class CompareCommands
         case TinSurface tin:
           summary["triangleCount"] = tin.GetTinProperties().NumberOfTriangles;
           AddAreas(summary, tin.GetTerrainProperties());
+          AddVertexHash(summary, () => tin.Vertices.Count, add =>
+          {
+            foreach (TinSurfaceVertex vertex in tin.Vertices)
+            {
+              add(vertex.Location);
+            }
+          });
           break;
         case GridSurface grid:
           AddAreas(summary, grid.GetTerrainProperties());
+          AddVertexHash(summary, () => grid.Vertices.Count, add =>
+          {
+            foreach (GridSurfaceVertex vertex in grid.Vertices)
+            {
+              add(vertex.Location);
+            }
+          });
           break;
       }
     }
@@ -542,6 +622,27 @@ public static class CompareCommands
     }
 
     return Print("surface", surface.Name, surface, summary);
+  }
+
+  private static void AddVertexHash(JsonObject summary, Func<int> count, Action<Action<Autodesk.AutoCAD.Geometry.Point3d>> forEachVertex)
+  {
+    try
+    {
+      var vertexCount = count();
+      if (vertexCount > MaxHashedSurfaceVertices)
+      {
+        summary["vertexHash"] = $"skipped: {vertexCount} vertices (over {MaxHashedSurfaceVertices})";
+        return;
+      }
+
+      var hash = new PointSetHash();
+      forEachVertex(point => hash.Add(point.X, point.Y, point.Z));
+      summary["vertexHash"] = hash.Value;
+    }
+    catch (Exception exception) when (exception is not JsonRpcDispatchException)
+    {
+      summary["vertexHash"] = $"unavailable: {exception.Message}";
+    }
   }
 
   private static void AddAreas(JsonObject summary, TerrainSurfaceProperties properties)

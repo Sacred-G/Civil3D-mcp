@@ -47,6 +47,17 @@ try
     "CIVIL3D.PATH_NOT_ALLOWED",
     () => FileBoundary.ResolveImportPath(Path.Combine(outsideRoot, "outside.dem"), ".dem"));
 
+  // Read-back (compare snapshots): import or export roots, must exist.
+  var snapshotPath = Path.Combine(allowedRoot, "snapshot.json");
+  File.WriteAllText(snapshotPath, "{}");
+  Assert(FileBoundary.ResolveReadBackPath(snapshotPath, ".json") == Path.GetFullPath(snapshotPath), "Allowed read-back was rejected.");
+  ExpectCode(
+    "CIVIL3D.OBJECT_NOT_FOUND",
+    () => FileBoundary.ResolveReadBackPath(Path.Combine(allowedRoot, "missing.json"), ".json"));
+  ExpectCode(
+    "CIVIL3D.PATH_NOT_ALLOWED",
+    () => FileBoundary.ResolveReadBackPath(Path.Combine(outsideRoot, "outside.json"), ".json"));
+
   var rpcError = JsonNode.Parse(JsonRpcProtocol.SerializeError(
     JsonValue.Create("request-1"),
     JsonRpcProtocol.NumericErrorCode("CIVIL3D.OBJECT_NOT_FOUND"),

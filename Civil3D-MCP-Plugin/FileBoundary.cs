@@ -33,6 +33,21 @@ internal static class FileBoundary
     return path;
   }
 
+  // A file this plugin wrote (a compare snapshot) may be read back from the
+  // export roots as well as the import roots, so snapshot -> compare_snapshot
+  // works when CIVIL3D_EXPORT_ROOTS and CIVIL3D_IMPORT_ROOTS differ.
+  public static string ResolveReadBackPath(string rawPath, params string[] allowedExtensions)
+  {
+    var roots = ImportRoots.Value.Concat(ExportRoots.Value).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    var path = ResolvePath(rawPath, roots, "import or export", allowedExtensions);
+    if (!File.Exists(path))
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.OBJECT_NOT_FOUND", $"File was not found: {path}");
+    }
+
+    return path;
+  }
+
   public static string ResolveExportPath(
     string rawPath,
     bool overwrite,

@@ -24,6 +24,19 @@ public sealed class DrawingFingerprint
   public string? CapturedAtUtc { get; set; }
   public string? SourcePath { get; set; }
   public string? SourceKind { get; set; }
+
+  // "full" (default; null in older snapshots) or "fast": a drawing with more
+  // than CompareCommands.FastEntityThreshold layout entities skips the
+  // extents of curves, which their own start, end and length already pin
+  // down. Both sides of a comparison
+  // are captured at the same detail, or every such entity would differ.
+  public string? EntityDetail { get; set; }
+
+  public const string FullDetail = "full";
+  public const string FastDetail = "fast";
+
+  [JsonIgnore]
+  public bool IsFast => string.Equals(EntityDetail, FastDetail, StringComparison.Ordinal);
   public List<EntityPrint> Entities { get; set; } = new();
   public List<CivilObjectPrint> CivilObjects { get; set; } = new();
   public List<string> Warnings { get; set; } = new();
@@ -105,6 +118,49 @@ public sealed class DrawingFingerprint
 
   public static string Num(double value) =>
     double.IsFinite(value) ? Math.Round(value, 6).ToString("0.######", CultureInfo.InvariantCulture) : "nan";
+}
+
+/// <summary>
+/// Order-independent hash of a point set (surface vertices): the same points
+/// in any order give the same value, and moving any one point (at 1e-6
+/// drawing units) changes it. A wrapping sum of mixed per-point hashes, so it
+/// costs one pass and no sort or allocation per point.
+/// </summary>
+public sealed class PointSetHash
+{
+  private ulong _sum;
+
+  public long Count { get; private set; }
+
+  public void Add(double x, double y, double z)
+  {
+    var h = Mix(Quantize(x));
+    h = Mix(h ^ Quantize(y));
+    h = Mix(h ^ Quantize(z));
+    unchecked
+    {
+      _sum += h;
+    }
+
+    Count++;
+  }
+
+  public string Value => DrawingFingerprint.Hash($"{Count}:{_sum:x16}");
+
+  private static ulong Quantize(double value) =>
+    double.IsFinite(value) ? unchecked((ulong)(long)Math.Round(value * 1e6)) : 0x7FF8_0000_0000_0000UL;
+
+  // SplitMix64 finalizer.
+  private static ulong Mix(ulong value)
+  {
+    unchecked
+    {
+      value += 0x9E37_79B9_7F4A_7C15UL;
+      value = (value ^ (value >> 30)) * 0xBF58_476D_1CE4_E5B9UL;
+      value = (value ^ (value >> 27)) * 0x94D0_49BB_1331_11EBUL;
+      return value ^ (value >> 31);
+    }
+  }
 }
 
 public sealed class EntityPrint
@@ -247,6 +303,7 @@ public static class DrawingFingerprintDiff
   {
     ["sourcePath"] = fingerprint.SourcePath,
     ["sourceKind"] = fingerprint.SourceKind,
+    ["entityDetail"] = fingerprint.EntityDetail ?? DrawingFingerprint.FullDetail,
     ["capturedAtUtc"] = fingerprint.CapturedAtUtc,
     ["entityCount"] = fingerprint.Entities.Count,
     ["civilObjectCount"] = fingerprint.CivilObjects.Count,
