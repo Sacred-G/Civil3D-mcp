@@ -7,11 +7,13 @@ using Civil3DMcpPlugin;
 var testRoot = Path.Combine(Path.GetTempPath(), $"civil3d-mcp-file-boundary-{Guid.NewGuid():N}");
 var allowedRoot = Path.Combine(testRoot, "allowed");
 var outsideRoot = Path.Combine(testRoot, "outside");
+var exportOnlyRoot = Path.Combine(testRoot, "export-only");
 Directory.CreateDirectory(allowedRoot);
 Directory.CreateDirectory(outsideRoot);
+Directory.CreateDirectory(exportOnlyRoot);
 
 Environment.SetEnvironmentVariable("CIVIL3D_IMPORT_ROOTS", allowedRoot);
-Environment.SetEnvironmentVariable("CIVIL3D_EXPORT_ROOTS", allowedRoot);
+Environment.SetEnvironmentVariable("CIVIL3D_EXPORT_ROOTS", allowedRoot + Path.PathSeparator + exportOnlyRoot);
 
 try
 {
@@ -57,6 +59,13 @@ try
   ExpectCode(
     "CIVIL3D.PATH_NOT_ALLOWED",
     () => FileBoundary.ResolveReadBackPath(Path.Combine(outsideRoot, "outside.json"), ".json"));
+  // A snapshot under an export-only root reads back, though it is no import.
+  var exportOnlySnapshot = Path.Combine(exportOnlyRoot, "snapshot.json");
+  File.WriteAllText(exportOnlySnapshot, "{}");
+  Assert(FileBoundary.ResolveReadBackPath(exportOnlySnapshot, ".json") == Path.GetFullPath(exportOnlySnapshot), "Export-only snapshot read-back was rejected.");
+  ExpectCode(
+    "CIVIL3D.PATH_NOT_ALLOWED",
+    () => FileBoundary.ResolveImportPath(exportOnlySnapshot, ".json"));
 
   var rpcError = JsonNode.Parse(JsonRpcProtocol.SerializeError(
     JsonValue.Create("request-1"),

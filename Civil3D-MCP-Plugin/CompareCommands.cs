@@ -227,7 +227,7 @@ public static class CompareCommands
     if (fast)
     {
       fingerprint.Warnings.Add(
-        $"More than {FastEntityThreshold} layout entities: curves were fingerprinted without their extents (their start, end and length still are), to keep Civil 3D responsive.");
+        $"More than {FastEntityThreshold} layout entities: lines were fingerprinted without their extents (their start and end points still are), to keep Civil 3D responsive.");
     }
 
     CaptureEntities(database, transaction, fingerprint, fast);
@@ -315,10 +315,11 @@ public static class CompareCommands
       .Append('|').Append((int)entity.LineWeight)
       .Append('|').Append(entity.Visible ? '1' : '0');
 
-    // Fast detail skips the extents of curves: their start, end and length
-    // below pin them down without a geometry evaluation. Block references
-    // keep theirs, which is what shows a redefined block.
-    if (!(fast && entity is Curve))
+    // Fast detail skips the extents of lines only: a line's start and end
+    // (below) define it completely. Other curves keep their extents (a
+    // polyline can move an interior vertex and keep its start, end and
+    // length), and so do block references (extents show a redefined block).
+    if (!(fast && entity is Line))
     {
       try
       {

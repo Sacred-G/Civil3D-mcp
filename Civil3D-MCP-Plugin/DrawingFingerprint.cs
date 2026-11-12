@@ -27,9 +27,9 @@ public sealed class DrawingFingerprint
 
   // "full" (default; null in older snapshots) or "fast": a drawing with more
   // than CompareCommands.FastEntityThreshold layout entities skips the
-  // extents of curves, which their own start, end and length already pin
-  // down. Both sides of a comparison
-  // are captured at the same detail, or every such entity would differ.
+  // extents of lines, which their start and end points fully define. Both
+  // sides of a comparison are captured at the same detail, or every line
+  // would differ. Any other value is refused when a snapshot is read.
   public string? EntityDetail { get; set; }
 
   public const string FullDetail = "full";
@@ -72,6 +72,13 @@ public sealed class DrawingFingerprint
     fingerprint.Entities ??= new();
     fingerprint.CivilObjects ??= new();
     fingerprint.Warnings ??= new();
+    if (fingerprint.EntityDetail is not (null or FullDetail or FastDetail))
+    {
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        $"Snapshot entityDetail '{fingerprint.EntityDetail}' is not supported; expected '{FullDetail}' or '{FastDetail}'.");
+    }
+
     Validate(fingerprint);
     return fingerprint;
   }
@@ -122,8 +129,9 @@ public sealed class DrawingFingerprint
 
 /// <summary>
 /// Order-independent hash of a point set (surface vertices): the same points
-/// in any order give the same value, and moving any one point (at 1e-6
-/// drawing units) changes it. A wrapping sum of mixed per-point hashes, so it
+/// in any order give the same value. Coordinates are rounded (half away from
+/// zero) to 1e-6 drawing units, so a move that changes a rounded coordinate
+/// changes the hash; smaller moves are below its resolution. A wrapping sum of mixed per-point hashes, so it
 /// costs one pass and no sort or allocation per point.
 /// </summary>
 public sealed class PointSetHash
@@ -148,7 +156,7 @@ public sealed class PointSetHash
   public string Value => DrawingFingerprint.Hash($"{Count}:{_sum:x16}");
 
   private static ulong Quantize(double value) =>
-    double.IsFinite(value) ? unchecked((ulong)(long)Math.Round(value * 1e6)) : 0x7FF8_0000_0000_0000UL;
+    double.IsFinite(value) ? unchecked((ulong)(long)Math.Round(value * 1e6, MidpointRounding.AwayFromZero)) : 0x7FF8_0000_0000_0000UL;
 
   // SplitMix64 finalizer.
   private static ulong Mix(ulong value)

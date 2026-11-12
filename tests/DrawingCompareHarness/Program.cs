@@ -103,6 +103,7 @@ Assert(roundTripped.ToJson() == current.ToJson(), "snapshot JSON should round-tr
 var fastPrint = new DrawingFingerprint { EntityDetail = DrawingFingerprint.FastDetail };
 Assert(DrawingFingerprint.FromJson(fastPrint.ToJson()).IsFast, "fast detail should round-trip");
 Assert(!DrawingFingerprint.FromJson(new DrawingFingerprint().ToJson()).IsFast, "a snapshot without entityDetail is full detail");
+ExpectCode("CIVIL3D.INVALID_INPUT", () => DrawingFingerprint.FromJson(new DrawingFingerprint { EntityDetail = "Fast" }.ToJson()));
 
 // Surface vertex hash: order-independent, sensitive to any one moved vertex.
 var points = new[] { (1.0, 2.0, 3.0), (4.5, 5.25, 6.125), (7_000_000.123456, 2_500_000.5, 101.25), (0.0, 0.0, 0.0) };
@@ -125,6 +126,9 @@ Assert(forward != HashOf(points.Take(3)), "a removed vertex should change the ha
 // Two vertices trading elevations keep count, min, max and mean; the hash still changes.
 var traded = new[] { (1.0, 2.0, 6.125), (4.5, 5.25, 3.0), points[2], points[3] };
 Assert(forward != HashOf(traded), "vertices trading elevations should change the hash");
+// One resolution step (1e-6), including across a rounding midpoint, changes it.
+Assert(HashOf(new[] { (0.0, 0.0, 0.0000005) }) != HashOf(new[] { (0.0, 0.0, -0.0000005) }), "a 1e-6 move across zero should change the hash");
+Assert(HashOf(new[] { (0.0, 0.0, 10.0) }) != HashOf(new[] { (0.0, 0.0, 10.000001) }), "a 1e-6 move should change the hash");
 
 // maxDetails truncates rows but never counts.
 var truncated = DrawingFingerprintDiff.Compare(baseline, current, 0);

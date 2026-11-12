@@ -884,13 +884,13 @@ Every path passes the plugin's filesystem boundary: it must be absolute, inside 
 
 | Action | Description |
 |------|-------------|
-| `drawing` | Compare the active drawing with another DWG (`otherPath`), which is read as a side database with `Database.ReadDwgFile` and never opened as a document. Returns entities added, removed, and modified, grouped by type and layer and matched by handle, plus Civil 3D object changes matched by kind and name: alignment length, stations, and geometry hash; profile PVIs; surface point count, elevations, TIN surface triangle count, 2D/3D area, and a vertex hash that changes when any vertex moves (TIN and grid surfaces up to 2,000,000 vertices); pipe network counts, pipe inverts, and structure rims and sumps; corridor baselines. |
+| `drawing` | Compare the active drawing with another DWG (`otherPath`), which is read as a side database with `Database.ReadDwgFile` and never opened as a document. Returns entities added, removed, and modified, grouped by type and layer and matched by handle, plus Civil 3D object changes matched by kind and name: alignment length, stations, and geometry hash; profile PVIs; surface point count, elevations, TIN surface triangle count, 2D/3D area, and a vertex hash that changes when any vertex coordinate changes at its 1e-6 drawing-unit resolution (TIN and grid surfaces up to 2,000,000 vertices); pipe network counts, pipe inverts, and structure rims and sumps; corridor baselines. |
 | `snapshot` | Write a JSON fingerprint of the active drawing to `outputPath` (`.json`, inside the export roots, written atomically, `overwrite` defaults to false). |
 | `compare_snapshot` | Diff the active drawing against a snapshot (`snapshotPath`, `.json`, inside the import or export roots, so a snapshot this tool wrote can always be read back), for example to see what changed since the last submittal. |
 
 `snapshot` writes through the export roots and `compare_snapshot` reads through the import or export roots, so a snapshot this tool wrote can be read back even when `CIVIL3D_EXPORT_ROOTS` and `CIVIL3D_IMPORT_ROOTS` differ.
 
-The comparison runs while Civil 3D is held, so a drawing with more than 100,000 layout entities is fingerprinted at `fast` detail: curves skip their extents (their start, end and length are still compared). Both sides of a comparison use the same detail, the result reports it as `entityDetail`, and `compare_snapshot` uses the snapshot's.
+The comparison runs while Civil 3D is held, so a drawing with more than 100,000 layout entities is fingerprinted at `fast` detail: lines skip their extents (their start and end points are still compared). Both sides of a comparison use the same detail, the result reports it as `entityDetail`, and `compare_snapshot` uses the snapshot's.
 
 `maxDetails` (default 200, maximum 5000) caps the rows listed in each detail group. It never caps the counts. `details.truncated` and `civil.truncated` report when rows were left out.
 
