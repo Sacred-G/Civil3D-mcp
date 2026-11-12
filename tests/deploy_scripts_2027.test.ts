@@ -97,7 +97,7 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
       const broken = fakeBuild(path.join(root, "b"), "net10.0-windows", { "Civil3DMcpPlugin.dll": "v2", "Civil3DMcpPlugin.deps.json": "{}" });
       // Hold an exclusive lock on one source file so the copy fails midway.
       const holder = spawn("powershell", ["-NoProfile", "-Command",
-        `$f = [System.IO.File]::Open('${path.join(broken, "Civil3DMcpPlugin.deps.json")}', 'Open', 'ReadWrite', 'None'); 'locked'; Start-Sleep -Seconds 60`],
+        `$f = [System.IO.File]::Open('${path.join(broken, "Civil3DMcpPlugin.deps.json").replace(/'/g, "''")}', 'Open', 'ReadWrite', 'None'); 'locked'; Start-Sleep -Seconds 60`],
         { env: shellEnv("powershell"), stdio: ["ignore", "pipe", "ignore"], windowsHide: true });
       try {
         await new Promise<void>((resolve, reject) => {
@@ -130,6 +130,32 @@ describe.skipIf(!onWindows).each(shells)("2027 deploy scripts under %s", (shell)
       expect(result.output).toContain("must be a plain folder name");
       expect(existsSync(path.join(root, "sentinel.txt"))).toBe(true);
       expect(existsSync(path.join(bundleRoot, "other.txt"))).toBe(true);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it("install-bundle cleans up an interrupted run's folders, but keeps a moved-aside bundle when it is the only copy", () => {
+    try {
+      const root = tempDir("bundle-leftovers");
+      const bundleRoot = path.join(root, "ApplicationPlugins");
+      const name = "My[1].bundle";
+      const orphan = path.join(bundleRoot, `.${name}.old-dead0001`);
+      mkdirSync(path.join(orphan, "Contents"), { recursive: true });
+      mkdirSync(path.join(bundleRoot, `.${name}.staging-dead0002`), { recursive: true });
+      // Another bundle's leftovers are not touched.
+      mkdirSync(path.join(bundleRoot, ".Other.bundle.staging-dead0003"), { recursive: true });
+
+      let result = run(shell, installBundle, ["-BundleRoot", bundleRoot, "-BundleName", name, "-Uninstall"]);
+      expect(result.status, result.output).toBe(0);
+      expect(result.output).toContain("A previous bundle was left at");
+      expect(readdirSync(bundleRoot).sort()).toEqual([`.${name}.old-dead0001`, ".Other.bundle.staging-dead0003"]);
+
+      const build = fakeBuild(root, "net10.0-windows", { "Civil3DMcpPlugin.dll": "v1" });
+      expect(run(shell, installBundle, ["-SourceDir", build, "-BundleRoot", bundleRoot, "-BundleName", name]).status).toBe(0);
+      result = run(shell, installBundle, ["-SourceDir", build, "-BundleRoot", bundleRoot, "-BundleName", name]);
+      expect(result.status, result.output).toBe(0);
+      expect(readdirSync(bundleRoot).sort()).toEqual([".Other.bundle.staging-dead0003", name]);
     } finally {
       cleanup();
     }
