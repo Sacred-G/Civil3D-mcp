@@ -48,8 +48,27 @@ Near(V.LookupRow(V.Kmh, 20).Row.KSag, 3, "20 km/h sag K");
 Near(V.LookupRow(V.Kmh, 130).Row.KCrest, 124, "130 km/h crest K");
 Near(V.LookupRow(V.Kmh, 95).Row.Speed, 100, "95 km/h uses 100 km/h");
 
+// --- Low speeds: the mph table starts at 15 mph, like AASHTO's ----------------
+Near(V.LookupRow(V.Mph, 15).Row.KCrest, 3, "15 mph crest K");
+Near(V.LookupRow(V.Mph, 15).Row.KSag, 10, "15 mph sag K");
+Near(V.LookupRow(V.Mph, 20).Row.KCrest, 7, "20 mph crest K");
+Near(V.LookupRow(V.Mph, 20).Row.KSag, 17, "20 mph sag K");
+var mph25 = V.LookupRow(V.Mph, 25);
+Assert(mph25.ExactMatch, "25 mph is an exact row");
+Near(mph25.Row.KCrest, 12, "25 mph crest K");
+Near(mph25.Row.KSag, 26, "25 mph sag K");
+Near(V.LookupRow(V.Mph, 27).Row.Speed, 30, "27 mph uses 30 mph");
+
+// --- Within the tolerance of a row is that row --------------------------------
+Assert(V.LookupRow(V.Mph, 80 + V.SpeedTolerance).ExactMatch, "80 mph + tolerance is the 80 mph row");
+Assert(V.LookupRow(V.Kmh, 20 - V.SpeedTolerance).ExactMatch, "20 km/h - tolerance is the 20 km/h row");
+
+// --- Only the canonical speed units select a table ---------------------------
+Throws<ArgumentException>(() => V.LookupRow("MPH", 50), "non-canonical 'MPH' is refused, not read as km/h");
+Throws<ArgumentException>(() => V.LookupRow("knots", 50), "unknown speed units are refused");
+
 // --- Outside the table -------------------------------------------------------
-Throws<ArgumentOutOfRangeException>(() => V.LookupRow(V.Mph, 25), "25 mph is below the table");
+Throws<ArgumentOutOfRangeException>(() => V.LookupRow(V.Mph, 10), "10 mph is below the table");
 Throws<ArgumentOutOfRangeException>(() => V.LookupRow(V.Mph, 85), "85 mph is above the table");
 Throws<ArgumentOutOfRangeException>(() => V.LookupRow(V.Kmh, 10), "10 km/h is below the table");
 Throws<ArgumentOutOfRangeException>(() => V.LookupRow(V.Kmh, 140), "140 km/h is above the table");

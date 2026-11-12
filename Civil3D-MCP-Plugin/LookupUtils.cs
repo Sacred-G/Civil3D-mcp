@@ -175,9 +175,24 @@ public static class LookupUtils
       return ids.Count > 0 ? ids[0] : ObjectId.Null;
     }
 
-    var names = ids
-      .Select(objectId => CivilObjectUtils.GetName(transaction.GetObject(objectId, OpenMode.ForRead)))
-      .ToList();
+    // Open styles one at a time and stop at an exact (ordinal) match, so the
+    // usual lookup does not read every style. Only without an exact match is
+    // the whole list needed: for the case-insensitive match, and for the
+    // error message listing the available names. A style that cannot be
+    // opened (erased or stale id) is skipped, not fatal.
+    var wanted = styleName.Trim();
+    var names = new List<string?>(ids.Count);
+    foreach (var objectId in ids)
+    {
+      var name = TryReadName(transaction, objectId);
+      if (string.Equals(name?.Trim(), wanted, StringComparison.Ordinal))
+      {
+        return objectId;
+      }
+
+      names.Add(name);
+    }
+
     var index = StyleNameMatch.FindIndex(names, styleName);
     if (index < 0)
     {
@@ -185,6 +200,23 @@ public static class LookupUtils
     }
 
     return ids[index];
+  }
+
+  private static string? TryReadName(Transaction transaction, ObjectId objectId)
+  {
+    if (objectId.IsErased || !objectId.IsValid)
+    {
+      return null;
+    }
+
+    try
+    {
+      return CivilObjectUtils.GetName(transaction.GetObject(objectId, OpenMode.ForRead));
+    }
+    catch (Autodesk.AutoCAD.Runtime.Exception)
+    {
+      return null;
+    }
   }
 
   private static IEnumerable<ObjectId> EnumerateObjectIds(object? collection)

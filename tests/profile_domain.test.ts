@@ -39,6 +39,10 @@ describe("civil3d_profile check_k_values schema", () => {
   });
 
   it("exposes speedUnits on the canonical tool and the standalone check_k_values tool", () => {
+    const standalone = PROFILE_DOMAIN_DEFINITION.exposures.find((item) => item.toolName === "civil3d_profile_check_k_values");
+    expect(standalone).toBeDefined();
+    expect(standalone!.supportedActions).toContain("check_k_values");
+    expect(standalone!.inputShape).toHaveProperty("speedUnits");
     for (const exposure of PROFILE_DOMAIN_DEFINITION.exposures) {
       if (exposure.supportedActions.includes("check_k_values")) {
         expect(exposure.inputShape, exposure.toolName).toHaveProperty("speedUnits");
