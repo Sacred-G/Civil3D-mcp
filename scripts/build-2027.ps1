@@ -44,22 +44,29 @@ if (-not (Test-Path $ReferencesPath)) {
 
 Write-Host "Building $Configuration ($TargetFramework) against $ReferencesPath"
 
-# Restore must see the overridden TFM too, or the build fails NETSDK1005
-# because project.assets.json has no target for it.
-& dotnet restore $project "/p:Civil3DReferencesPath=$ReferencesPath" "/p:TargetFramework=$TargetFramework"
-if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE." }
+try {
+  # Restore must see the overridden TFM too, or the build fails NETSDK1005
+  # because project.assets.json has no target for it.
+  & dotnet restore $project "/p:Civil3DReferencesPath=$ReferencesPath" "/p:TargetFramework=$TargetFramework"
+  if ($LASTEXITCODE -ne 0) { throw "dotnet restore failed with exit code $LASTEXITCODE." }
 
-& dotnet build $project -c $Configuration --no-restore `
-  "/p:Civil3DReferencesPath=$ReferencesPath" "/p:TargetFramework=$TargetFramework" -v minimal
-if ($LASTEXITCODE -ne 0) { throw "dotnet build failed with exit code $LASTEXITCODE." }
-
-# The TFM-overridden restore rewrote the shared obj\project.assets.json with
-# net10-only targets, which would break a later default (2026/net8) build run
-# with --no-restore. Restore the default TFM back so the working tree is left
-# exactly as a 2026 build expects. Best-effort: the 2027 output already exists.
-& dotnet restore $project "/p:Civil3DReferencesPath=$ReferencesPath"
-if ($LASTEXITCODE -ne 0) {
-  Write-Warning "Post-build default-TFM restore failed; run 'dotnet restore' before a 2026 build."
+  & dotnet build $project -c $Configuration --no-restore `
+    "/p:Civil3DReferencesPath=$ReferencesPath" "/p:TargetFramework=$TargetFramework" -v minimal
+  if ($LASTEXITCODE -ne 0) { throw "dotnet build failed with exit code $LASTEXITCODE." }
+} finally {
+  # The TFM-overridden restore rewrote the shared obj\project.assets.json with
+  # net10-only targets, which would break a later default (2026/net8) build
+  # run with --no-restore. Restore the default TFM back, also when the restore
+  # or build above failed. The project has no package references, so this
+  # restore records only the target framework; the Autodesk references are
+  # resolved at build time from whatever Civil3DReferencesPath that build is
+  # given (a 2026 build needs a 2026 reference set, not this 2027 one).
+  # Best-effort: a failure here only warns, so it never hides the build's
+  # own error.
+  & dotnet restore $project
+  if ($LASTEXITCODE -ne 0) {
+    Write-Warning "Post-build default-TFM restore failed; run 'dotnet restore' before a 2026 build."
+  }
 }
 
 $outputDir = Join-Path $repoRoot "Civil3D-MCP-Plugin\bin\$Configuration\$TargetFramework"
@@ -73,11 +80,14 @@ Write-Host "Built: $builtDll"
 
 if (-not $Install) {
   Write-Host "Re-run with -Install to deploy it as an auto-loading bundle."
-  exit 0
+  # return, not exit: exit would also close an interactive PowerShell that
+  # ran this script directly. Failures above throw, so -File exits with 1.
+  return
 }
 
 # install-bundle.ps1 probes the deployed bundle's file locks itself and refuses
 # to half-deploy over a loaded DLL, so no process check is needed here (matching
 # acad.exe by name would also block on plain AutoCAD, which never loads this bundle).
+# It reports failure by throwing (ErrorActionPreference Stop), which ends this
+# script too; $LASTEXITCODE would still hold the last dotnet exit code.
 & (Join-Path $PSScriptRoot "install-bundle.ps1") -SourceDir $outputDir
-if ($LASTEXITCODE -ne 0) { throw "install-bundle.ps1 failed with exit code $LASTEXITCODE." }
