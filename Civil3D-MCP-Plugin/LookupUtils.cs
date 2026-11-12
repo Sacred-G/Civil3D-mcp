@@ -213,11 +213,21 @@ public static class LookupUtils
     {
       return CivilObjectUtils.GetName(transaction.GetObject(objectId, OpenMode.ForRead));
     }
-    catch (Autodesk.AutoCAD.Runtime.Exception)
+    catch (Autodesk.AutoCAD.Runtime.Exception exception) when (IsUnreadableStyle(exception.ErrorStatus))
     {
+      // Only a style that is gone (erased, or a stale id) is skipped. Lock,
+      // transaction and database errors propagate to the normal error path
+      // instead of being reported as an unknown style name.
       return null;
     }
   }
+
+  private static bool IsUnreadableStyle(Autodesk.AutoCAD.Runtime.ErrorStatus status) =>
+    status is Autodesk.AutoCAD.Runtime.ErrorStatus.WasErased
+      or Autodesk.AutoCAD.Runtime.ErrorStatus.PermanentlyErased
+      or Autodesk.AutoCAD.Runtime.ErrorStatus.NullObjectId
+      or Autodesk.AutoCAD.Runtime.ErrorStatus.InvalidObjectId
+      or Autodesk.AutoCAD.Runtime.ErrorStatus.UnknownHandle;
 
   private static IEnumerable<ObjectId> EnumerateObjectIds(object? collection)
   {
