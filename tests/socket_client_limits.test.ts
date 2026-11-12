@@ -83,10 +83,11 @@ describe("ApplicationClientConnection request limits", () => {
       socket.on("end", () => serverSawEnd());
     });
 
+    let client: Awaited<ReturnType<typeof connectedClient>> | undefined;
     try {
       const { MAX_REQUEST_BYTES } = await import("../src/utils/SocketClient.js");
       expect(MAX_REQUEST_BYTES).toBe(1_048_576);
-      const client = await connectedClient(server);
+      client = await connectedClient(server);
 
       const error = await client.sendCommand("runCode", { blob: "x".repeat(1_100_000) }).catch((e) => e);
       expect(error.code).toBe("CIVIL3D.REQUEST_TOO_LARGE");
@@ -97,13 +98,15 @@ describe("ApplicationClientConnection request limits", () => {
       await ended;
       expect(received).toBe(0);
     } finally {
+      client?.disconnect();
       await closeServer(server);
     }
   });
 
-  it("applies a per-command timeout and keeps the default for other commands", async () => {
+  it("applies a per-command timeout in place of the 120 s default", async () => {
     // Reads the request and never answers.
     const server = await listen((socket) => socket.resume());
+    let client: Awaited<ReturnType<typeof connectedClient>> | undefined;
 
     try {
       vi.stubEnv("CIVIL3D_COMMAND_TIMEOUT", undefined);
@@ -111,13 +114,15 @@ describe("ApplicationClientConnection request limits", () => {
       const { COMMAND_TIMEOUT_MS } = await import("../src/utils/SocketClient.js");
       expect(COMMAND_TIMEOUT_MS).toBe(120_000);
 
-      const client = await connectedClient(server);
+      client = await connectedClient(server);
       const error = await client.sendCommand("slowCommand", {}, { timeoutMs: 200 }).catch((e) => e);
       expect(error.message).toBe("Command timed out after 200ms: slowCommand");
       expect(error.code).toBe("CIVIL3D.TIMEOUT");
       expect(client.responseCallbacks.size).toBe(0);
-      client.disconnect();
     } finally {
+      // Disconnect first even when an assertion failed: the server cannot close
+      // while the client is still connected.
+      client?.disconnect();
       await closeServer(server);
     }
   });

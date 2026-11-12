@@ -6,8 +6,9 @@
 //   node scripts/live-run-code-smoke.mjs --expect-drawing <name> [--side <drawing.dwg>]
 //
 // --expect-drawing: the write cases run only when the active drawing's name contains
-//   this text (guards against testing on a real job by accident); without it, or
-//   --allow-writes, only the read cases run.
+//   this text (guards against testing on a real job by accident). Without it only the
+//   read cases run, unless --allow-writes is given: that runs the write cases on
+//   whatever drawing is active, without the name check.
 // --side: a DWG read as a side database (never opened, never changed) for the
 //   OpenSide and bulk-sampling cases; skipped when not given.
 import { existsSync, readFileSync } from "node:fs";
@@ -189,6 +190,8 @@ try {
 
   await check("start window: a run that cannot start in time fails HOST_BUSY", async () => {
     const long = run({ code: "while (Elapsed.TotalSeconds < 12) Check();\nreturn 1;", timeoutSeconds: 30 });
+    // Handled now, so an early failure surfaces at the await below instead of as an unhandled rejection.
+    long.catch(() => undefined);
     await new Promise((resolve) => setTimeout(resolve, 3000));
     const busy = await rawRpc("runCode", { code: "return 1;", mode: "read", timeoutSeconds: 10, startWithinSeconds: 3, authToken: readPluginToken() });
     const first = await long;
@@ -302,10 +305,11 @@ try {
     });
     const afterAdd = await run({ code: countTagged, args: { tag } });
     // Undo only what this case committed: an undo after a rolled-back add would revert the
-    // drawing's previous undo group instead.
+    // drawing's previous undo group instead. But undo whenever it committed, even when the
+    // count looks wrong, so a test write never stays in the drawing.
     let undo = { isError: true, content: [{ text: "not sent: the add did not commit" }] };
     let afterUndo = { result: afterAdd.result };
-    if (add.status === "ok" && add.committed === true && afterAdd.result === 1) {
+    if (add.committed === true) {
       const undoToken = await approve("civil3d_drawing", "undo", { action: "undo", steps: 1 });
       undo = await call("civil3d_drawing", { action: "undo", steps: 1, approvalToken: undoToken });
       await new Promise((resolve) => setTimeout(resolve, 1500));
@@ -370,7 +374,7 @@ try {
       { status: aliased.status, committed: aliased.committed, error: aliased.error?.message, after: after.result });
   });
 
-  await check("write: a nested transaction in a using commits with the run", async () => {
+  await check("write: a nested transaction's commit is rolled back with the run", async () => {
     const nested = await run({
       mode: "write",
       args: { tag: `${tag}-NESTED` },
@@ -389,7 +393,7 @@ try {
     const after = await run({ code: countTagged, args: { tag: `${tag}-NESTED` } });
     // The nested commit lands in the run's transaction, so the run's rollback removes it too.
     // Only the script's own last line may fail: an earlier error would also leave nothing behind.
-    record("write: a nested transaction in a using commits with the run",
+    record("write: a nested transaction's commit is rolled back with the run",
       nested.status === "runtime_error" && nested.error?.message === "roll back the outer run" && nested.committed === false && after.result === 0,
       { status: nested.status, error: nested.error?.message, committed: nested.committed, after: after.result, warnings: nested.warnings });
   });

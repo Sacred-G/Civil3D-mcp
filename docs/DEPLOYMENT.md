@@ -328,6 +328,8 @@ docker run --rm -it \
 ```
 
 > **Note:** When running in Docker, Civil 3D must be on the host machine. Use `host.docker.internal` (Docker Desktop) to reach it from inside the container. The MCP server still communicates via stdio, so use Docker's `-i` flag or pipe stdio from your MCP client.
+>
+> The plugin's listener binds IPv4 loopback (`127.0.0.1`) only, so a container cannot reach it through `host.docker.internal` without something on the host that forwards that port to `127.0.0.1` (for example `netsh interface portproxy`). `civil3d_run_code` refuses to run when `CIVIL3D_HOST` is not a loopback address, because it would have to send this session's plugin token off the machine; run the server on the host for that tool.
 
 ### Local development with hot-reload
 

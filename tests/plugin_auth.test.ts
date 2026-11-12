@@ -1,8 +1,8 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { pluginTokenPath, readPluginToken } from "../src/utils/pluginAuth.js";
+import { isLoopbackPluginHost, pluginTokenPath, readPluginToken } from "../src/utils/pluginAuth.js";
 
 describe("readPluginToken", () => {
   let dir: string;
@@ -48,5 +48,30 @@ describe("readPluginToken", () => {
     vi.stubEnv("LOCALAPPDATA", dir);
 
     expect(pluginTokenPath()).toBe(join(dir, "Civil3DMcpPlugin", "rpc-token"));
+  });
+
+  it("treats empty variables as unset", () => {
+    vi.stubEnv("CIVIL3D_RPC_TOKEN_FILE", "");
+    vi.stubEnv("LOCALAPPDATA", dir);
+    expect(pluginTokenPath()).toBe(join(dir, "Civil3DMcpPlugin", "rpc-token"));
+
+    vi.stubEnv("LOCALAPPDATA", "");
+    expect(pluginTokenPath()).toBe(join(homedir(), "AppData", "Local", "Civil3DMcpPlugin", "rpc-token"));
+  });
+
+  it("throws on a read error other than a missing file", () => {
+    // A directory cannot be read as a file (EISDIR), unlike a missing one.
+    vi.stubEnv("CIVIL3D_RPC_TOKEN_FILE", dir);
+    expect(() => readPluginToken()).toThrow(/Could not read the Civil 3D plugin token file/);
+  });
+});
+
+describe("isLoopbackPluginHost", () => {
+  it.each(["127.0.0.1", "127.0.0.2", "localhost", "LOCALHOST", "", "::1", "[::1]"])("accepts %j", (host) => {
+    expect(isLoopbackPluginHost(host)).toBe(true);
+  });
+
+  it.each(["10.0.0.5", "192.168.1.20", "host.docker.internal", "example.com", "::2", "0.0.0.0"])("refuses %j", (host) => {
+    expect(isLoopbackPluginHost(host)).toBe(false);
   });
 });

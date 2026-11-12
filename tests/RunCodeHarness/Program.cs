@@ -93,7 +93,7 @@ var civil = Compile("""
 Expect(civil.Succeeded, "Civil 3D namespaces and the Entity/Surface aliases resolve", civil);
 
 var syntax = Compile("var a = 1;\nvar b = 2;\nvar c = a + ;\nreturn c;");
-Expect(!syntax.Succeeded && syntax.Errors.All(error => error.Line == 3), "a syntax error is reported on its snippet line (3)", syntax);
+Expect(!syntax.Succeeded && syntax.Errors.Count > 0 && syntax.Errors.All(error => error.Line == 3),"a syntax error is reported on its snippet line (3)", syntax);
 
 var semantic = Compile("// comment\nvar x = 1;\n\nx.NoSuchMember();");
 Expect(HasError(semantic, "CS1061", 4), "a semantic error is reported on its snippet line (4)", semantic);
@@ -128,6 +128,11 @@ foreach (var (label, snippet) in new[] {
 Expect(Compile("var a = Tr.GetObject(Db.BlockTableId, (OpenMode)0);\nvar b = Tr.GetObject(Db.BlockTableId, OpenMode.ForRead);\nvar c = Tr.GetObject(Db.BlockTableId, 0);\nreturn a == b && b == c;").Succeeded,
   "read mode allows ForRead given as (OpenMode)0, OpenMode.ForRead or 0");
 Expect(Compile("var o = Tr.GetObject(Db.BlockTableId, (OpenMode)1);\nreturn null;", write: true).Succeeded, "write mode allows (OpenMode)1");
+
+const string runtimeMode = "int m = DateTime.Now.Second % 2;\nvar o = Tr.GetObject(Db.BlockTableId, (OpenMode)m);\nreturn null;";
+var runtimeModeRead = Compile(runtimeMode);
+Expect(HasError(runtimeModeRead, ScriptCompiler.GuardDiagnosticId, 2) && runtimeModeRead.Errors.Count == 1, "read mode refuses an OpenMode computed at run time ((OpenMode)m, once)", runtimeModeRead);
+Expect(Compile(runtimeMode, write: true).Succeeded, "write mode allows (OpenMode)m");
 
 var upgrade = Compile("var e = Open<Entity>(ObjectId.Null);\ne.UpgradeOpen();\ne.Erase();");
 Expect(HasError(upgrade, ScriptCompiler.GuardDiagnosticId, 2), "read mode refuses UpgradeOpen/Erase", upgrade);

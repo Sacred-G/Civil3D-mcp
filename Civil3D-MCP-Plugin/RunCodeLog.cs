@@ -51,7 +51,9 @@ internal static class RunCodeLog
   // A file a script writes with WriteFile(name, ...).
   internal static string WriteScriptFile(string runFolder, string fileName, string? text, IEnumerable<string>? lines)
   {
-    if (ReservedFiles.Contains(Path.GetFileName(fileName), StringComparer.OrdinalIgnoreCase))
+    // Windows drops trailing dots and spaces from a file name, so "run.json."
+    // would land on run.json: compare the name as Windows will store it.
+    if (ReservedFiles.Contains(Path.GetFileName(fileName).TrimEnd('.', ' '), StringComparer.OrdinalIgnoreCase))
     {
       throw new ArgumentException($"WriteFile cannot use '{fileName}': the plugin writes that file.");
     }

@@ -302,20 +302,24 @@ internal static class ScriptCompiler
   }
 
   // Callers pass managed assemblies only (RunCodeAssemblies.ReferencePaths
-  // filters out native DLLs): one unreadable reference fails the compilation.
+  // filters out native DLLs). A reference that cannot be read (a file locked
+  // for a moment) is left out of this compilation, which then reports any type
+  // it needed as missing, and is tried again next time: failures are not cached.
   private static MetadataReference? GetReference(string path)
   {
-    return ReferenceCache.GetOrAdd(path, static candidate =>
+    if (ReferenceCache.TryGetValue(path, out var cached))
     {
-      try
-      {
-        return MetadataReference.CreateFromFile(candidate);
-      }
-      catch (Exception)
-      {
-        return null;
-      }
-    });
+      return cached;
+    }
+
+    try
+    {
+      return ReferenceCache.GetOrAdd(path, MetadataReference.CreateFromFile(path));
+    }
+    catch (Exception)
+    {
+      return null;
+    }
   }
 
   // ---------------------------------------------------------------------------
@@ -409,6 +413,24 @@ internal static class ScriptCompiler
         var display = mode.StartsWith("(", StringComparison.Ordinal) ? mode : "OpenMode." + mode;
         yield return new ScriptDiagnostic(line, column, GuardDiagnosticId,
           $"Read mode opens objects for read only: {display} is not allowed. Use mode 'write' to change the drawing.");
+      }
+    }
+
+    // An OpenMode computed at run time, such as (OpenMode)m, has no constant to
+    // check, so read mode refuses the cast itself.
+    foreach (var cast in tree.GetRoot().DescendantNodes().OfType<CastExpressionSyntax>())
+    {
+      if (model.GetTypeInfo(cast.Type).Type?.ToDisplayString() != "Autodesk.AutoCAD.DatabaseServices.OpenMode"
+        || model.GetConstantValue(cast).HasValue)
+      {
+        continue;
+      }
+
+      var (line, column) = MapToScript(cast.GetLocation());
+      if (line != 0 && reported.Add((line, "(OpenMode)")))
+      {
+        yield return new ScriptDiagnostic(line, column, GuardDiagnosticId,
+          "Read mode opens objects for read only: an OpenMode computed at run time is not allowed. Use OpenMode.ForRead, or mode 'write'.");
       }
     }
   }

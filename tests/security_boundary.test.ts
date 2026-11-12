@@ -6,12 +6,13 @@ const pluginDirectory = fileURLToPath(new URL("../Civil3D-MCP-Plugin/", import.m
 
 describe("P2 security boundaries", () => {
   it("keeps generated artifact writes behind FileBoundary", () => {
-    const directWritePattern = /File\.(?:WriteAll(?:Text|Bytes|Lines)|AppendAll(?:Text|Lines))|new (?:System\.IO\.)?StreamWriter|new (?:System\.IO\.)?FileStream/;
+    const directWritePattern = /File\.(?:WriteAll(?:Text|Bytes|Lines)|AppendAll(?:Text|Lines)|Create|OpenWrite|Copy|Replace|Move)\b|FileInfo\([^)]*\)\.(?:Create|OpenWrite)|\.(?:CopyTo|MoveTo)\(|new (?:System\.IO\.)?StreamWriter|new (?:System\.IO\.)?FileStream/;
     const violations: string[] = [];
 
     for (const fileName of readdirSync(pluginDirectory).filter((name) => name.endsWith(".cs"))) {
-      // PluginLog and RunCodeLog write only the plugin's own logs, next to plugin.log;
-      // RpcAuth writes only its own %LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token file.
+      // PluginLog writes only the plugin's own log; RunCodeLog writes only inside the
+      // run-code folder next to plugin.log (checked below); RpcAuth writes only its own
+      // %LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token file.
       if (fileName === "FileBoundary.cs" || fileName === "PluginLog.cs" || fileName === "RunCodeLog.cs" || fileName === "RpcAuth.cs") continue;
       const source = readFileSync(`${pluginDirectory}/${fileName}`, "utf8");
       source.split(/\r?\n/).forEach((line, index) => {
@@ -28,6 +29,20 @@ describe("P2 security boundaries", () => {
     expect(source).toContain("runCode writes only inside");
     expect(source).toContain("Expected a plain file name");
     expect(source).toContain("WriteFile cannot use");
+    expect(source).toContain("Path.GetFileName(fileName).TrimEnd('.', ' ')");
+
+    // Every direct write in RunCodeLog goes to a path that FilePath() just
+    // confined to the run folder.
+    const lines = source.split(/\r?\n/);
+    const writes = lines
+      .map((line, index) => ({ line, index }))
+      .filter(({ line }) => /File\.(?:WriteAll(?:Text|Bytes|Lines)|AppendAll(?:Text|Lines)|Create|OpenWrite|Copy|Replace|Move)\b|new (?:System\.IO\.)?(?:StreamWriter|FileStream)/.test(line));
+    expect(writes.length).toBeGreaterThan(0);
+    for (const { line, index } of writes) {
+      expect(line, `RunCodeLog.cs:${index + 1}`).toMatch(/File\.WriteAll(?:Text|Bytes|Lines)\(path,/);
+      const before = lines.slice(Math.max(0, index - 8), index).join("\n");
+      expect(before, `RunCodeLog.cs:${index + 1}`).toMatch(/var path = FilePath\(runFolder, fileName\);/);
+    }
   });
 
   it("canonicalizes paths, enforces roots and extensions, and writes by atomic move", () => {

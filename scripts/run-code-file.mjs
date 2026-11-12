@@ -5,19 +5,37 @@
 //   node scripts/run-code-file.mjs <script.cs> [--mode read|write] [--timeout <seconds>]
 //        [--args '<json object>'] [--args-file <file.json>] [--max-inline <bytes>]
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { parseArgs } from "node:util";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
-const argv = process.argv.slice(2);
-const option = (name) => {
-  const index = argv.indexOf(name);
-  return index >= 0 ? argv[index + 1] : undefined;
-};
-const file = argv.find((arg, index) => !arg.startsWith("--") && (index === 0 || !argv[index - 1].startsWith("--")));
-if (!file) {
-  console.error("usage: node scripts/run-code-file.mjs <script.cs> [--mode read|write] [--timeout s] [--args json] [--args-file f.json] [--max-inline bytes]");
+const USAGE_LINE = "usage: node scripts/run-code-file.mjs <script.cs> [--mode read|write] [--timeout s] [--args json] [--args-file f.json] [--max-inline bytes]";
+// parseArgs accepts both "--timeout 120" and "--timeout=120" and rejects unknown flags.
+let parsed;
+try {
+  parsed = parseArgs({
+    allowPositionals: true,
+    strict: true,
+    options: {
+      mode: { type: "string" },
+      timeout: { type: "string" },
+      args: { type: "string" },
+      "args-file": { type: "string" },
+      "max-inline": { type: "string" },
+    },
+  });
+} catch (error) {
+  console.error(error instanceof Error ? error.message : String(error));
+  console.error(USAGE_LINE);
   process.exit(2);
 }
+const file = parsed.positionals[0];
+if (!file || parsed.positionals.length > 1) {
+  console.error(USAGE_LINE);
+  process.exit(2);
+}
+const option = (name) => parsed.values[name.replace(/^--/, "")];
 
 // Windows PowerShell 5.1 writes UTF-8 files with a byte-order mark; JSON.parse rejects it.
 const readText = (path) => readFileSync(path, "utf8").replace(/^﻿/, "");
@@ -30,10 +48,12 @@ if (option("--args-file")) parameters.args = JSON.parse(readText(option("--args-
 
 const transport = new StdioClientTransport({
   command: process.execPath,
-  args: ["./build/index.js"],
-  cwd: process.cwd(),
+  // Resolved from this script, so it runs from any working directory.
+  args: [fileURLToPath(new URL("../build/index.js", import.meta.url))],
+  cwd: fileURLToPath(new URL("..", import.meta.url)),
   env: { ...process.env, MCP_HTTP_HOST: "127.0.0.1", MCP_HTTP_PORT: "0" },
-  stderr: "pipe",
+  // The server's startup and error output reaches the terminal.
+  stderr: "inherit",
 });
 const client = new Client({ name: "civil3d-run-code-file", version: "1.0.0" });
 const options = { timeout: 180_000, maxTotalTimeout: 180_000 };

@@ -225,6 +225,33 @@ describe("civil3d_run_code execution", () => {
     expect(options).toEqual({ timeoutMs: Math.max(COMMAND_TIMEOUT_MS, 90_000) });
   });
 
+  it.each(["10.0.0.5", "host.docker.internal", "civil3d.example.com"])(
+    "refuses CIVIL3D_HOST=%s instead of sending the token off this machine",
+    async (host) => {
+      writeFileSync(join(tokenDir, "rpc-token"), "a1b2c3");
+      vi.stubEnv("CIVIL3D_HOST", host);
+      try {
+        const error = await execute(RunCodeArgsSchema.parse({ action: "run", code: "return 1;" })).catch((e) => e);
+        expect(error).toBeInstanceOf(Civil3DRpcError);
+        expect(error.code).toBe("CIVIL3D.FORBIDDEN");
+        expect(sendCommandMock).not.toHaveBeenCalled();
+      } finally {
+        vi.unstubAllEnvs();
+      }
+    },
+  );
+
+  it.each(["127.0.0.1", "localhost", "::1", "127.0.0.2"])("runs with CIVIL3D_HOST=%s", async (host) => {
+    sendCommandMock.mockResolvedValue(okResponse);
+    vi.stubEnv("CIVIL3D_HOST", host);
+    try {
+      await execute(RunCodeArgsSchema.parse({ action: "run", code: "return 1;" }));
+      expect(sendCommandMock).toHaveBeenCalledWith("runCode", expect.anything(), expect.anything());
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("approves the caller's arguments, not the token added at execution", async () => {
     writeFileSync(join(tokenDir, "rpc-token"), "session-token");
     sendCommandMock.mockImplementation(async (method: string) => {

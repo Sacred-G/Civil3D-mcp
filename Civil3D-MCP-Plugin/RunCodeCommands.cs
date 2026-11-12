@@ -58,6 +58,9 @@ public static class RunCodeCommands
     public volatile bool Committed;
     // Write mode: the client cancelled after the commit.
     public volatile bool CancelledAfterCommit;
+    // Write mode: an exception after the commit (side databases closing, the
+    // host command ending). The change is in the drawing; this is the message.
+    public volatile string? ErrorAfterCommit;
     // Write mode: the script ended the run's transaction itself (not through Tr,
     // which cannot end it, but for example through TopTransaction).
     public volatile bool TransactionEndedByScript;
@@ -190,6 +193,10 @@ public static class RunCodeCommands
         if (outcome.CancelledAfterCommit)
         {
           warnings.Add("The request was cancelled after the change was committed: it is in the drawing (one UNDO removes it).");
+        }
+        else if (outcome.ErrorAfterCommit != null)
+        {
+          warnings.Add($"An error came after the change was committed, so it is in the drawing (one UNDO removes it); do not run it again: {outcome.ErrorAfterCommit}");
         }
         else if (outcome.Script != null && !outcome.ActionDone && !outcome.Committed)
         {
@@ -376,6 +383,14 @@ public static class RunCodeCommands
           // cancellation, and a write is rolled back.
           if (script.Tripped != null)
           {
+            // A write is rolled back, so its return value describes nothing
+            // that is in the drawing: drop it.
+            if (writeMode)
+            {
+              outcome.Result = null;
+              outcome.ResultShape = null;
+            }
+
             throw script.Tripped;
           }
 
@@ -433,9 +448,19 @@ public static class RunCodeCommands
       // Committed, then the client went away before the host finished (side
       // databases still closing, C3DMCPHOP ending): the change is in the
       // drawing, so this is a success, not a cancellation.
-      if (outcome.Committed && exception is OperationCanceledException)
+      // Any other exception after the commit is a success with a warning too:
+      // reporting runtime_error would invite a retry that applies the write twice.
+      if (outcome.Committed)
       {
-        outcome.CancelledAfterCommit = true;
+        if (exception is OperationCanceledException)
+        {
+          outcome.CancelledAfterCommit = true;
+        }
+        else
+        {
+          outcome.ErrorAfterCommit = exception.Message;
+        }
+
         return "ok";
       }
 

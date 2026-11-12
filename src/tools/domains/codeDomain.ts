@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { withApplicationConnection } from "../../utils/ConnectionManager.js";
-import { readPluginToken } from "../../utils/pluginAuth.js";
+import { isLoopbackPluginHost, readPluginToken } from "../../utils/pluginAuth.js";
 import { Civil3DRpcError, COMMAND_TIMEOUT_MS } from "../../utils/SocketClient.js";
 import type { DomainToolDefinition } from "../domainRuntime.js";
 
@@ -104,6 +104,17 @@ export const CODE_DOMAIN_DEFINITION: DomainToolDefinition = {
         const timeoutSeconds = args.timeoutSeconds ?? 30;
         // Added here, after approval and idempotency hashed the caller's
         // arguments, so the token never enters a hash or a log.
+        // The token goes to a loopback plugin only: refuse rather than send it
+        // to another host named by CIVIL3D_HOST.
+        const pluginHost = process.env.CIVIL3D_HOST ?? "127.0.0.1";
+        if (!isLoopbackPluginHost(pluginHost)) {
+          throw new Civil3DRpcError(
+            `civil3d_run_code runs only against a Civil 3D plugin on this machine; CIVIL3D_HOST is '${pluginHost}'. ` +
+            "Set CIVIL3D_HOST to 127.0.0.1 (or leave it unset).",
+            "CIVIL3D.FORBIDDEN",
+            -32001,
+          );
+        }
         const authToken = readPluginToken();
         const timeoutMs = Math.max(
           COMMAND_TIMEOUT_MS,

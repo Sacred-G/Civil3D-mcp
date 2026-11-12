@@ -507,7 +507,7 @@ describe("httpBridge", () => {
       ["civil3d_orchestrate", { request: "Count the lines with Civil3D_Run_Code", execute: true }],
     ];
 
-    it.each(runCodeCalls)("refuses %s for civil3d_run_code with 403 when no token is configured", async (tool, parameters) => {
+    it.each(runCodeCalls)("refuses %s (case %#) for civil3d_run_code with 403 when no token is configured", async (tool, parameters) => {
       hasToolHandlerMock.mockReturnValue(true);
       executeRegisteredToolMock.mockResolvedValue({ ok: true });
       handle = await launchBridge({ authToken: "" });
@@ -525,7 +525,7 @@ describe("httpBridge", () => {
       expect(executeRegisteredToolMock).not.toHaveBeenCalled();
     });
 
-    it.each(runCodeCalls)("routes %s for civil3d_run_code when the configured token is presented", async (tool, parameters) => {
+    it.each(runCodeCalls)("routes %s (case %#) for civil3d_run_code when the configured token is presented", async (tool, parameters) => {
       hasToolHandlerMock.mockReturnValue(true);
       executeRegisteredToolMock.mockResolvedValue({ ok: true });
       handle = await launchBridge({ authToken: "secret-token" });

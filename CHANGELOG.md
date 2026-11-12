@@ -42,7 +42,7 @@
     methods are not gated): the MCP server reads it and sends it only to
     `127.0.0.1` (the default `CIVIL3D_HOST` is now `127.0.0.1`, and `localhost`
     is dialled as `127.0.0.1`, so a listener on `[::1]:8080` cannot receive
-    it). Server and plugin must come from the same build. Without
+    it; the tool is refused when `CIVIL3D_HOST` is not a loopback address). Server and plugin must come from the same build. Without
     `MCP_HTTP_TOKEN`, the HTTP bridge refuses any request that names the tool
     anywhere in its parameters.
   - A run either starts with its full budget or not at all: one that cannot
