@@ -1,15 +1,16 @@
-import { ApplicationClientConnection, Civil3DRpcError } from "./SocketClient.js";
+import { ApplicationClientConnection, Civil3DRpcError, type SendCommandOptions } from "./SocketClient.js";
 import { createLogger } from "./logger.js";
 import { currentAbortSignal } from "./requestContext.js";
 
 const log = createLogger("ConnectionManager");
 
-const CIVIL3D_HOST = process.env.CIVIL3D_HOST ?? "localhost";
+// IPv4 loopback, the only address the plugin binds (see pluginConnectHost).
+const CIVIL3D_HOST = process.env.CIVIL3D_HOST ?? "127.0.0.1";
 const CIVIL3D_PORT = parseInt(process.env.CIVIL3D_PORT ?? "8080", 10);
 const CONNECT_TIMEOUT_MS = parseInt(process.env.CIVIL3D_CONNECT_TIMEOUT ?? "5000", 10);
 
 export interface ApplicationCommandClient {
-  sendCommand(command: string, params?: unknown): Promise<any>;
+  sendCommand(command: string, params?: unknown, options?: SendCommandOptions): Promise<any>;
 }
 
 /**
@@ -22,13 +23,13 @@ export async function withApplicationConnection<T>(
   operation: (client: ApplicationCommandClient) => Promise<T>
 ): Promise<T> {
   const client: ApplicationCommandClient = {
-    sendCommand: async (command, params = {}) => await sendSingleCommand(command, params),
+    sendCommand: async (command, params = {}, options = {}) => await sendSingleCommand(command, params, options),
   };
 
   return await operation(client);
 }
 
-async function sendSingleCommand(command: string, params: unknown): Promise<any> {
+async function sendSingleCommand(command: string, params: unknown, options: SendCommandOptions): Promise<any> {
   const appClient = new ApplicationClientConnection(CIVIL3D_HOST, CIVIL3D_PORT);
   const signal = currentAbortSignal();
   const cancellationError = new Civil3DRpcError(
@@ -49,6 +50,20 @@ async function sendSingleCommand(command: string, params: unknown): Promise<any>
           clearTimeout(timeout);
           appClient.socket.removeListener("connect", onConnect);
           appClient.socket.removeListener("error", onError);
+          signal?.removeEventListener("abort", onAbort);
+        };
+
+        // A caller that aborts while the TCP connection is still being set up
+        // is settled at once. cancel() destroys the socket, which raises
+        // neither "connect" nor "error", so without this the request would
+        // stay alive until the connect timeout.
+        const onAbort = () => {
+          if (settled) {
+            return;
+          }
+          settled = true;
+          cleanup();
+          reject(cancellationError);
         };
 
         const onConnect = () => {
@@ -76,6 +91,7 @@ async function sendSingleCommand(command: string, params: unknown): Promise<any>
 
         appClient.socket.on("connect", onConnect);
         appClient.socket.on("error", onError);
+        signal?.addEventListener("abort", onAbort, { once: true });
 
         const timeout = setTimeout(() => {
           if (settled) {
@@ -94,7 +110,7 @@ async function sendSingleCommand(command: string, params: unknown): Promise<any>
       });
     }
 
-    return await appClient.sendCommand(command, params);
+    return await appClient.sendCommand(command, params, options);
   } catch (error) {
     if (signal?.aborted) throw cancellationError;
     throw error;

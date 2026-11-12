@@ -205,7 +205,7 @@ public static class CorridorCommands
     var corridorSurfaceName = PluginRuntime.GetRequiredString(parameters, "corridorSurface");
     var referenceSurfaceName = PluginRuntime.GetRequiredString(parameters, "referenceSurface");
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var corridor = CivilObjectUtils.FindCorridorByName(civilDoc, transaction, name, OpenMode.ForRead);
       var corridorSurface = FindCorridorSurfaceByName(corridor, corridorSurfaceName, transaction);

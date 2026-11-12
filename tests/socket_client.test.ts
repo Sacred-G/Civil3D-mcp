@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import * as net from "net";
-import { ApplicationClientConnection, Civil3DRpcError } from "../src/utils/SocketClient.js";
+import { ApplicationClientConnection, Civil3DRpcError, pluginConnectHost } from "../src/utils/SocketClient.js";
 
 describe("ApplicationClientConnection", () => {
   let client: ApplicationClientConnection;
@@ -15,6 +15,15 @@ describe("ApplicationClientConnection", () => {
     } catch {
       // ignore cleanup errors
     }
+  });
+
+  it("dials localhost (any case) and an empty host as 127.0.0.1, other hosts unchanged", () => {
+    expect(pluginConnectHost("localhost")).toBe("127.0.0.1");
+    expect(pluginConnectHost(" LocalHost ")).toBe("127.0.0.1");
+    expect(pluginConnectHost("")).toBe("127.0.0.1");
+    expect(pluginConnectHost("127.0.0.1")).toBe("127.0.0.1");
+    expect(pluginConnectHost("::1")).toBe("::1");
+    expect(pluginConnectHost("host.docker.internal")).toBe("host.docker.internal");
   });
 
   it("should initialize with correct host and port", () => {
@@ -37,8 +46,9 @@ describe("ApplicationClientConnection", () => {
 
     beforeEach(async () => {
       server = net.createServer();
+      // IPv4 loopback only, like the plugin; the clients below dial "localhost".
       await new Promise<void>((resolve) => {
-        server.listen(0, "localhost", () => {
+        server.listen(0, "127.0.0.1", () => {
           const addr = server.address() as net.AddressInfo;
           serverPort = addr.port;
           resolve();

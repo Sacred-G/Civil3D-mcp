@@ -192,6 +192,23 @@ internal static class Civil3DCompatibility
     return result;
   }
 
+  // Late-bound call on a COM object (IDispatch), such as the AcadDocument from
+  // Document.GetAcadDocument(). Method reflection cannot see COM members, so
+  // this goes through InvokeMember; a failure inside the call surfaces as its
+  // own exception (usually COMException), not a TargetInvocationException.
+  public static object? InvokeComMethod(object comObject, string methodName, params object?[] arguments)
+  {
+    try
+    {
+      return comObject.GetType().InvokeMember(methodName, BindingFlags.InvokeMethod, null, comObject, arguments);
+    }
+    catch (TargetInvocationException ex) when (ex.InnerException != null)
+    {
+      System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(ex.InnerException).Throw();
+      throw;
+    }
+  }
+
   public static bool TryInvokeMethod(object? target, string methodName, out object? result, params object?[] arguments)
   {
     result = null;

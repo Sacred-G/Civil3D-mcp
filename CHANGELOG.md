@@ -1,5 +1,140 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- `civil3d_run_code` (plugin method `runCode`): runs a C# snippet inside Civil
+  3D, compiled with Roslyn into a uniquely named in-memory assembly (its own
+  collectible load context, unloaded after the run) and run on the main thread
+  with the drawing locked. For bulk work COM and LISP make too slow: walking
+  96,913 objects of a 10 MB background into 547,441 points took 1.2 s
+  in-process, about 20 minutes in LISP. Scripts are compiled inside the
+  already-trusted plugin, so no DLL is written and no AutoCAD security prompt
+  appears per script.
+  - Always approval-gated, even with `CIVIL3D_APPROVAL_MODE=disabled`; the
+    token is bound to the exact code. Every script is saved with a summary in
+    `run-code\<run id>\` next to `plugin.log`.
+  - `mode: "read"` (default) runs from an idle tick in an open-close
+    transaction that is never committed, and the compiler refuses write APIs
+    (a guard against mistakes, not a sandbox). `mode: "write"` runs in
+    `C3DMCPHOP`: committed as one undo step, rolled back on an exception or
+    timeout (changes outside the transaction, such as database or system
+    variables, files and `Session`, are not). Both refuse Editor prompts,
+    modal windows and message loops (any `ShowDialog` or `ShowModal`,
+    `TaskDialog.Show`, `MessageBox`, `InputBox`, `Application.Run`,
+    `Dispatcher.PushFrame`), event subscriptions, `TopTransaction` and a
+    `using`/`Dispose()` on an `OpenSide` database (the run disposes it, and
+    the script gets a non-owning wrapper either way); a nested transaction is
+    allowed only as the resource of a `using`, so it ends on every path; read mode counts `++`/`--`, compound
+    assignment and deconstruction as setting a drawing property, and refuses a
+    numeric `OpenMode` other than `ForRead`.
+  - The script gets `Tr` and `TransactionFor(...)` as wrappers the run owns:
+    `Commit()`/`Abort()` throw with a message, `Dispose()`/`using` do nothing,
+    so `var tx = Tr; tx.Commit();` can neither commit behind the run's back
+    nor leave a disposed transaction that crashes the next call; wrappers are
+    detached when the run ends, so one kept in `Session` throws instead of
+    reaching freed memory. Write responses report `committed` as `true`,
+    `false` or `"unknown"`.
+  - The plugin refuses `runCode` without this session's token
+    (`%LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token`, written when the plugin
+    starts listening, deleted when it stops, private to the user; other
+    methods are not gated): the MCP server reads it and sends it only to
+    `127.0.0.1` (the default `CIVIL3D_HOST` is now `127.0.0.1`, and `localhost`
+    is dialled as `127.0.0.1`, so a listener on `[::1]:8080` cannot receive
+    it; the tool is refused when `CIVIL3D_HOST` is not a loopback address). Server and plugin must come from the same build. Without
+    `MCP_HTTP_TOKEN`, the HTTP bridge refuses any request that names the tool
+    anywhere in its parameters.
+  - A run either starts with its full budget or not at all: one that cannot
+    start within 30 s because Civil 3D is busy fails with `CIVIL3D.HOST_BUSY`
+    and changes nothing. The MCP call waits for the budget plus 60 s, and a
+    timeout message says where the run's `run.json` is.
+  - Requests over the plugin's 1 MiB limit are refused before sending
+    (`CIVIL3D.REQUEST_TOO_LARGE`, for every tool); `civil3d_run_code` refuses
+    `code` plus `args` over about 1 MB of JSON before approval.
+  - Cooperative time budget (`timeoutSeconds`, default 30, max 90): `Check()`
+    ends the script when it is used up or the request is cancelled, and stays
+    tripped if the script catches it; a script that never calls it cannot be
+    stopped.
+  - Globals: `Doc`, `Db`, `Ed`, `Civil`, `Tr`, `Args`, `Log`, `Check`,
+    `Open<T>`, `ModelSpace<T>`, `OpenSide` (read-only side databases),
+    `TransactionFor`, `WriteFile`, `Session` (kept across runs).
+  - Compile and runtime errors come back with snippet line numbers; output or
+    results over `maxInlineBytes` (default 64 KB) go to a file with a preview.
+  - Compiles against `Microsoft.CodeAnalysis` 4.8 and uses Civil 3D's own copy
+    when it has one at least that new (2026 ships 4.10); the build copies a
+    fallback into `roslyn\` next to `Civil3DMcpPlugin.dll` (deploy it with the DLL).
+  - `tests/RunCodeHarness` (`npm run test:run-code-compiler`) checks the
+    compiler offline against the Civil 3D reference assemblies;
+    `scripts/live-run-code-smoke.mjs` (`npm run test:live-run-code`) checks a
+    running Civil 3D end to end; `scripts/run-code-file.mjs` runs a `.cs` file
+    through the MCP server from a terminal.
+
+### Fixed
+
+- Every plugin request could hang until Civil 3D restarted, timing out after
+  120 s each time. Once Civil 3D 2027 stops running
+  `DocumentManager.ExecuteInCommandContextAsync` callbacks, it never resumes.
+  - It was first seen after a LISP prompt left open over COM.
+  - Diagnosed live: in a disconnected Windows session (RDP closed, nobody at
+    the keyboard), the first COM `SendCommand` from any client is enough. Any
+    client means PowerShell, another add-in, or this plugin. It also happened
+    with only this plugin loaded. In a connected session the same commands
+    are harmless.
+
+  The plugin no longer uses that route:
+  - plain reads run from an `Application.Idle` tick with an
+    `OpenCloseTransaction`, so they add no undo steps and keep the undo
+    history (a regular transaction under a document lock outside a command
+    wipes it);
+  - writes, and reads that create scratch objects (volume surfaces) or use the
+    pickfirst selection, run inside the plugin's own `C3DMCPHOP` command. It is
+    started through COM `SendCommand` only while the editor is quiescent, is
+    flagged `UsePickSet` and `Redraw`, and each write is one undoable step;
+  - command-line input (undo, redo, Storm and Sanitary, data-shortcut
+    commands) is sent through COM `SendCommand` after the operation instead of
+    `SendStringToExecute`, whose queued input mixed with the plugin command's;
+  - `redoDrawing` sends `MREDO n` (`REDO` takes no count). Undo and redo take
+    no document lock, because taking one (even for a read) empties the redo
+    stack. Both requests return only after the command has run (or fail with
+    `CIVIL3D.HOST_BUSY` if it is still running after 15 s);
+  - pay item and cost estimate CSV exports use the plugin command only when
+    they compute earthwork (a scratch volume surface); pipe and structure
+    quantities alone are a plain read.
+
+  While a command is active for 15 s, requests fail with `CIVIL3D.HOST_BUSY`
+  instead of timing out. Requests that need the plugin command or a quiescent
+  editor (writes, the reads above, command-line input) also wait for a prompt
+  with `CMDACTIVE` 0, such as a LISP `getstring`, and fail the same way. A
+  plain read is not held up by such a prompt and runs while it is open. A COM
+  call that Civil 3D keeps rejecting is also `CIVIL3D.HOST_BUSY`, and a request
+  whose operation fails always ends with that error instead of waiting with
+  the plugin's execution gate held. Plugin calls no longer cancel a command or
+  prompt the user has open.
+
+  A request cancelled while its operation is already running (client
+  disconnect or timeout) still returns at once, but the next request now
+  waits until that operation has finished; before, it could start beside it.
+  That wait has no 15 s `CIVIL3D.HOST_BUSY` check: a queued request that is
+  still waiting when its own timeout expires ends with `CIVIL3D.TIMEOUT`.
+  Work that had not started when the request ended never runs, and a
+  rejected command-line send is not retried after its request was cancelled
+  or had stopped waiting for it. Command-line
+  input that Civil 3D rejects or that fails to send now fails the request
+  (`CIVIL3D.HOST_BUSY` or `CIVIL3D.COMMAND_FAILED`) instead of being reported
+  as `initiated`; a command that opens a dialog is reported once Civil 3D has
+  accepted it.
+- While a modal dialog was open (e.g. the Drawing Recovery notice at startup)
+  requests timed out after 120 s: Civil 3D raises no `Application.Idle` inside
+  a modal loop. A watchdog on the timer thread now fails the request with
+  `CIVIL3D.HOST_BUSY` after 15 s without an Idle tick.
+- With no document open, drawing-dependent requests hung and wedged the
+  plugin's execution gate; they now fail fast with `CIVIL3D.NO_DRAWING`, and
+  `civil3d_drawing new` works from zero documents. A client that aborts a
+  request while its TCP connection is still being set up is now settled at
+  once instead of after the connect timeout (`verify-live-plugin.mjs`'s
+  no-drawing watchdog relies on this).
+
 ## v1.2.1 — 2026-07-14
 
 ### Production readiness

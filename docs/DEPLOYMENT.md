@@ -66,7 +66,7 @@ npm run package:claude:validate
 1. Open **Settings > Extensions**.
 2. Open **Advanced settings** and select **Install Extension**.
 3. Select `civil3d-mcp-<version>.mcpb`.
-4. For a standard local setup, keep Civil 3D at `localhost:8080` and the HTTP
+4. For a standard local setup, keep Civil 3D at `127.0.0.1:8080` and the HTTP
    bridge at `127.0.0.1:3000`.
 5. Open Civil 3D with `Civil3DMcpPlugin.dll` loaded, then ask Claude to run
    `civil3d_health`.
@@ -244,7 +244,7 @@ All variables are optional; defaults work for a standard local setup.
 
 | Variable | Default | Description |
 |---|---|---|
-| `CIVIL3D_HOST` | `localhost` | Host where Civil 3D plugin RPC server is listening |
+| `CIVIL3D_HOST` | `127.0.0.1` | Host where Civil 3D plugin RPC server is listening (IPv4 loopback only; `localhost` is dialed as `127.0.0.1`) |
 | `CIVIL3D_PORT` | `8080` | TCP port for the Civil 3D plugin RPC server |
 | `CIVIL3D_CONNECT_TIMEOUT` | `5000` | Connection timeout in milliseconds |
 | `CIVIL3D_COMMAND_TIMEOUT` | `120000` | Timeout for individual command execution (ms) |
@@ -283,7 +283,7 @@ connection, MCP, and HTTP variables belong to the Node.js server environment.
       "command": "node",
       "args": ["C:/path/to/civil3d-mcp/build/index.js"],
       "env": {
-        "CIVIL3D_HOST": "localhost",
+        "CIVIL3D_HOST": "127.0.0.1",
         "CIVIL3D_PORT": "8080",
         "CIVIL3D_ENABLE_TOOL_ALIASES": "true",
         "CIVIL3D_LOG_LEVEL": "debug"
@@ -300,7 +300,7 @@ connection, MCP, and HTTP variables belong to the Node.js server environment.
 End-to-end flow once everything is running:
 
 1. **Civil 3D** opens with the plugin loaded — plugin starts RPC server on port `8080`.
-2. **MCP server** (`node build/index.js`) starts — connects to Civil 3D on `localhost:8080`, starts HTTP bridge on `127.0.0.1:3000`.
+2. **MCP server** (`node build/index.js`) starts — connects to Civil 3D on `127.0.0.1:8080`, starts HTTP bridge on `127.0.0.1:3000`.
 3. **Claude Desktop** connects to the MCP server via stdio.
 4. You ask Claude to do something in Civil 3D — Claude calls the MCP tool — MCP server forwards to Civil 3D plugin — result returns to Claude.
 
@@ -328,6 +328,8 @@ docker run --rm -it \
 ```
 
 > **Note:** When running in Docker, Civil 3D must be on the host machine. Use `host.docker.internal` (Docker Desktop) to reach it from inside the container. The MCP server still communicates via stdio, so use Docker's `-i` flag or pipe stdio from your MCP client.
+>
+> The plugin's listener binds IPv4 loopback (`127.0.0.1`) only, so a container cannot reach it through `host.docker.internal` without something on the host that forwards that port to `127.0.0.1` (for example `netsh interface portproxy`). `civil3d_run_code` refuses to run when `CIVIL3D_HOST` is not a loopback address, because it would have to send this session's plugin token off the machine; run the server on the host for that tool.
 
 ### Local development with hot-reload
 

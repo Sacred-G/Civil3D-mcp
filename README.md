@@ -880,6 +880,38 @@ one or more operations; alias rows show an em dash in the **Operations** column.
 
 </details>
 
+<details>
+<summary><strong>In-process C# (1 tool)</strong></summary>
+
+`civil3d_run_code` compiles a C# snippet with Roslyn inside the plugin and runs it on Civil 3D's main thread with the drawing locked, for work the fixed tools and COM/LISP make too slow or cannot do: bulk geometry over thousands of objects, reading other DWGs as side databases, anything the AutoCAD/Civil 3D .NET API reaches. Measured on Civil 3D 2026: walking 96,913 objects of a 10 MB background into 547,441 sample points took 1.2 s in-process, about 20 minutes in LISP.
+
+The code runs with your full Windows rights. The tool **always** needs an approval token, even with `CIVIL3D_APPROVAL_MODE=disabled`, and the token is bound to the exact code. The plugin saves every script with a summary (`script.cs`, `run.json`) in `%LOCALAPPDATA%\Civil3DMcpPlugin\run-code\<run id>\` next to `plugin.log`. Results and files written by scripts are deleted there after 7 days; scripts and summaries are kept.
+
+The plugin also refuses `runCode` without this Civil 3D session's token: it writes a random token to `%LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token` when it starts listening on its port (and deletes it when it stops), and the MCP server reads it for every run and sends it only to `127.0.0.1`, where the plugin listens (the tool is refused when `CIVIL3D_HOST` is not a loopback address). The file is private to your Windows account (its own access list, nothing inherited; a low-integrity process of the same user could still read it). The server and the plugin must come from the same build: an older server gets `CIVIL3D.AUTH_REQUIRED` on this tool only. Over the HTTP bridge, any request that names the tool (directly, nested in orchestrate or docs, or in a request text) is refused until `MCP_HTTP_TOKEN` is set.
+
+| Parameter | Description |
+|------|-------------|
+| `code` | The body of `object Run()`: statements, local functions, leading `using` lines; `return` a value. Up to 200,000 characters, and `code` plus `args` at most about 1 MB of JSON (refused before approval; pass larger data as a file path in `args`). |
+| `mode` | `read` (default): runs from an idle tick in an open-close transaction that is never committed, and the compiler refuses the usual write APIs (`OpenMode.ForWrite`, `UpgradeOpen`, `Erase`, `AppendEntity`, Civil 3D `Create`/`Add`/`Update`..., regular transactions, drawing-setting setters including `++`/`--`, compound assignment and deconstruction, a numeric `OpenMode` other than `ForRead`, and an `OpenMode` computed at run time such as `(OpenMode)m`). This is a guard against mistakes, not a sandbox. `write`: runs inside the plugin's `C3DMCPHOP` command in a regular transaction, committed as one undo step when the snippet returns and rolled back when it throws or runs out of time. Only changes made through `Tr` (and transactions nested in it) are rolled back, so write mode refuses open-close transactions and `ObjectId.Open`; database and system variables, files and `Session` are not. Both modes refuse Editor prompts (including `DoPrompt`), modal windows and message loops (any `ShowDialog` or `ShowModal`, AdWindows `TaskDialog.Show`, `MessageBox`, VB `InputBox`/`MsgBox`, `Application.Run`, `Dispatcher.PushFrame`/`Run`), event subscriptions, `TransactionManager.TopTransaction`, committing or aborting `Tr` (the run owns it: just return), and a `using` or `Dispose()` on a database from `OpenSide` (the run disposes it). A nested transaction is allowed only as `using var t = ...StartTransaction();` or `using (...) { }` (write mode; `StartOpenCloseTransaction` the same in read mode), so it ends on every path. At run time `Tr` and `TransactionFor(...)` are wrappers the run owns: `Commit()` and `Abort()` throw, `Dispose()` and `using` do nothing, an alias such as `var tx = Tr;` behaves the same, and a wrapper kept past its run (in `Session`) throws instead of reaching a freed transaction. Write responses carry `committed`: `true`, `false`, or `"unknown"` when the transaction was ended some other way (check the drawing). Civil 3D `Extract*` calls, `ExplodeToOwnerSpace`, layout changes and `AddDBObject` are refused in read mode too. |
+| `timeoutSeconds` | 1-90, default 30. A script cannot be stopped from outside: `Check()` ends it when the budget is used up or the request is cancelled, so call it in long loops (`ModelSpace<T>()` calls it for every entity). Once it has tripped, the run ends as a timeout or cancellation even if the script catches the exception. A run that cannot start within 30 s because Civil 3D is busy with other work is not started at all (`CIVIL3D.HOST_BUSY`, nothing changed; `run.json` status `busy`). The MCP call waits for the budget plus 60 s (at least `CIVIL3D_COMMAND_TIMEOUT`); if it still times out, read `run.json` in the newest run folder before retrying. |
+| `maxInlineBytes` | 1 KB-1 MB, default 64 KB. Larger output or results go to `outputFile` / `resultFile` with a preview. |
+| `args` | A JSON object the script reads as `Args`. |
+
+In scope: `Doc`, `Db`, `Ed`, `Civil` (`CivilDocument`), `Tr` (the run's transaction), `Args`, `Log(x)`, `Check()`, `Open<T>(id, forWrite)` (objects of attached xrefs open read only), `ModelSpace<T>(db)`, `OpenSide(path)` (another DWG as a read-only side database, disposed by the run when it ends; do not dispose it yourself), `TransactionFor(db)`, `WriteFile(name, text | lines)` (into the run folder) and `Session` (a dictionary kept across runs until Civil 3D closes, for plain data such as geometry read from a background). Default namespaces: `System`, `System.Linq`, `System.IO`, `System.Text`, `System.Text.Json`, `Autodesk.AutoCAD.ApplicationServices` / `DatabaseServices` / `EditorInput` / `Geometry` / `Colors`, `Autodesk.Civil`, `Autodesk.Civil.ApplicationServices` / `DatabaseServices` / `DatabaseServices.Styles`; names both AutoCAD and Civil 3D define mean AutoCAD's (`DBObject`, `Entity`, `Table`, `Shape`...; Civil 3D's are `CivilDBObject`, `CivilEntity`...), except `Surface` and `Section`, which are Civil 3D's (`AcSurface`, `AcSection`); `AcException` is AutoCAD's exception.
+
+The return value becomes JSON: points and vectors as `[x, y, z]`, ObjectIds as handles, tuples as arrays, anonymous objects and records by property. The response has `status` (`ok`, `compile_error`, `rejected`, `runtime_error`, `timeout`, `cancelled`), `errors` / `error` with snippet line numbers, `output`, `result`, `files` written by the script, `timing` and `logFolder`.
+
+```json
+{
+  "code": "var side = OpenSide((string)Args[\"dwg\"]);\nlong n = 0;\nforeach (var c in ModelSpace<Curve>(side)) n++;\nreturn new { curves = n };",
+  "args": { "dwg": "C:/Jobs/Example/Background.dwg" }
+}
+```
+
+The compiler is Roslyn (`Microsoft.CodeAnalysis` 4.8 or later). Civil 3D ships a copy (2026: 4.10), which the plugin uses so both share one version; the build copies a fallback into `roslyn\` next to `Civil3DMcpPlugin.dll` for releases without one (deploy that folder with the DLL).
+
+</details>
+
 ---
 
 ## Civil 3D Version Compatibility
@@ -903,10 +935,11 @@ The Node MCP server reads the following variables at startup. All are optional; 
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `CIVIL3D_HOST` | `localhost` | Host the Civil 3D plugin's JSON-RPC TCP server binds to. |
+| `CIVIL3D_HOST` | `127.0.0.1` | Host of the Civil 3D plugin's JSON-RPC TCP server. The plugin listens on IPv4 loopback only; `localhost` is dialled as `127.0.0.1`. |
 | `CIVIL3D_PORT` | `8080` | TCP port the plugin listens on (see `PluginRuntime.Port`). |
 | `CIVIL3D_CONNECT_TIMEOUT` | `5000` | Milliseconds the server waits for a TCP connection to the plugin before giving up. |
-| `CIVIL3D_COMMAND_TIMEOUT` | `120000` | Milliseconds any single JSON-RPC command may run before the Node side rejects the call. Increase for heavy corridor rebuilds. |
+| `CIVIL3D_COMMAND_TIMEOUT` | `120000` | Milliseconds any single JSON-RPC command may run before the Node side rejects the call. Increase for heavy corridor rebuilds. `civil3d_run_code` waits for the larger of this and its budget plus 60 s. |
+| `CIVIL3D_RPC_TOKEN_FILE` | `%LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token` | Where the server reads the plugin's per-session token for `civil3d_run_code` (the plugin always writes the default path; override only for tests). |
 | `CIVIL3D_MAX_RESPONSE_BYTES` | `8388608` | Maximum buffered response size accepted from the Civil 3D plugin. |
 | `CIVIL3D_LOG_LEVEL` | `info` | One of `debug`, `info`, `warn`, `error`. Logs are written to stderr. |
 
@@ -954,7 +987,7 @@ Example calls:
 |---|---|---|
 | `MCP_HTTP_HOST` | `127.0.0.1` | Interface the HTTP bridge binds to. Keep this on loopback unless you know what you're doing. |
 | `MCP_HTTP_PORT` | `3000` | Port the HTTP bridge listens on. |
-| `MCP_HTTP_TOKEN` | *(unset)* | Optional shared secret. When set, every request to the bridge must include `Authorization: Bearer <token>` or `X-MCP-Token: <token>`. Leave unset to keep the loopback-only open mode. |
+| `MCP_HTTP_TOKEN` | *(unset)* | Optional shared secret. When set, every request to the bridge must include `Authorization: Bearer <token>` or `X-MCP-Token: <token>`. Leave unset to keep the loopback-only open mode, in which the bridge refuses, with 403, any request that names `civil3d_run_code` anywhere in its parameters (approving, previewing or orchestrating it, nested or not): any local process could otherwise run code through it. |
 | `MCP_HTTP_MAX_BODY_BYTES` | `1048576` | Maximum accepted `POST /execute` body size in bytes. Requests exceeding this receive `413 Payload Too Large`. |
 | `MCP_HTTP_ALLOWED_ORIGINS` | *(unset)* | Comma-separated browser origins allowed to call the bridge. Requests without an `Origin` header, such as native clients, are unaffected. |
 | `MCP_HTTP_ALLOWED_HOSTS` | Loopback hostnames | Comma-separated HTTP `Host` names accepted by the bridge. Required with `MCP_HTTP_TOKEN` for non-loopback binds. Ports are ignored during comparison. |

@@ -16,7 +16,11 @@ describe("Civil 3D reflection boundary", () => {
       if (fileName === "Civil3DCompatibility.cs") continue;
       const source = readFileSync(`${pluginDirectory}/${fileName}`, "utf8");
       const count = countDirectReflectionLines(source);
-      if (count > 0) {
+      // runCode loads the compiler and each compiled script (assembly load
+      // contexts); it never reflects over Civil 3D APIs. Its known markers are
+      // pinned, so a new reflection line there fails too.
+      const allowed = fileName === "RunCodeAssemblies.cs" ? 3 : 0;
+      if (count > allowed) {
         violations.push(`${fileName}: ${count} direct reflection markers`);
       }
     }

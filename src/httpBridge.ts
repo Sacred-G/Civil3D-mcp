@@ -6,6 +6,7 @@ import {
   listRegisteredToolNames,
 } from "./tools/toolHandlerRegistry.js";
 import { executeToolCallViaOrchestrator } from "./tools/civil3d_orchestrate.js";
+import { ALWAYS_GATED_TOOLS } from "./tools/approvalPolicy.js";
 import { createLogger } from "./utils/logger.js";
 import { Civil3DRpcError } from "./utils/SocketClient.js";
 import { createRequestId, runWithRequestId } from "./utils/requestContext.js";
@@ -308,6 +309,41 @@ async function executeLegacyTool(toolName: string, parameters: Record<string, un
 }
 
 /**
+ * Without MCP_HTTP_TOKEN any local process, also one running as another
+ * account, can call the bridge on loopback. Refuse the tools that run code with
+ * the user's rights in that case, also when a parameter only names one:
+ * approval, preview, orchestrate and docs take another tool as toolName, and
+ * orchestrate/docs nest (toolParameters.toolName, a request text) to any depth.
+ */
+function unauthenticatedRefusal(toolName: string, parameters: unknown): string | undefined {
+  const target = gatedToolNamedIn(toolName) ?? gatedToolNamedInValue(parameters);
+  if (!target) return undefined;
+  return `${target} is not available over the HTTP bridge without authentication. ` +
+    "Set MCP_HTTP_TOKEN for the server and send it as 'Authorization: Bearer <token>' or X-MCP-Token.";
+}
+
+function gatedToolNamedIn(text: string): string | undefined {
+  const lower = text.toLowerCase();
+  return [...ALWAYS_GATED_TOOLS].find((name) => lower.includes(name.toLowerCase()));
+}
+
+// Every string and key at any depth. Iterative, so a deeply nested body cannot
+// overflow the stack.
+function gatedToolNamedInValue(value: unknown): string | undefined {
+  const pending: unknown[] = [value];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    if (typeof current === "string") {
+      const named = gatedToolNamedIn(current);
+      if (named) return named;
+    } else if (current !== null && typeof current === "object") {
+      for (const [key, child] of Object.entries(current)) pending.push(key, child);
+    }
+  }
+  return undefined;
+}
+
+/**
  * Execute a tool by name. Resolution order:
  *   1. Registered MCP tool handlers (all 180+ tools)
  *   2. Legacy synthetic endpoints (drawing-context convenience queries)
@@ -419,6 +455,7 @@ async function handleExecute(
   request: IncomingMessage,
   response: ServerResponse,
   maxBodyBytes: number,
+  authEnabled: boolean,
 ): Promise<void> {
   try {
     const body = await readJsonBody(request, maxBodyBytes);
@@ -430,6 +467,12 @@ async function handleExecute(
     const parameters = body.parameters && typeof body.parameters === "object"
       ? body.parameters
       : {};
+
+    const refusal = authEnabled ? undefined : unauthenticatedRefusal(body.tool, parameters);
+    if (refusal) {
+      writeError(response, 403, "CIVIL3D.FORBIDDEN", refusal);
+      return;
+    }
 
     const result = await executeBridgeTool(body.tool, parameters);
     writeJson(response, 200, result);
@@ -513,7 +556,7 @@ export function startHttpBridge(options: HttpBridgeOptions = {}) {
       }
 
       if (method === "POST" && path === "/execute") {
-        await handleExecute(request, response, config.maxBodyBytes);
+        await handleExecute(request, response, config.maxBodyBytes, Boolean(config.authToken));
         return;
       }
 

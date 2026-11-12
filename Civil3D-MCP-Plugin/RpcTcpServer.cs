@@ -7,6 +7,9 @@ namespace Civil3DMcpPlugin;
 
 public sealed class RpcTcpServer
 {
+  // Must match MAX_REQUEST_BYTES in src/utils/SocketClient.ts: an oversized
+  // request is dropped here without a response, so the Node client refuses it
+  // before sending. Change both together.
   private const int MaxRequestBytes = 1024 * 1024;
   private static readonly TimeSpan RequestReadTimeout = TimeSpan.FromSeconds(30);
 

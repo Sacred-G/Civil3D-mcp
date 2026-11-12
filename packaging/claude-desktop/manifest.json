@@ -77,7 +77,7 @@
       "type": "string",
       "title": "Civil 3D host",
       "description": "Host running the native Civil 3D plugin.",
-      "default": "localhost",
+      "default": "127.0.0.1",
       "required": true
     },
     "civil3d_port": {
