@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Offline checks of runCode's compiler (ScriptCompiler): default usings,
+    line mapping, hoisted using directives and the read-mode guard, compiled
+    against the Civil 3D reference assemblies and the built plugin; and of its
+    AutoCAD-free runtime helpers (RunCodeOutput, RpcAuth: RuntimeChecks.cs).
+    Nothing runs in Civil 3D. Usage: see Program.cs.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFrameworks>net8.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\Civil3D-MCP-Plugin\ScriptCompiler.cs" Link="ScriptCompiler.cs" />
+    <Compile Include="..\..\Civil3D-MCP-Plugin\RunCodeOutput.cs" Link="RunCodeOutput.cs" />
+    <Compile Include="..\..\Civil3D-MCP-Plugin\RpcAuth.cs" Link="RpcAuth.cs" />
+  </ItemGroup>
+</Project>

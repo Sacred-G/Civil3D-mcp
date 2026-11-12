@@ -52,6 +52,8 @@ public static class PluginRuntime
 
       _server = new RpcTcpServer(Port, HandleRawRequestAsync);
       _server.Start();
+      // Only the instance that bound the port issues the token runCode checks.
+      RpcAuth.Issue();
     }
   }
 
@@ -61,6 +63,7 @@ public static class PluginRuntime
     {
       _server?.Stop();
       _server = null;
+      RpcAuth.Revoke();
       _currentOperation = null;
       _activeOperations = 0;
       _queueDepth = 0;

@@ -6,11 +6,13 @@ const pluginDirectory = fileURLToPath(new URL("../Civil3D-MCP-Plugin/", import.m
 
 describe("P2 security boundaries", () => {
   it("keeps generated artifact writes behind FileBoundary", () => {
-    const directWritePattern = /File\.WriteAllText|new (?:System\.IO\.)?StreamWriter|new (?:System\.IO\.)?FileStream/;
+    const directWritePattern = /File\.(?:WriteAll(?:Text|Bytes|Lines)|AppendAll(?:Text|Lines))|new (?:System\.IO\.)?StreamWriter|new (?:System\.IO\.)?FileStream/;
     const violations: string[] = [];
 
     for (const fileName of readdirSync(pluginDirectory).filter((name) => name.endsWith(".cs"))) {
-      if (fileName === "FileBoundary.cs" || fileName === "PluginLog.cs") continue;
+      // PluginLog and RunCodeLog write only the plugin's own logs, next to plugin.log;
+      // RpcAuth writes only its own %LOCALAPPDATA%\Civil3DMcpPlugin\rpc-token file.
+      if (fileName === "FileBoundary.cs" || fileName === "PluginLog.cs" || fileName === "RunCodeLog.cs" || fileName === "RpcAuth.cs") continue;
       const source = readFileSync(`${pluginDirectory}/${fileName}`, "utf8");
       source.split(/\r?\n/).forEach((line, index) => {
         if (directWritePattern.test(line)) violations.push(`${fileName}:${index + 1}`);
@@ -18,6 +20,14 @@ describe("P2 security boundaries", () => {
     }
 
     expect(violations).toEqual([]);
+  });
+
+  it("confines runCode's files to its run-code folder next to plugin.log", () => {
+    const source = readFileSync(`${pluginDirectory}/RunCodeLog.cs`, "utf8");
+    expect(source).toContain("Path.GetFullPath(path)");
+    expect(source).toContain("runCode writes only inside");
+    expect(source).toContain("Expected a plain file name");
+    expect(source).toContain("WriteFile cannot use");
   });
 
   it("canonicalizes paths, enforces roots and extensions, and writes by atomic move", () => {

@@ -171,6 +171,8 @@ public static class CommandDispatcher
       "referenceDataShortcut" => DataShortcutCommands.ReferenceDataShortcutAsync(parameters),
       "syncDataShortcuts" => DataShortcutCommands.SyncDataShortcutsAsync(parameters),
       "createDataShortcutReference" => DataShortcutCommands.CreateDataShortcutReferenceAsync(parameters),
+      // In-process C# (approval-gated in the MCP server)
+      "runCode" => RunCodeCommands.RunCodeAsync(parameters),
       // Point groups
       "createPointGroup" => PointGroupCommands.CreatePointGroupAsync(parameters),
       "updatePointGroup" => PointGroupCommands.UpdatePointGroupAsync(parameters),

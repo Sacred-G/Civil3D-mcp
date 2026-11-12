@@ -3,13 +3,33 @@ import { createLogger } from "./logger.js";
 import { createRpcRequestId } from "./requestContext.js";
 
 const log = createLogger("SocketClient");
-const COMMAND_TIMEOUT_MS = parseInt(process.env.CIVIL3D_COMMAND_TIMEOUT ?? "120000", 10);
+export const COMMAND_TIMEOUT_MS = parseInt(process.env.CIVIL3D_COMMAND_TIMEOUT ?? "120000", 10);
 const MAX_RESPONSE_BYTES = parseInt(process.env.CIVIL3D_MAX_RESPONSE_BYTES ?? "8388608", 10);
+// = RpcTcpServer.MaxRequestBytes. The plugin drops a larger request without an
+// answer, which the caller would only see as a closed connection.
+export const MAX_REQUEST_BYTES = 1024 * 1024;
+
+export interface SendCommandOptions {
+  /** Overrides CIVIL3D_COMMAND_TIMEOUT for this command. */
+  timeoutMs?: number;
+}
 
 interface PendingRequest {
   resolve: (response: string) => void;
   reject: (error: Error) => void;
   timeout: NodeJS.Timeout;
+}
+
+/**
+ * The address to dial for a configured plugin host. The plugin listens on IPv4
+ * loopback only (RpcTcpServer binds IPAddress.Loopback), while Node resolves
+ * "localhost" (and an empty host) to ::1 first: any local account can listen on
+ * [::1] at the plugin's port and would receive the runCode token. So
+ * "localhost" is dialed as 127.0.0.1.
+ */
+export function pluginConnectHost(host: string): string {
+  const normalized = host.trim().toLowerCase();
+  return normalized === "" || normalized === "localhost" ? "127.0.0.1" : host;
 }
 
 export class Civil3DRpcError extends Error {
@@ -93,7 +113,7 @@ export class ApplicationClientConnection {
     }
 
     try {
-      this.socket.connect(this.port, this.host);
+      this.socket.connect({ port: this.port, host: pluginConnectHost(this.host) });
       return true;
     } catch (error) {
       log.error("Failed to connect", { host: this.host, port: this.port, error: String(error) });
@@ -137,13 +157,8 @@ export class ApplicationClientConnection {
     }
   }
 
-  public sendCommand(command: string, params: any = {}): Promise<any> {
+  public sendCommand(command: string, params: any = {}, options: SendCommandOptions = {}): Promise<any> {
     return new Promise((resolve, reject) => {
-      if (!this.isConnected && !this.connect()) {
-        reject(new Error(`Failed to connect to Civil 3D plugin at ${this.host}:${this.port}.`));
-        return;
-      }
-
       const requestId = this.generateRequestId();
 
       const commandObj = {
@@ -152,15 +167,37 @@ export class ApplicationClientConnection {
         params,
         id: requestId,
       };
+      const commandString = JSON.stringify(commandObj);
 
+      // Refuse before anything is sent or registered (see MAX_REQUEST_BYTES).
+      const requestBytes = Buffer.byteLength(commandString, "utf8");
+      if (requestBytes > MAX_REQUEST_BYTES) {
+        reject(new Civil3DRpcError(
+          `Civil 3D request '${command}' is ${requestBytes} bytes; the plugin accepts at most ${MAX_REQUEST_BYTES} bytes per call. Split the data or pass a file path.`,
+          "CIVIL3D.REQUEST_TOO_LARGE",
+          -32602,
+        ));
+        return;
+      }
+
+      if (!this.isConnected && !this.connect()) {
+        reject(new Error(`Failed to connect to Civil 3D plugin at ${this.host}:${this.port}.`));
+        return;
+      }
+
+      const timeoutMs = options.timeoutMs ?? COMMAND_TIMEOUT_MS;
       const timeout = setTimeout(() => {
         const pending = this.responseCallbacks.get(requestId);
         if (pending) {
           this.responseCallbacks.delete(requestId);
-          log.warn("Command timed out", { method: command, requestId, timeoutMs: COMMAND_TIMEOUT_MS });
-          pending.reject(new Error(`Command timed out after ${COMMAND_TIMEOUT_MS}ms: ${command}`));
+          log.warn("Command timed out", { method: command, requestId, timeoutMs });
+          pending.reject(new Civil3DRpcError(
+            `Command timed out after ${timeoutMs}ms: ${command}`,
+            "CIVIL3D.TIMEOUT",
+            -32008,
+          ));
         }
-      }, COMMAND_TIMEOUT_MS);
+      }, timeoutMs);
 
       this.responseCallbacks.set(requestId, {
         timeout,
@@ -212,7 +249,6 @@ export class ApplicationClientConnection {
       });
 
       try {
-        const commandString = JSON.stringify(commandObj);
         log.debug("Sending command", { method: command, requestId });
         this.socket.write(commandString);
       } catch (error) {

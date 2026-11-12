@@ -41,4 +41,26 @@
       <Private>False</Private>
     </Reference>
   </ItemGroup>
+
+  <!--
+    Roslyn for runCode (civil3d_run_code). Civil 3D ships its own copy in the
+    AutoCAD folder (2026: 4.10), and one version of an assembly per load
+    context means a newer copy of ours could break Civil 3D features that need
+    theirs. So: compile against an old version (4.8), do not copy it next to the
+    plugin, and ship it in roslyn\ as a fallback that RunCodeCommands loads only
+    when Civil 3D has no copy of at least that version (see RoslynResolver).
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" ExcludeAssets="runtime" GeneratePathProperty="true" />
+    <PackageReference Include="Microsoft.CodeAnalysis.Common" Version="4.8.0" ExcludeAssets="runtime" GeneratePathProperty="true" />
+  </ItemGroup>
+
+  <Target Name="CopyRoslynFallback" AfterTargets="Build">
+    <ItemGroup>
+      <RoslynFallback Include="$(PkgMicrosoft_CodeAnalysis_Common)\lib\net7.0\Microsoft.CodeAnalysis.dll" />
+      <RoslynFallback Include="$(PkgMicrosoft_CodeAnalysis_CSharp)\lib\net7.0\Microsoft.CodeAnalysis.CSharp.dll" />
+    </ItemGroup>
+    <Error Condition="!Exists('%(RoslynFallback.Identity)')" Text="Roslyn fallback assembly not found: %(RoslynFallback.Identity)" />
+    <Copy SourceFiles="@(RoslynFallback)" DestinationFolder="$(OutDir)roslyn" SkipUnchangedFiles="true" />
+  </Target>
 </Project>

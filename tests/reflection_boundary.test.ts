@@ -14,6 +14,9 @@ describe("Civil 3D reflection boundary", () => {
     const violations: string[] = [];
     for (const fileName of readdirSync(pluginDirectory).filter((name) => name.endsWith(".cs"))) {
       if (fileName === "Civil3DCompatibility.cs") continue;
+      // runCode loads the compiler and each compiled script (assembly load
+      // contexts); it never reflects over Civil 3D APIs.
+      if (fileName === "RunCodeAssemblies.cs") continue;
       const source = readFileSync(`${pluginDirectory}/${fileName}`, "utf8");
       const count = countDirectReflectionLines(source);
       if (count > 0) {
