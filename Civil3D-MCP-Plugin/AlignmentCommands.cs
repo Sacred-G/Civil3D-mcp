@@ -167,10 +167,51 @@ public static class AlignmentCommands
   public static Task<object?> CreateAlignmentAsync(JsonObject? parameters)
   {
     var name = PluginRuntime.GetRequiredString(parameters, "name");
+
+    // Either build from a points array, or wrap an existing polyline the user
+    // already drew. When a polyline is named, it is NEVER erased -- that is
+    // their drawing, not scratch geometry.
+    var polylineHandle = PluginRuntime.GetOptionalString(parameters, "polylineHandle");
     var pointsNode = PluginRuntime.GetParameter(parameters, "points") as JsonArray;
-    if (pointsNode == null || pointsNode.Count < 2)
+
+    if (string.IsNullOrWhiteSpace(polylineHandle) && (pointsNode == null || pointsNode.Count < 2))
     {
-      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "createAlignment requires at least two points.");
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        "createAlignment requires either 'polylineHandle' or at least two 'points'.");
+    }
+
+    // The server schema already rejects both; check here too so a direct
+    // caller is not silently given the polyline and ignored points.
+    if (!string.IsNullOrWhiteSpace(polylineHandle) && pointsNode != null)
+    {
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        "createAlignment takes either 'polylineHandle' or 'points', not both.");
+    }
+
+    // curveRadius: insert a curve of exactly this radius at every interior PI.
+    // addCurves: let Civil 3D fit curves using the drawing's default radius.
+    //   Defaults to true for 'points' (the original behavior) and false for
+    //   'polylineHandle', where the alignment should trace the polyline exactly.
+    // Neither curves option: straight tangents that follow the source geometry.
+    var curveRadius = PluginRuntime.GetOptionalDouble(parameters, "curveRadius");
+    var addCurvesGiven = PluginRuntime.GetOptionalBool(parameters, "addCurves");
+    var addCurves = addCurvesGiven ?? string.IsNullOrWhiteSpace(polylineHandle);
+
+    // radii: one radius per interior PI in station order, for a design whose
+    // corners differ. A null entry, or a PI past the end of the list, stays sharp.
+    var radii = ReadRadii(parameters);
+    if (radii != null && curveRadius != null)
+    {
+      throw new JsonRpcDispatchException(
+        "CIVIL3D.INVALID_INPUT",
+        "createAlignment takes either 'radii' or 'curveRadius', not both.");
+    }
+
+    if (curveRadius is <= 0)
+    {
+      throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'curveRadius' must be greater than zero.");
     }
 
     return CivilExecution.WriteAsync<object?>((doc, civilDoc, database, transaction) =>
@@ -178,24 +219,68 @@ public static class AlignmentCommands
       var blockTable = CivilObjectUtils.GetRequiredObject<BlockTable>(transaction, database.BlockTableId, OpenMode.ForRead);
       var modelSpace = CivilObjectUtils.GetRequiredObject<BlockTableRecord>(transaction, blockTable[BlockTableRecord.ModelSpace], OpenMode.ForWrite);
 
-      using var polyline = new Polyline();
-      for (var index = 0; index < pointsNode.Count; index++)
+      ObjectId polylineId;
+      bool eraseSource;
+      var sourceArcs = 0;   // arcs already in the source polyline (bulged segments)
+
+      if (!string.IsNullOrWhiteSpace(polylineHandle))
       {
-        if (pointsNode[index] is not JsonObject point)
+        // Use the polyline the user drew. Keep it.
+        ObjectId existingId;
+        try
         {
-          continue;
+          var handle = new Handle(Convert.ToInt64(polylineHandle, 16));
+          existingId = database.GetObjectId(false, handle, 0);
+        }
+        catch (Exception ex)
+        {
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.OBJECT_NOT_FOUND", $"Could not resolve polyline handle '{polylineHandle}': {ex.Message}");
         }
 
-        polyline.AddVertexAt(index, new Point2d(point["x"]!.GetValue<double>(), point["y"]!.GetValue<double>()), 0, 0, 0);
+        if (transaction.GetObject(existingId, OpenMode.ForRead) is not Polyline source)
+        {
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.INVALID_INPUT", $"Handle '{polylineHandle}' is not a polyline.");
+        }
+
+        var segments = source.Closed ? source.NumberOfVertices : source.NumberOfVertices - 1;
+        for (var segment = 0; segment < segments; segment++)
+        {
+          if (source.GetBulgeAt(segment) != 0)
+          {
+            sourceArcs++;
+          }
+        }
+
+        polylineId = existingId;
+        eraseSource = false;
+      }
+      else
+      {
+        using var polyline = new Polyline();
+        for (var index = 0; index < pointsNode!.Count; index++)
+        {
+          if (pointsNode[index] is not JsonObject point)
+          {
+            continue;
+          }
+
+          polyline.AddVertexAt(index, new Point2d(point["x"]!.GetValue<double>(), point["y"]!.GetValue<double>()), 0, 0, 0);
+        }
+
+        polylineId = modelSpace.AppendEntity(polyline);
+        transaction.AddNewlyCreatedDBObject(polyline, true);
+        eraseSource = true;   // scratch geometry we made; clean it up
       }
 
-      var polylineId = modelSpace.AppendEntity(polyline);
-      transaction.AddNewlyCreatedDBObject(polyline, true);
-
+      // When an explicit radius is requested, create straight tangents first and
+      // insert the curves afterwards -- PolylineOptions has no radius field, so
+      // AddCurvesBetweenTangents would silently use the drawing default instead.
       var polylineOptions = new PolylineOptions
       {
-        AddCurvesBetweenTangents = true,
-        EraseExistingEntities = true,
+        AddCurvesBetweenTangents = curveRadius == null && radii == null && addCurves,
+        EraseExistingEntities = eraseSource,
         PlineId = polylineId,
       };
 
@@ -205,15 +290,156 @@ public static class AlignmentCommands
       var siteId = LookupUtils.GetSiteId(civilDoc, transaction, PluginRuntime.GetOptionalString(parameters, "site"));
 
       var alignmentId = Alignment.Create(civilDoc, polylineOptions, name, siteId, layerId, styleId, labelSetId);
+
+      // Curves Civil 3D fitted itself (AddCurvesBetweenTangents) are not
+      // reported by Create; count them so the result says what was built.
+      var curvesAutoFitted = polylineOptions.AddCurvesBetweenTangents
+        ? Math.Max(0, CountArcs(CivilObjectUtils.GetRequiredObject<Alignment>(transaction, alignmentId, OpenMode.ForRead)) - sourceArcs)
+        : 0;
+
+      // Insert a curve at each interior PI -- wherever two tangents meet at an
+      // angle, in station order: curveRadius at every PI, or radii[n] at PI n.
+      // A traced polyline can already carry arcs (fillets, bulges); a tangent
+      // next to an arc is not a PI, and two collinear tangents are one straight
+      // run, so neither gets a curve or uses up a radii entry.
+      var curvesAdded = 0;
+      var curvesSkipped = 0;
+      var curveFailures = new List<string>();
+      if (curveRadius != null || radii != null)
+      {
+        var writeAlignment = CivilObjectUtils.GetRequiredObject<Alignment>(transaction, alignmentId, OpenMode.ForWrite);
+        var ordered = new List<AlignmentEntity>();
+        for (var order = 0; order < writeAlignment.Entities.Count; order++)
+        {
+          ordered.Add(writeAlignment.Entities.GetEntityByOrder(order));
+        }
+
+        var pi = 0;
+        for (var index = 0; index < ordered.Count - 1; index++)
+        {
+          if (ordered[index] is not AlignmentLine first || ordered[index + 1] is not AlignmentLine second)
+          {
+            continue;
+          }
+
+          var d1 = first.EndPoint - first.StartPoint;
+          var d2 = second.EndPoint - second.StartPoint;
+          if (Math.Abs(d1.X * d2.Y - d1.Y * d2.X) <= 1e-9 * d1.Length * d2.Length)
+          {
+            continue;   // collinear: no PI here
+          }
+
+          var radius = radii == null ? curveRadius : pi < radii.Count ? radii[pi] : null;
+          pi++;   // 1-based PI number from here on, for the messages below
+
+          if (radius is null)
+          {
+            curvesSkipped++;
+            continue;
+          }
+
+          try
+          {
+            writeAlignment.Entities.AddFreeCurve(
+              first.EntityId,
+              second.EntityId,
+              radius.Value,
+              CurveParamType.Radius,
+              false,
+              // CurveType only distinguishes Compound vs Reverse, which matters
+              // when the neighbours are curves. Between two tangents it is inert.
+              CurveType.Compound);
+            curvesAdded++;
+          }
+          catch (Exception ex)
+          {
+            // A radius that will not fit between two short tangents is a real
+            // design constraint, not a crash. Report it and keep the corner sharp.
+            curveFailures.Add($"PI {pi} (R={radius:0.###}): {ex.Message}");
+          }
+        }
+      }
+
       var alignment = CivilObjectUtils.GetRequiredObject<Alignment>(transaction, alignmentId, OpenMode.ForRead);
+
+      var warnings = new List<string>();
+      if (curvesAutoFitted > 0 && addCurvesGiven == null)
+      {
+        warnings.Add(
+          $"Civil 3D fitted {curvesAutoFitted} curve(s) at the drawing's default radius because 'addCurves' defaults to true for 'points'. " +
+          "Pass addCurves=false for straight tangents through the points, or curveRadius/radii for exact radii.");
+      }
 
       return new Dictionary<string, object?>
       {
         ["name"] = alignment.Name,
         ["handle"] = CivilObjectUtils.GetHandle(alignment),
+        ["length"] = alignment.Length,
+        ["sourcePolyline"] = string.IsNullOrWhiteSpace(polylineHandle) ? null : polylineHandle,
+        ["sourcePolylineErased"] = eraseSource,
+        ["curveRadius"] = curveRadius,
+        ["radii"] = radii,
+        ["addCurves"] = polylineOptions.AddCurvesBetweenTangents,
+        // Every curve this call added: fitted by Civil 3D plus inserted at curveRadius/radii.
+        ["curvesAdded"] = curvesAutoFitted + curvesAdded,
+        ["curvesAutoFitted"] = curvesAutoFitted,
+        ["curveCount"] = CountArcs(alignment),
+        ["warnings"] = warnings,
+        ["curvesSkipped"] = curvesSkipped,
+        ["curveFailures"] = curveFailures,
         ["created"] = true,
       };
     });
+  }
+
+  // Circular arcs in the alignment, including the arc inside a spiral-curve-spiral group.
+  private static int CountArcs(Alignment alignment)
+  {
+    var arcs = 0;
+    for (var index = 0; index < alignment.Entities.Count; index++)
+    {
+      var entity = alignment.Entities[index];
+      for (var sub = 0; sub < entity.SubEntityCount; sub++)
+      {
+        if (entity[sub].SubEntityType == AlignmentSubEntityType.Arc)
+        {
+          arcs++;
+        }
+      }
+    }
+
+    return arcs;
+  }
+
+  private static List<double?>? ReadRadii(JsonObject? parameters)
+  {
+    if (PluginRuntime.GetParameter(parameters, "radii") is not JsonArray array)
+    {
+      return null;
+    }
+
+    var radii = new List<double?>();
+    foreach (var node in array)
+    {
+      double? radius;
+      try
+      {
+        radius = node?.GetValue<double>();
+      }
+      catch (Exception ex) when (ex is InvalidOperationException or FormatException)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'radii' must contain only positive numbers or null.");
+      }
+
+      if (radius is <= 0)
+      {
+        throw new JsonRpcDispatchException("CIVIL3D.INVALID_INPUT", "'radii' entries must be greater than zero (use null to keep a PI sharp).");
+      }
+
+      radii.Add(radius);
+    }
+
+    return radii;
   }
 
   public static Task<object?> DeleteAlignmentAsync(JsonObject? parameters)
