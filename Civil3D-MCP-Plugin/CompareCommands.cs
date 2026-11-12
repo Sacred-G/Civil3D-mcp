@@ -567,7 +567,16 @@ public static class CompareCommands
 
       pipeCount++;
       totalLength += pipe.Length2D;
-      var halfHeight = (pipe.InnerHeight > 0 ? pipe.InnerHeight : pipe.InnerDiameterOrWidth) / 2.0;
+      // InnerHeight is read defensively: Civil 3D throws "Retrieve attribute
+      // failed" for parts that do not define it, which dropped the whole
+      // network from the fingerprint. InnerDiameterOrWidth stands in only for
+      // a circular section; otherwise the inverts are reported as null.
+      var innerHeight = SafeValue(() => pipe.InnerHeight) is > 0 and var h
+        ? h
+        : string.Equals(SafeText(() => pipe.CrossSectionalShape.ToString()), "Circular", StringComparison.Ordinal)
+          ? pipe.InnerDiameterOrWidth
+          : (double?)null;
+      var halfHeight = innerHeight / 2.0;
       if (pipes.Count < MaxRowsPerSummaryArray)
       {
         pipes.Add(new JsonObject
@@ -575,8 +584,8 @@ public static class CompareCommands
           ["key"] = pipe.Handle.ToString(),
           ["name"] = pipe.Name,
           ["size"] = SafeText(() => pipe.PartSizeName),
-          ["startInvert"] = Round(pipe.StartPoint.Z - halfHeight),
-          ["endInvert"] = Round(pipe.EndPoint.Z - halfHeight),
+          ["startInvert"] = halfHeight is double startHalf ? Round(pipe.StartPoint.Z - startHalf) : null,
+          ["endInvert"] = halfHeight is double endHalf ? Round(pipe.EndPoint.Z - endHalf) : null,
           ["length2d"] = Round(pipe.Length2D),
           ["slope"] = Round(pipe.Slope),
         });
@@ -622,6 +631,18 @@ public static class CompareCommands
   }
 
   private static double Round(double value) => double.IsFinite(value) ? Math.Round(value, 4) : 0.0;
+
+  private static double? SafeValue(Func<double> read)
+  {
+    try
+    {
+      return read();
+    }
+    catch (Exception exception) when (exception is not JsonRpcDispatchException)
+    {
+      return null;
+    }
+  }
 
   private static string? SafeText(Func<string?> read)
   {

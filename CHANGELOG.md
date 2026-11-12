@@ -33,7 +33,9 @@
   overwrite by default. `compare_snapshot` diffs against a snapshot. Results
   group added/removed/modified entities by type and layer and add Civil 3D
   object diffs: alignment length and geometry hash, profile PVIs, surface
-  statistics, pipe counts and inverts. The host-independent diff
+  statistics, pipe counts and inverts (a pipe whose part defines no inner
+  height, and is not circular, reports `null` inverts instead of dropping the
+  network from the fingerprint). The host-independent diff
   (`DrawingFingerprint.cs`) has an offline harness,
   `npm run test:compare-diff`.
 
