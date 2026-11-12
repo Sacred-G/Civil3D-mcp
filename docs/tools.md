@@ -125,11 +125,11 @@ Returns drawing-level ambient settings.
   elevationReference: string | null,
   defaultLayer: string,
   defaultStyles: {
-    surface: string,
-    alignment: string,
-    profile: string,
-    corridor: string,
-    pipeNetwork: string
+    surface: string | null,
+    alignment: string | null,
+    profile: string | null,
+    corridor: string | null,
+    pipeNetwork: string | null
   }
 }
 ```

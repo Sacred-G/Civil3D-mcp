@@ -12,7 +12,10 @@ const manifestOutput = `${JSON.stringify({ ...manifest, version: packageJson.ver
 if (process.argv.includes("--check")) {
   const current = await readFile(target, "utf8").catch(() => "");
   const currentManifest = await readFile(manifestTarget, "utf8").catch(() => "");
-  if (current !== output || currentManifest !== manifestOutput) {
+  // Normalize line endings: git's autocrlf checks files out as CRLF on Windows
+  // while this script writes LF, which is not staleness.
+  const lf = (s) => s.replaceAll("\r\n", "\n");
+  if (lf(current) !== output || lf(currentManifest) !== manifestOutput) {
     console.error("Generated version files are stale. Run npm run version:sync.");
     process.exit(1);
   }

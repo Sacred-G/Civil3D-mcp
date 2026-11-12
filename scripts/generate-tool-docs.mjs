@@ -15,7 +15,9 @@ const target = new URL("../docs/tools.generated.md", import.meta.url);
 
 if (process.argv.includes("--check")) {
   const current = await readFile(target, "utf8").catch(() => "");
-  if (current !== output) {
+  // Compare with normalized line endings: git's autocrlf checks the file out
+  // as CRLF on Windows while the generator writes LF, which is not staleness.
+  if (current.replaceAll("\r\n", "\n") !== output) {
     console.error("docs/tools.generated.md is stale. Run npm run docs:generate.");
     process.exit(1);
   }

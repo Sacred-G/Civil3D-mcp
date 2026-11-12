@@ -125,7 +125,7 @@ From the repo root on Windows, you can register the MCP server into Claude Code 
 claude mcp add --scope project --transport stdio civil3d-mcp -- powershell -NoProfile -ExecutionPolicy Bypass -File "$PWD\scripts\claude-bootstrap-and-run.ps1"
 ```
 
-The launcher script installs npm dependencies and builds the Node server automatically the first time Claude starts it.
+The launcher script installs npm dependencies and builds the Node server automatically the first time Claude starts it. It installs again when `package.json` or `package-lock.json` changes (with `--no-save`, so the committed lock file stays as it is) and rebuilds when any build input changes, so new tools appear after a `git pull` without a manual build. Concurrent starts of one clone take turns through a named mutex. npm output goes to `%TEMP%\civil3d-mcp-bootstrap-<clone key>.log`, never to stdout, which carries the MCP protocol.
 
 If you want the repo to perform the initial install/build and then register Claude Code for you, use:
 
@@ -217,6 +217,8 @@ The output DLL is in `Civil3D-MCP-Plugin/bin/Release/net8.0-windows/`.
 4. Click **Open**. The plugin registers its RPC server and starts listening.
 
 > **Auto-load on startup:** Add the plugin to the `APPLOAD` startup suite (Tools → Load Application → Startup Suite) so it loads automatically when Civil 3D opens.
+
+> **Without the security prompt:** Civil 3D asks "Security - Unsigned Executable File" about `Civil3DMcpPlugin.dll` at every start when it loads from a folder outside `TRUSTEDPATHS`, including the `%APPDATA%` ApplicationPlugins bundle that `scripts\install-bundle.ps1` writes. `scripts\install-trusted.ps1 -SourceDir <build output> -Destination <trusted folder>` copies the build to `<trusted folder>\R<series>\` (add the folder under Options → Files → Trusted Locations first), adds a marked block to `acaddoc.lsp` in the Civil 3D roaming support folder that NETLOADs it once per session, and removes the bundle. The plugin then loads when a drawing opens (not on the Start tab). An existing `acaddoc.lsp` keeps its encoding and gets a backup, an `S::STARTUP` is chained rather than replaced, and `-Uninstall` removes the block and the plugin folder of one release: pass the same `-SourceDir` (and `-Destination`) as for the install, for example `scripts\install-trusted.ps1 -Uninstall -SourceDir Civil3D-MCP-Plugin\bin\Release\net8.0-windows` for 2026 (without `-SourceDir` it uninstalls the 2027 release).
 
 ### Civil 3D reference DLLs
 
