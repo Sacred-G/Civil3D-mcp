@@ -32,12 +32,12 @@ export function readPluginToken(): string | undefined {
 }
 
 /**
- * True when the configured plugin host is a loopback address, the only place
- * the runCode token may be sent (the plugin itself listens on IPv4 loopback).
+ * True when the configured plugin host is IPv4 loopback, the only place the
+ * runCode token may be sent. The plugin listens on IPv4 loopback only, so
+ * whatever answers on IPv6 loopback ([::1]) is some other local process,
+ * which would receive the token: refuse it, like any non-loopback host.
  */
 export function isLoopbackPluginHost(host: string): boolean {
-  const dialed = pluginConnectHost(host).trim().toLowerCase().replace(/^\[|\]$/g, "");
-  if (isIP(dialed) === 4) return dialed.startsWith("127.");
-  if (isIP(dialed) === 6) return dialed === "::1";
-  return false;
+  const dialed = pluginConnectHost(host).trim().toLowerCase();
+  return isIP(dialed) === 4 && dialed.startsWith("127.");
 }

@@ -127,6 +127,13 @@ internal static class RunCodeLog
       throw new ArgumentException($"Expected a plain file name (no folders), got '{fileName}'.");
     }
 
+    // A colon names an NTFS alternate data stream: "run.json::$DATA" is
+    // run.json's own data, and "a.txt:x" a hidden stream of a.txt.
+    if (name.Contains(':'))
+    {
+      throw new ArgumentException($"Expected a plain file name (no ':'), got '{fileName}'.");
+    }
+
     return Inside(Path.Combine(runFolder, name));
   }
 

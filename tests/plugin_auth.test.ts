@@ -67,11 +67,12 @@ describe("readPluginToken", () => {
 });
 
 describe("isLoopbackPluginHost", () => {
-  it.each(["127.0.0.1", "127.0.0.2", "localhost", "LOCALHOST", "", "::1", "[::1]"])("accepts %j", (host) => {
+  it.each(["127.0.0.1", "127.0.0.2", "localhost", "LOCALHOST", ""])("accepts %j", (host) => {
     expect(isLoopbackPluginHost(host)).toBe(true);
   });
 
-  it.each(["10.0.0.5", "192.168.1.20", "host.docker.internal", "example.com", "::2", "0.0.0.0"])("refuses %j", (host) => {
+  // The plugin binds IPv4 loopback only: a listener on [::1] is another process.
+  it.each(["10.0.0.5", "192.168.1.20", "host.docker.internal", "example.com", "::2", "0.0.0.0", "::1", "[::1]", "::ffff:127.0.0.1"])("refuses %j", (host) => {
     expect(isLoopbackPluginHost(host)).toBe(false);
   });
 });

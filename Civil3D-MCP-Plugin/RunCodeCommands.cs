@@ -59,8 +59,10 @@ public static class RunCodeCommands
     // Write mode: the client cancelled after the commit.
     public volatile bool CancelledAfterCommit;
     // Write mode: an exception after the commit (side databases closing, the
-    // host command ending). The change is in the drawing; this is the message.
+    // host command ending). The change is in the drawing; this is the message,
+    // and ErrorAfterCommitDetail the whole exception (type, stack, inner) for run.json.
     public volatile string? ErrorAfterCommit;
+    public volatile string? ErrorAfterCommitDetail;
     // Write mode: the script ended the run's transaction itself (not through Tr,
     // which cannot end it, but for example through TopTransaction).
     public volatile bool TransactionEndedByScript;
@@ -313,6 +315,10 @@ public static class RunCodeCommands
       {
         summary["note"] = "The request ended while the script was still running; a write is rolled back when it returns.";
       }
+      if (outcome.ErrorAfterCommitDetail != null)
+      {
+        summary["errorAfterCommit"] = outcome.ErrorAfterCommitDetail;
+      }
       foreach (var key in new[] { "errors", "error", "resultShape", "resultBytes", "resultFile", "outputFile", "files" })
       {
         if (response[key] != null)
@@ -459,6 +465,8 @@ public static class RunCodeCommands
         else
         {
           outcome.ErrorAfterCommit = exception.Message;
+          outcome.ErrorAfterCommitDetail = exception.ToString();
+          PluginLog.Warn("RunCode", "An error came after the run's change was committed; the change is in the drawing.", exception);
         }
 
         return "ok";

@@ -1,5 +1,6 @@
 // Offline checks of runCode's AutoCAD-free runtime helpers, called from
-// Program.cs: the Log cap (RunCodeOutput.cs) and the runCode token (RpcAuth.cs).
+// Program.cs: the Log cap (RunCodeOutput.cs), the runCode token (RpcAuth.cs)
+// and the names WriteFile accepts (RunCodeLog.cs).
 // RunTransaction (RunCodeScript.cs) needs AutoCAD at runtime, so it is only
 // compiled here (with the plugin build) and checked live in Civil 3D.
 using System.Runtime.Versioning;
@@ -15,6 +16,48 @@ internal static class RuntimeChecks
   {
     CheckOutput(expect);
     CheckAuth(expect);
+    CheckScriptFileNames(expect);
+  }
+
+  private static void CheckScriptFileNames(Action<bool, string> expect)
+  {
+    var logFolder = Path.Combine(Path.GetTempPath(), "RunCodeHarness-" + Guid.NewGuid().ToString("N"));
+    PluginLog.LogFilePath = Path.Combine(logFolder, "plugin.log");
+    try
+    {
+      var runFolder = RunCodeLog.CreateRunFolder("run1");
+      RunCodeLog.WriteText(runFolder, RunCodeLog.SummaryFile, "{}");
+      var written = RunCodeLog.WriteScriptFile(runFolder, "out.txt", "data", null);
+      expect(File.ReadAllText(written) == "data" && Path.GetDirectoryName(written) == runFolder, "WriteFile writes a plain name inside the run folder");
+
+      foreach (var name in new[] { "run.json", "RUN.JSON", "run.json.", "script.cs ", "run.json::$DATA", "script.cs::$DATA", "out.txt:hidden", "out.txt:hidden:$DATA", "..\\x.txt", "sub/x.txt" })
+      {
+        var refused = false;
+        try
+        {
+          RunCodeLog.WriteScriptFile(runFolder, name, "overwrite", null);
+        }
+        catch (ArgumentException)
+        {
+          refused = true;
+        }
+
+        expect(refused, $"WriteFile refuses {name}");
+      }
+
+      expect(File.ReadAllText(Path.Combine(runFolder, RunCodeLog.SummaryFile)) == "{}", "run.json is unchanged after the refused names");
+      expect(File.ReadAllText(written) == "data", "out.txt is unchanged after the refused stream names");
+    }
+    finally
+    {
+      try
+      {
+        Directory.Delete(logFolder, true);
+      }
+      catch (IOException)
+      {
+      }
+    }
   }
 
   private static void CheckOutput(Action<bool, string> expect)
@@ -160,6 +203,9 @@ namespace Civil3DMcpPlugin
   internal static class PluginLog
   {
     internal static readonly List<string> Warnings = new();
+
+    // RunCodeLog keeps its run-code folder next to the plugin log.
+    internal static string LogFilePath { get; set; } = Path.Combine(Path.GetTempPath(), "RunCodeHarness", "plugin.log");
 
     public static void Info(string component, string message, Exception? exception = null)
     {
