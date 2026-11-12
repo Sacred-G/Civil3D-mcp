@@ -357,7 +357,7 @@ public static class CivilExecution
         var acadDocument = App.DocumentManager.MdiActiveDocument?.GetAcadDocument();
         if (needsCommand)
         {
-          await StartPluginCommandAsync(() => RunOnce(HostRoute.PluginCommand), hostRequest);
+          await StartPluginCommandAsync(() => RunOnce(HostRoute.PluginCommand), hostRequest, cancellationToken);
         }
         else
         {
@@ -378,7 +378,7 @@ public static class CivilExecution
           }
           else
           {
-            await SendCommandLineAsync(acadDocument, input);
+            await SendCommandLineAsync(acadDocument, input, cancellationToken);
           }
         }
 
@@ -506,7 +506,7 @@ public static class CivilExecution
   // main thread like an external client's and runs it at once, also in a
   // disconnected Windows session with nobody at the keyboard. Completes when SendCommand
   // has returned; the work itself reports through the request's own task.
-  private static async Task StartPluginCommandAsync(Func<Task> work, HostRequestState hostRequest)
+  private static async Task StartPluginCommandAsync(Func<Task> work, HostRequestState hostRequest, CancellationToken cancellationToken)
   {
     var doc = App.DocumentManager.MdiActiveDocument
       ?? throw new JsonRpcDispatchException("CIVIL3D.NO_DRAWING", "No active drawing is open in Civil 3D.");
@@ -516,7 +516,7 @@ public static class CivilExecution
 
     try
     {
-      await Task.Run(() => SendCommandWithRetry(acadDocument, "_" + PluginCommandName + " "));
+      await Task.Run(() => SendCommandWithRetry(acadDocument, "_" + PluginCommandName + " ", cancellationToken));
     }
     catch
     {
@@ -557,12 +557,13 @@ public static class CivilExecution
   // Input queued with waitForCompletion (UNDO, MREDO) is waited for up to
   // HostBusyTimeout; if it is still running then, the request fails with
   // HOST_BUSY instead of reporting it done.
-  private static async Task SendCommandLineAsync(object acadDocument, IReadOnlyList<(string Text, bool Wait)> input)
+  // A cancelled request stops the retries of a rejected call.
+  private static async Task SendCommandLineAsync(object acadDocument, IReadOnlyList<(string Text, bool Wait)> input, CancellationToken cancellationToken)
   {
     foreach (var (text, wait) in input)
     {
       var progress = new SendProgress();
-      var call = Task.Run(() => SendCommandWithRetry(acadDocument, text, progress));
+      var call = Task.Run(() => SendCommandWithRetry(acadDocument, text, cancellationToken, progress));
       if (wait)
       {
         await Task.WhenAny(call, Task.Delay(HostBusyTimeout));
@@ -577,6 +578,7 @@ public static class CivilExecution
 
       if (!call.IsCompleted && wait)
       {
+        progress.Detach();
         _ = call.ContinueWith(
           t => PluginLog.Warn("Host", $"Command-line input '{text.Trim()}' failed.", t.Exception),
           CancellationToken.None,
@@ -589,6 +591,9 @@ public static class CivilExecution
 
       if (!call.IsCompleted)
       {
+        // Civil 3D has kept the accepted call running for DialogGrace (a
+        // dialog). Should it still be rejected later, it is not retried.
+        progress.Detach();
         _ = call.ContinueWith(
           t => PluginLog.Warn("Host", $"Command-line input '{text.Trim()}' failed.", t.Exception),
           CancellationToken.None,
@@ -602,7 +607,7 @@ public static class CivilExecution
       {
         await call;
       }
-      catch (Exception ex) when (ex is not JsonRpcDispatchException)
+      catch (Exception ex) when (ex is not JsonRpcDispatchException and not OperationCanceledException)
       {
         throw new JsonRpcDispatchException(
           "CIVIL3D.COMMAND_FAILED",
@@ -618,10 +623,16 @@ public static class CivilExecution
   private static readonly TimeSpan DialogGrace = TimeSpan.FromSeconds(3);
 
   // Whether the current SendCommand attempt is in Civil 3D's hands (not
-  // rejected) and since when. Written by the sending thread.
+  // rejected) and since when, written by the sending thread; and whether the
+  // request has stopped waiting for the call (then it is not retried).
   private sealed class SendProgress
   {
     private long _attemptStartedTicks;
+    private int _detached;
+
+    public bool IsDetached => Volatile.Read(ref _detached) != 0;
+
+    public void Detach() => Interlocked.Exchange(ref _detached, 1);
 
     public void Attempting() => Interlocked.Exchange(ref _attemptStartedTicks, DateTime.UtcNow.Ticks);
 
@@ -634,7 +645,11 @@ public static class CivilExecution
     }
   }
 
-  private static void SendCommandWithRetry(object acadDocument, string text, SendProgress? progress = null)
+  // Retries a call Civil 3D rejects (busy) for up to CallRejectedRetry, but
+  // never after the request was cancelled or has stopped waiting for this
+  // call (progress detached): a later retry would run the command after the
+  // caller was told it did not, or was told something else.
+  private static void SendCommandWithRetry(object acadDocument, string text, CancellationToken cancellationToken, SendProgress? progress = null)
   {
     var deadline = DateTime.UtcNow + CallRejectedRetry;
     while (true)
@@ -648,6 +663,14 @@ public static class CivilExecution
       catch (COMException ex) when (IsCallRejected(ex))
       {
         progress?.Rejected();
+        cancellationToken.ThrowIfCancellationRequested();
+        if (progress?.IsDetached == true)
+        {
+          throw new JsonRpcDispatchException(
+            "CIVIL3D.HOST_BUSY",
+            $"Civil 3D rejected '{text.Trim()}' after the request had stopped waiting for it; it was not sent again.");
+        }
+
         if (DateTime.UtcNow >= deadline)
         {
           // Still busy after the retries: the designed HOST_BUSY, not a raw

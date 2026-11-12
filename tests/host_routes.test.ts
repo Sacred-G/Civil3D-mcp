@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { callArguments, enclosingBlocks, enclosingMethod, maskCSharp, matchingClose, methodBody, squash } from "./csharp_source.js";
+import { callArguments, enclosingBlocks, enclosingMethod, maskCSharp, maskCSharpParts, matchingClose, methodBody, squash } from "./csharp_source.js";
 
 const pluginDirectory = fileURLToPath(new URL("../Civil3D-MCP-Plugin/", import.meta.url));
 const source = (name: string) => readFileSync(`${pluginDirectory}/${name}`, "utf8");
@@ -32,6 +32,27 @@ function blockAfter(text: string, pattern: RegExp, label: string): string {
   return text.slice(open + 1, matchingClose(text, open));
 }
 
+// Literal text (comments blanked) of the block found by following the
+// patterns in order through a file's masked code: each pattern is searched
+// after the previous match, and the last one opens the block. Checks a
+// message where it is thrown, so a copy in a comment or elsewhere does not
+// count.
+function literalsInBlock(name: string, patterns: RegExp[], label: string): string {
+  const parts = maskCSharpParts(source(name));
+  let from = 0;
+  let end = 0;
+  for (const pattern of patterns) {
+    const search = new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`);
+    search.lastIndex = from;
+    const match = search.exec(parts.code);
+    expect(match, `${label}: ${pattern} after index ${from}`).not.toBeNull();
+    from = match!.index;
+    end = match!.index + match![0].length;
+  }
+  const open = parts.code.indexOf("{", end - 1);
+  return squash(parts.withoutComments.slice(open + 1, matchingClose(parts.code, open)));
+}
+
 describe("C# source masking used by these guards", () => {
   it("blanks comments and literal contents but keeps code and interpolation holes", () => {
     const sample = [
@@ -47,6 +68,29 @@ describe("C# source masking used by these guards", () => {
     expect(masked).not.toContain("SendCommand(");
     const open = masked.indexOf("{", masked.indexOf("Run("));
     expect(masked.slice(open, matchingClose(masked, open) + 1)).toBe("{ Foo(); }");
+  });
+
+  it("keeps code after a verbatim string that holds a quote, and masks raw strings", () => {
+    const sample = 'var q = @""""; Run(1);\nvar r = """ { QueueCommandLine( """; Run(2);';
+    const masked = maskCSharp(sample);
+    expect(masked.match(/Run\(\d\)/g)).toEqual(["Run(1)", "Run(2)"]);
+    expect(masked).not.toContain("QueueCommandLine(");
+    expect(maskCSharpParts(sample).withoutComments).toBe(sample);
+  });
+
+  it("finds the parameters of constructors with an initializer and of constrained generics", () => {
+    const sample = [
+      "class A : B {",
+      "  public A(int first, string second) : base(first) { Mark(); }",
+      "  T Get<T>(Func<int, T> make, int count) where T : class { Mark(); }",
+      "}",
+    ].join("\n");
+    const masked = maskCSharp(sample);
+    const marks = [...masked.matchAll(/Mark\(\)/g)].map((match) => enclosingMethod(masked, match.index!));
+    expect(marks).toEqual([
+      { name: "A", parameters: ["first", "second"] },
+      { name: "Get", parameters: ["make", "count"] },
+    ]);
   });
 });
 
@@ -101,6 +145,14 @@ describe("host routes", () => {
     // claimed it has finished.
     const settle = blockAfter(idleHandler.slice(idleHandler.search(/hostRequest\.TryStart\(\)/)), /finally\s*\{/, "Idle handler finally");
     expectInOrder(settle, [/if\s*\(\s*hostRequest\.OperationClaimed\s*\)/, /await\s+hostRequest\.OperationDone\s*;/, /hostRequest\.HostFinished\(\)\s*;/], "Idle handler finally");
+    // Queued command-line input is sent, unless the request was cancelled,
+    // before the request settles.
+    expectInOrder(idleHandler, [
+      /await\s+hostRequest\.OperationDone\s*;/,
+      /if\s*\(\s*cancellationToken\.IsCancellationRequested\s*\)/,
+      /else\s*\{\s*await\s+SendCommandLineAsync\(/,
+      /hostRequest\.HostFinished\(\)\s*;\s*done\.TrySetResult\(\s*true\s*\)/,
+    ], "Idle handler");
 
     // The busy watcher and the no-Idle watchdog only end a request that has
     // not started.
@@ -127,9 +179,18 @@ describe("host routes", () => {
     const retry = methodBody(execution, /private static void SendCommandWithRetry\s*\(/);
     const rejected = blockAfter(retry, /catch\s*\(\s*COMException\s+ex\s*\)\s*when\s*\(\s*IsCallRejected\(\s*ex\s*\)\s*\)\s*\{/, "rejected call");
     const deadline = blockAfter(rejected, /if\s*\(\s*DateTime\.UtcNow\s*>=\s*deadline\s*\)\s*\{/, "retry deadline");
-    // The code is in a literal, so check it in the source.
-    expect(squash(source("CivilExecution.cs"))).toContain('throw new JsonRpcDispatchException( "CIVIL3D.HOST_BUSY", $"Civil 3D kept rejecting');
     expect(deadline).toMatch(/throw\s+new\s+JsonRpcDispatchException\(/);
+    // The code and message are literals: read them inside that block.
+    const deadlineLiterals = literalsInBlock("CivilExecution.cs", [
+      /private static void SendCommandWithRetry\s*\(/,
+      /catch\s*\(\s*COMException\s+ex\s*\)\s*when\s*\(\s*IsCallRejected\(\s*ex\s*\)\s*\)\s*\{/,
+      /if\s*\(\s*DateTime\.UtcNow\s*>=\s*deadline\s*\)\s*\{/,
+    ], "retry deadline");
+    expect(deadlineLiterals).toContain('throw new JsonRpcDispatchException( "CIVIL3D.HOST_BUSY", $"Civil 3D kept rejecting');
+    // A cancelled request, or one that stopped waiting, never retries.
+    expectInOrder(rejected, [/progress\?\.Rejected\(\)/, /cancellationToken\.ThrowIfCancellationRequested\(\)/, /if\s*\(\s*progress\?\.IsDetached\s*==\s*true\s*\)\s*\{\s*throw\b/, /if\s*\(\s*DateTime\.UtcNow\s*>=\s*deadline\s*\)/, /Thread\.Sleep\(/], "rejected call");
+    expect(send.match(/progress\.Detach\(\)\s*;/g)?.length).toBe(2);
+    expect(send).toMatch(/SendCommandWithRetry\(\s*acadDocument\s*,\s*text\s*,\s*cancellationToken\s*,\s*progress\s*\)/);
   });
 
   // A send that never got through must fail the request, not be reported as
@@ -138,7 +199,7 @@ describe("host routes", () => {
   it("fails the request when queued command-line input cannot be sent", () => {
     const send = methodBody(execution, /private static async Task SendCommandLineAsync\s*\(/);
     expect(send).toMatch(/while\s*\(\s*!\s*call\.IsCompleted\s*&&\s*!\s*progress\.AcceptedFor\(\s*DialogGrace\s*\)\s*\)/);
-    expect(send).toMatch(/catch\s*\(\s*Exception\s+ex\s*\)\s*when\s*\(\s*ex\s+is\s+not\s+JsonRpcDispatchException\s*\)\s*\{\s*throw\s+new\s+JsonRpcDispatchException\(/);
+    expect(send).toMatch(/catch\s*\(\s*Exception\s+ex\s*\)\s*when\s*\(\s*ex\s+is\s+not\s+JsonRpcDispatchException\s+and\s+not\s+OperationCanceledException\s*\)\s*\{\s*throw\s+new\s+JsonRpcDispatchException\(/);
     const retry = methodBody(execution, /private static void SendCommandWithRetry\s*\(/);
     expectInOrder(retry, [/progress\?\.Attempting\(\)/, /InvokeComMethod\(\s*acadDocument\s*,/, /progress\?\.Rejected\(\)/], "SendCommandWithRetry");
 
@@ -177,7 +238,10 @@ describe("host routes", () => {
   });
 
   it("runs writes inside the plugin's own command", () => {
-    expect(squash(source("CivilExecution.cs"))).toContain('Civil3DCompatibility.InvokeComMethod(acadDocument, "SendCommand", text)');
+    const retryLiterals = literalsInBlock("CivilExecution.cs", [/private static void SendCommandWithRetry\s*\([^)]*\)\s*\{/], "SendCommandWithRetry");
+    expect(retryLiterals).toContain('Civil3DCompatibility.InvokeComMethod(acadDocument, "SendCommand", text)');
+    // The C3DMCPHOP send stops retrying when the request is cancelled.
+    expect(methodBody(execution, /private static async Task StartPluginCommandAsync\s*\(/)).toMatch(/SendCommandWithRetry\(\s*acadDocument\s*,\s*"\s*"\s*\+\s*PluginCommandName\s*\+\s*"\s*"\s*,\s*cancellationToken\s*\)/);
     const entry = code("PluginEntry.cs");
     expect(entry).toMatch(/\[\s*CommandMethod\(\s*CivilExecution\.PluginCommandName\b/);
     // async void and awaited, so Editor.CommandAsync can run inside the command.
@@ -198,9 +262,12 @@ describe("host routes", () => {
     const nudge = blockAfter(runOnHost, /new\s+Timer\(\s*_\s*=>\s*\{/, "nudge timer");
     const watchdog = blockAfter(nudge, /if\s*\(\s*sinceIdle\s*>=\s*HostBusyTimeout\s*\)\s*\{/, "watchdog");
     expect(watchdog).toMatch(/EndBeforeStart\(\s*new\s+JsonRpcDispatchException\(/);
-    const literals = squash(source("CivilExecution.cs"));
-    expect(literals).toContain('"Civil 3D has a command or prompt in progress.');
-    expect(literals).toContain('"Civil 3D is not processing requests: a dialog is open');
+    // The messages, where they are raised.
+    const run = /private static async Task RunOnHostAsync\s*\(/;
+    expect(literalsInBlock("CivilExecution.cs", [run, /idle\s*=\s*async/, /if\s*\(\s*busy\s*\)/, /if\s*\(\s*now\s*-\s*busySince\.Value\s*>=\s*HostBusyTimeout\s*\)\s*\{/], "busy timeout"))
+      .toContain('EndBeforeStart(new JsonRpcDispatchException( "CIVIL3D.HOST_BUSY", "Civil 3D has a command or prompt in progress.');
+    expect(literalsInBlock("CivilExecution.cs", [run, /new\s+Timer\(/, /if\s*\(\s*sinceIdle\s*>=\s*HostBusyTimeout\s*\)\s*\{/], "watchdog"))
+      .toContain('EndBeforeStart(new JsonRpcDispatchException( "CIVIL3D.HOST_BUSY", "Civil 3D is not processing requests: a dialog is open');
   });
 
   // An OpenCloseTransaction is not rolled back on abort, and Idle ticks run
@@ -211,7 +278,7 @@ describe("host routes", () => {
   // SendStringToExecute, whose input mixes with C3DMCPHOP's.
   it("keeps scratch objects, pickfirst and command-line input out of plain reads", () => {
     const markers = {
-      scratch: ["GetVolumeProperties(", "ComputeVolumeBetweenSurfaces(", "GetEarthworkVolumes(", "TinVolumeSurface.Create("],
+      scratch: ["GetVolumeProperties(", "ComputeVolumeBetweenSurfaces(", "GetEarthworkVolumes(", "TinVolumeSurface.Create(", ".Create("],
       pickfirst: ["SetImpliedSelection(", "SelectImplied(", "BuildSelectedCivilObjects("],
       commandLine: ["QueueCommandLine(", "SendCommand("],
       writes: ["UpgradeOpen(", "OpenMode.ForWrite", ".Commit("],

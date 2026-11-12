@@ -172,6 +172,53 @@ foreach (var viaCommand in new[] { false, true })
   Expect(!ran, "watchdog: the abandoned action never runs");
 }
 
+// 5b. Command-line input the action queued (UNDO, MREDO) is part of the
+//     request: cancelled while it is being sent, the caller returns at once,
+//     the gate opens only when the send is over. Cancelled before the send,
+//     nothing is sent.
+foreach (var viaCommand in new[] { false, true })
+{
+  var route = viaCommand ? "C3DMCPHOP" : "Idle";
+  using var main = new MainThread();
+  var gate = new HostGate();
+  var host = new SimulatedHost(main, gate);
+  using var cts = new CancellationTokenSource();
+  var sending = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+  var finishSend = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+  var sendFinished = false;
+  host.CommandLine = async () =>
+  {
+    sending.TrySetResult();
+    await finishSend.Task;
+    sendFinished = true;
+  };
+  var first = host.Request(() => Task.CompletedTask, viaCommand, cts.Token);
+  await sending.Task;
+  cts.Cancel();
+  Expect(await CompletesWithin(Fault(first), 1000) && first.IsCanceled, $"{route} command line: cancelled while sending, the caller gets the cancellation at once");
+  host.CommandLine = null;
+  var sawSendFinished = (bool?)null;
+  var second = host.Request(() => { sawSendFinished = sendFinished; return Task.CompletedTask; }, viaCommand, CancellationToken.None);
+  await Task.Delay(300);
+  Expect(host.EnteredCount == 1 && !second.IsCompleted, $"{route} command line: the gate stays closed while the queued input is being sent");
+  finishSend.SetResult();
+  Expect(await CompletesWithin(second, 2000) && second.IsCompletedSuccessfully && sawSendFinished == true, $"{route} command line: the next request runs after the send is over");
+
+  using var early = new CancellationTokenSource();
+  var actionStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+  var finishAction = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+  var sent = false;
+  host.CommandLine = () => { sent = true; return Task.CompletedTask; };
+  var third = host.Request(async () => { actionStarted.SetResult(); await finishAction.Task; }, viaCommand, early.Token);
+  await actionStarted.Task;
+  early.Cancel();
+  await Fault(third);
+  finishAction.SetResult();
+  host.CommandLine = null;
+  var fourth = host.Request(() => Task.CompletedTask, viaCommand, CancellationToken.None);
+  Expect(await CompletesWithin(fourth, 2000) && !sent, $"{route} command line: input queued by a cancelled request is not sent");
+}
+
 // 6. The action faults: the caller gets its exception and the gate opens.
 {
   using var main = new MainThread();
@@ -339,6 +386,10 @@ sealed class SimulatedHost
   // Runs on MainThread before C3DMCPHOP runs the work.
   public Func<Task>? BeforeCommand { get; set; }
 
+  // The command-line input the action queues, sent after it on the main
+  // thread (null: none).
+  public Func<Task>? CommandLine { get; set; }
+
   // Called from another thread before the Idle tick; true ends the request
   // with a busy error (the busy watcher or the no-Idle watchdog).
   public Func<HostRequestState, bool>? Watchdog { get; set; }
@@ -357,6 +408,7 @@ sealed class SimulatedHost
   {
     var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
     var beforeCommand = BeforeCommand;
+    var commandLine = CommandLine;
 
     async Task RunOnce()
     {
@@ -417,6 +469,14 @@ sealed class SimulatedHost
         }
 
         await state.OperationDone;
+        // SendCommandLineAsync: command-line input the action queued (UNDO,
+        // MREDO, a dialog command) is sent after it, unless the request was
+        // cancelled first, and the request settles only after that.
+        if (commandLine != null && !cancellationToken.IsCancellationRequested)
+        {
+          await commandLine();
+        }
+
         state.HostFinished();
         done.TrySetResult(true);
       }

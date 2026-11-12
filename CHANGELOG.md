@@ -115,7 +115,11 @@
   A request cancelled while its operation is already running (client
   disconnect or timeout) still returns at once, but the next request now
   waits until that operation has finished; before, it could start beside it.
-  Work that had not started when the request ended never runs. Command-line
+  That wait has no 15 s `CIVIL3D.HOST_BUSY` check: a queued request that is
+  still waiting when its own timeout expires ends with `CIVIL3D.TIMEOUT`.
+  Work that had not started when the request ended never runs, and a
+  rejected command-line send is not retried after its request was cancelled
+  or had stopped waiting for it. Command-line
   input that Civil 3D rejects or that fails to send now fails the request
   (`CIVIL3D.HOST_BUSY` or `CIVIL3D.COMMAND_FAILED`) instead of being reported
   as `initiated`; a command that opens a dialog is reported once Civil 3D has

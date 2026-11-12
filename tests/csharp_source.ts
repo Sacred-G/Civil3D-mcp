@@ -5,10 +5,22 @@
 // matching see only code. Interpolation holes ({...} in $"...") stay code.
 
 export function maskCSharp(code: string): string {
+  return maskCSharpParts(code).code;
+}
+
+// Both masks of the same source, index for index: `code` (comments and
+// literal contents blanked) for finding things, and `withoutComments`
+// (comments blanked, literals kept) for reading a literal at a place found in
+// `code`.
+export function maskCSharpParts(code: string): { code: string; withoutComments: string } {
   const out = code.split("");
-  const blank = (from: number, to: number) => {
+  const noComments = code.split("");
+  const blank = (from: number, to: number, comment = false) => {
     for (let k = from; k < to && k < code.length; k++) {
-      if (out[k] !== "\n" && out[k] !== "\r") out[k] = " ";
+      if (out[k] !== "\n" && out[k] !== "\r") {
+        out[k] = " ";
+        if (comment) noComments[k] = " ";
+      }
     }
   };
 
@@ -21,14 +33,14 @@ export function maskCSharp(code: string): string {
       if (c === "/" && next === "/") {
         const end = code.indexOf("\n", i);
         const stop = end < 0 ? code.length : end;
-        blank(i, stop);
+        blank(i, stop, true);
         i = stop;
         continue;
       }
       if (c === "/" && next === "*") {
         const end = code.indexOf("*/", i + 2);
         const stop = end < 0 ? code.length : end + 2;
-        blank(i, stop);
+        blank(i, stop, true);
         i = stop;
         continue;
       }
@@ -62,7 +74,8 @@ export function maskCSharp(code: string): string {
     const interpolated = prefix.includes("$");
     const verbatim = prefix.includes("@");
     let j = i + prefix.length;
-    if (code.startsWith('"""', j - 1)) {
+    // Not for verbatim strings: @"""" is a verbatim string holding one quote.
+    if (!verbatim && code.startsWith('"""', j - 1)) {
       // Raw string literal ("""..."""): treated as one literal.
       const end = code.indexOf('"""', j + 2);
       const stop = end < 0 ? code.length : end + 3;
@@ -100,7 +113,7 @@ export function maskCSharp(code: string): string {
   }
 
   codeFrom(0, false);
-  return out.join("");
+  return { code: out.join(""), withoutComments: noComments.join("") };
 }
 
 const pairs: Record<string, string> = { "(": ")", "{": "}", "[": "]" };
@@ -184,9 +197,15 @@ export function enclosingBlocks(masked: string, index: number): { open: number; 
 // The method around `index`: its name and parameter names.
 export function enclosingMethod(masked: string, index: number): { name: string; parameters: string[] } | undefined {
   for (const block of enclosingBlocks(masked, index)) {
-    const match = /(\w+)\s*(?:<[^()]*>)?\s*\(([\s\S]*)\)\s*$/.exec(block.header);
+    // Drop what may follow the parameter list: generic constraints
+    // (where T : class) and a constructor initializer (: base(...) or
+    // : this(...)), so the last parenthesised group is the parameters.
+    const header = block.header
+      .replace(/\)\s*where\s+\w+\s*:[\s\S]*$/, ")")
+      .replace(/\)\s*:\s*(?:base|this)\s*\([\s\S]*\)\s*$/, ")");
+    const match = /(\w+)\s*(?:<[^()]*>)?\s*\(([\s\S]*)\)\s*$/.exec(header);
     if (!match || notMethods.has(match[1])) continue;
-    if (/=>\s*$/.test(block.header)) continue;
+    if (/=>\s*$/.test(header)) continue;
     const parametersText = match[2];
     const parameters = splitTopLevel(parametersText, 0, parametersText.length, true)
       .map((part) => part.text.trim().split(/\s+/).pop() ?? "")
