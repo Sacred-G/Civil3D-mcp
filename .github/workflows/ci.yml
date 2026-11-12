@@ -30,3 +30,4 @@ jobs:
         with:
           dotnet-version: 8.0.x
       - run: dotnet run --project ./tests/FileBoundaryHarness/FileBoundaryHarness.csproj
+      - run: dotnet run --project ./tests/HostGateHarness/HostGateHarness.csproj

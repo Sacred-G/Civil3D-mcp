@@ -371,10 +371,10 @@ public static class DataShortcutCommands
   }
 
   // Queues the command for COM SendCommand after the host operation
-  // (CivilExecution.SendCommandLineAsync). Queueing itself cannot fail; a send
-  // that fails within the first seconds fails the request, while one that
-  // fails later, after a dialog stayed open, is only logged because the
-  // request has already returned.
+  // (CivilExecution.SendCommandLineAsync). Queueing itself cannot fail, so
+  // there is no catch here: a send that Civil 3D rejects or that fails fails
+  // the request (HOST_BUSY or the COM error), and the request reports the
+  // command as initiated only once Civil 3D has accepted it.
   private static void SendCommand(string commandName) =>
     CivilExecution.QueueCommandLine($"{commandName} ");
 

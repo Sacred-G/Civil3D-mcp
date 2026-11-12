@@ -10,7 +10,9 @@ namespace Civil3DMcpPlugin;
 
 public static class CivilExecution
 {
-  private static readonly SemaphoreSlim HostExecutionGate = new(1, 1);
+  // One host request at a time. A cancelled request returns at once, but the
+  // gate stays closed until its host work has finished (see HostGate).
+  private static readonly HostGate HostExecutionGate = new();
 
   // Where an operation runs. Nothing uses DocumentManager
   // .ExecuteInCommandContextAsync any more: on Civil 3D 2027 it stops running
@@ -27,7 +29,7 @@ public static class CivilExecution
 
   public static async Task<T> ExecuteAsync<T>(Func<Document, CivilDocument, Database, Transaction, T> action, bool write, bool inCommand = false, bool commandLine = false)
   {
-    return await ExecuteSerializedAsync(async cancellationToken =>
+    return await ExecuteSerializedAsync(async (hostRequest, cancellationToken) =>
     {
       // With zero documents open there is no command context, so the
       // ExecuteInCommandContextAsync callback below never runs and the
@@ -82,7 +84,7 @@ public static class CivilExecution
         }
 
         return Task.CompletedTask;
-      }, needsCommand: write || inCommand, needsQuietEditor: commandLine, cancellationToken);
+      }, needsCommand: write || inCommand, needsQuietEditor: commandLine, hostRequest, cancellationToken);
 
       await AwaitHostContextAsync(hostTask, cancellationToken);
 
@@ -97,7 +99,7 @@ public static class CivilExecution
 
   public static async Task<T> ExecuteInCommandContextAsync<T>(Func<Task<T>> action)
   {
-    return await ExecuteSerializedAsync(async cancellationToken =>
+    return await ExecuteSerializedAsync(async (hostRequest, cancellationToken) =>
     {
       T? result = default;
       Exception? capturedException = null;
@@ -121,7 +123,7 @@ public static class CivilExecution
       // choosing the hop by MdiActiveDocument was racy: if the last document
       // closed between the check and the hop, the command-context callback
       // would never run and the request would hang holding the gate.
-      var hostTask = ExecuteInApplicationContextAsync(callback, cancellationToken);
+      var hostTask = ExecuteInApplicationContextAsync(callback, hostRequest, cancellationToken);
 
       await AwaitHostContextAsync(hostTask, cancellationToken);
 
@@ -170,7 +172,7 @@ public static class CivilExecution
   // to redo"). Used by undo and redo. Waits for a quiescent editor.
   public static async Task<T> RunCommandLineAsync<T>(string input, T result)
   {
-    return await ExecuteSerializedAsync(async cancellationToken =>
+    return await ExecuteSerializedAsync(async (hostRequest, cancellationToken) =>
     {
       if (App.DocumentManager.MdiActiveDocument == null)
       {
@@ -186,7 +188,7 @@ public static class CivilExecution
         // have run instead of reporting them done while they still execute.
         QueueCommandLine(input, waitForCompletion: true);
         return Task.CompletedTask;
-      }, needsCommand: false, needsQuietEditor: true, cancellationToken);
+      }, needsCommand: false, needsQuietEditor: true, hostRequest, cancellationToken);
 
       await AwaitHostContextAsync(hostTask, cancellationToken);
       return result;
@@ -260,16 +262,19 @@ public static class CivilExecution
   //  - while no Idle tick arrives at all for HostBusyTimeout (a modal dialog).
   // The busy checks, the no-Idle watchdog and the claim flag come from
   // jorgegarcias60/Civil3D-mcp#1 and #2.
-  private static async Task RunOnHostAsync(Func<HostRoute, Task> operation, bool needsCommand, bool needsQuietEditor, CancellationToken cancellationToken)
+  //
+  // hostRequest decides, once each, whether the host work starts and whether
+  // the action runs, and settles when the host is done with the request. A
+  // cancelled caller stops waiting at once, but a started action always runs
+  // to its end before the request settles, and HostExecutionGate stays closed
+  // until then.
+  private static async Task RunOnHostAsync(Func<HostRoute, Task> operation, bool needsCommand, bool needsQuietEditor, HostRequestState hostRequest, CancellationToken cancellationToken)
   {
-    var claimed = 0;
     var done = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-    // Completes when the operation itself has finished, wherever it ran.
-    var operationDone = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
     async Task RunOnce(HostRoute route)
     {
-      if (Interlocked.Exchange(ref claimed, 1) != 0)
+      if (!hostRequest.TryClaimOperation())
       {
         return;
       }
@@ -278,11 +283,11 @@ public static class CivilExecution
       try
       {
         await operation(route);
-        operationDone.TrySetResult(true);
+        hostRequest.OperationFinished(null);
       }
       catch (Exception ex)
       {
-        operationDone.TrySetException(ex);
+        hostRequest.OperationFinished(ex);
       }
     }
 
@@ -291,8 +296,18 @@ public static class CivilExecution
     // HostBusyTimeout means the host is inside a modal dialog or a long
     // operation.
     long lastIdleTicks = DateTime.UtcNow.Ticks;
-    var started = 0;
     EventHandler? idle = null;
+
+    // Ends the request before its host work started: nothing ran.
+    void EndBeforeStart(Exception reason)
+    {
+      if (hostRequest.TryAbandonBeforeStart())
+      {
+        CoreApp.Idle -= idle;
+        done.TrySetException(reason);
+      }
+    }
+
     idle = async (_, _) =>
     {
       // async void: an exception escaping this handler would take down the
@@ -300,7 +315,7 @@ public static class CivilExecution
       try
       {
         Interlocked.Exchange(ref lastIdleTicks, DateTime.UtcNow.Ticks);
-        if (Volatile.Read(ref claimed) != 0 || Volatile.Read(ref started) != 0)
+        if (!hostRequest.IsWaiting)
         {
           CoreApp.Idle -= idle;
           return;
@@ -312,24 +327,37 @@ public static class CivilExecution
         if (busy)
         {
           busySince ??= now;
-          if (now - busySince.Value >= HostBusyTimeout && Interlocked.Exchange(ref claimed, 1) == 0)
+          if (now - busySince.Value >= HostBusyTimeout)
           {
-            CoreApp.Idle -= idle;
-            done.TrySetException(new JsonRpcDispatchException(
+            EndBeforeStart(new JsonRpcDispatchException(
               "CIVIL3D.HOST_BUSY",
               "Civil 3D has a command or prompt in progress. Finish it or press Esc in Civil 3D, then retry. No drawing changes were made."));
           }
 
           return;
         }
+      }
+      catch (Exception ex)
+      {
+        EndBeforeStart(ex);
+        return;
+      }
 
-        CoreApp.Idle -= idle;
-        Interlocked.Exchange(ref started, 1);
+      // Started or abandoned exactly once: the watchdog and a cancellation
+      // on other threads race this.
+      CoreApp.Idle -= idle;
+      if (!hostRequest.TryStart())
+      {
+        return;
+      }
+
+      try
+      {
         // The COM document must be fetched on the main thread.
         var acadDocument = App.DocumentManager.MdiActiveDocument?.GetAcadDocument();
         if (needsCommand)
         {
-          await StartPluginCommandAsync(() => RunOnce(HostRoute.PluginCommand), () => Volatile.Read(ref claimed) != 0);
+          await StartPluginCommandAsync(() => RunOnce(HostRoute.PluginCommand), hostRequest);
         }
         else
         {
@@ -339,27 +367,58 @@ public static class CivilExecution
         // Async work in C3DMCPHOP may still be running after SendCommand
         // returned; wait for the operation, then send any
         // command-line input it queued.
-        await operationDone.Task;
+        await hostRequest.OperationDone;
         if (PendingCommandLine.Count > 0 && acadDocument != null)
         {
           var input = PendingCommandLine.ToList();
           PendingCommandLine.Clear();
-          await SendCommandLineAsync(acadDocument, input);
+          if (cancellationToken.IsCancellationRequested)
+          {
+            PluginLog.Info("Host", $"The request was cancelled; command-line input not sent: {string.Join(", ", input.Select(entry => entry.Text.Trim()))}.");
+          }
+          else
+          {
+            await SendCommandLineAsync(acadDocument, input);
+          }
         }
 
+        // Settle before completing, so the request that resumes finds the
+        // gate free to release.
+        hostRequest.HostFinished();
         done.TrySetResult(true);
       }
       catch (Exception ex)
       {
         // Also when the operation had already claimed the request (it ran and
-        // faulted operationDone, for example with CONFLICT from
-        // RequireExpectedDocument): the request must end with this exception,
-        // or it would wait with HostExecutionGate held. When the busy watcher
-        // or the no-Idle watchdog has already ended the request, done is
-        // complete and this does nothing.
-        CoreApp.Idle -= idle;
-        Interlocked.Exchange(ref claimed, 1);
+        // faulted, for example with CONFLICT from RequireExpectedDocument):
+        // the request must end with this exception. An action that has not
+        // run yet never will.
+        hostRequest.TryAbandonOperation();
+        if (!hostRequest.OperationClaimed || hostRequest.OperationDone.IsCompleted)
+        {
+          hostRequest.HostFinished();
+        }
+
         done.TrySetException(ex);
+      }
+      finally
+      {
+        // An action that started (async work in C3DMCPHOP) is waited for even
+        // when the request already ended, so the next request cannot run
+        // beside it.
+        if (hostRequest.OperationClaimed)
+        {
+          try
+          {
+            await hostRequest.OperationDone;
+          }
+          catch
+          {
+            // Reported through done above.
+          }
+        }
+
+        hostRequest.HostFinished();
       }
     };
     CoreApp.Idle += idle;
@@ -375,15 +434,15 @@ public static class CivilExecution
     }
     using var nudge = new Timer(_ =>
     {
-      if (Volatile.Read(ref claimed) != 0 || Volatile.Read(ref started) != 0)
+      if (!hostRequest.IsWaiting)
       {
         return;
       }
 
       var sinceIdle = TimeSpan.FromTicks(DateTime.UtcNow.Ticks - Interlocked.Read(ref lastIdleTicks));
-      if (sinceIdle >= HostBusyTimeout && Interlocked.Exchange(ref claimed, 1) == 0)
+      if (sinceIdle >= HostBusyTimeout)
       {
-        done.TrySetException(new JsonRpcDispatchException(
+        EndBeforeStart(new JsonRpcDispatchException(
           "CIVIL3D.HOST_BUSY",
           "Civil 3D is not processing requests: a dialog is open or a long operation is running. Close the dialog or wait, then retry. No drawing changes were made."));
         return;
@@ -401,12 +460,12 @@ public static class CivilExecution
     }
     finally
     {
-      // Request finished, failed or was cancelled: nothing may run it later,
-      // and an Idle handler still waiting for queued C3DMCPHOP work that will
-      // now never run must not wait forever.
-      Interlocked.Exchange(ref claimed, 1);
+      // Request finished, failed or was cancelled: work that has not started
+      // never will (an Idle handler still waiting for queued C3DMCPHOP work
+      // stops waiting), while an action already running finishes first; the
+      // request settles, and the gate opens, only then.
+      hostRequest.End();
       CoreApp.Idle -= idle;
-      operationDone.TrySetCanceled();
     }
   }
 
@@ -447,7 +506,7 @@ public static class CivilExecution
   // main thread like an external client's and runs it at once, also in a
   // disconnected Windows session with nobody at the keyboard. Completes when SendCommand
   // has returned; the work itself reports through the request's own task.
-  private static async Task StartPluginCommandAsync(Func<Task> work, Func<bool> finished)
+  private static async Task StartPluginCommandAsync(Func<Task> work, HostRequestState hostRequest)
   {
     var doc = App.DocumentManager.MdiActiveDocument
       ?? throw new JsonRpcDispatchException("CIVIL3D.NO_DRAWING", "No active drawing is open in Civil 3D.");
@@ -455,13 +514,30 @@ public static class CivilExecution
     var acadDocument = doc.GetAcadDocument();
     PluginCommandWork.Enqueue(work);
 
-    await Task.Run(() => SendCommandWithRetry(acadDocument, "_" + PluginCommandName + " "));
-
-    if (!finished())
+    try
     {
-      // SendCommand returned without the command running the work (it is
-      // still queued, so drop it): report instead of waiting for the request
-      // timeout.
+      await Task.Run(() => SendCommandWithRetry(acadDocument, "_" + PluginCommandName + " "));
+    }
+    catch
+    {
+      // The send failed: the work must not run later from a stray
+      // C3DMCPHOP, unless it already started.
+      hostRequest.TryAbandonOperation();
+      if (!hostRequest.OperationClaimed)
+      {
+        DropQueuedWork(work);
+      }
+
+      throw;
+    }
+
+    // SendCommand returned without the command running the work (or the
+    // request was cancelled before it ran): stop it from ever running, drop
+    // it from the queue, and report instead of waiting for the request
+    // timeout.
+    hostRequest.TryAbandonOperation();
+    if (!hostRequest.OperationClaimed)
+    {
       DropQueuedWork(work);
       throw new JsonRpcDispatchException(
         "CIVIL3D.HOST_BUSY",
@@ -472,8 +548,12 @@ public static class CivilExecution
   // Sends queued command-line input, one entry at a time, with COM
   // SendCommand from a background thread. SendCommand returns once AutoCAD
   // has consumed the input. A command that opens a dialog or stops at a
-  // prompt keeps it from returning; after a few seconds the request completes
-  // anyway, so the host gate is not held while the user works in the dialog.
+  // prompt keeps it from returning; once Civil 3D has accepted the call and
+  // kept it running for a few seconds, the request completes anyway, so the
+  // host gate is not held while the user works in the dialog. While Civil 3D
+  // still rejects the call (SendCommandWithRetry retrying) the request keeps
+  // waiting, so a send that never got through fails the request (HOST_BUSY
+  // or the COM error) instead of being reported as started.
   // Input queued with waitForCompletion (UNDO, MREDO) is waited for up to
   // HostBusyTimeout; if it is still running then, the request fails with
   // HOST_BUSY instead of reporting it done.
@@ -481,8 +561,20 @@ public static class CivilExecution
   {
     foreach (var (text, wait) in input)
     {
-      var call = Task.Run(() => SendCommandWithRetry(acadDocument, text));
-      await Task.WhenAny(call, Task.Delay(wait ? HostBusyTimeout : TimeSpan.FromSeconds(3)));
+      var progress = new SendProgress();
+      var call = Task.Run(() => SendCommandWithRetry(acadDocument, text, progress));
+      if (wait)
+      {
+        await Task.WhenAny(call, Task.Delay(HostBusyTimeout));
+      }
+      else
+      {
+        while (!call.IsCompleted && !progress.AcceptedFor(DialogGrace))
+        {
+          await Task.WhenAny(call, Task.Delay(100));
+        }
+      }
+
       if (!call.IsCompleted && wait)
       {
         _ = call.ContinueWith(
@@ -506,24 +598,56 @@ public static class CivilExecution
         return;
       }
 
-      await call;
+      try
+      {
+        await call;
+      }
+      catch (Exception ex) when (ex is not JsonRpcDispatchException)
+      {
+        throw new JsonRpcDispatchException(
+          "CIVIL3D.COMMAND_FAILED",
+          $"Civil 3D did not accept '{text.Trim()}': {ex.Message}");
+      }
     }
   }
 
   private static readonly TimeSpan CallRejectedRetry = TimeSpan.FromSeconds(10);
 
-  private static void SendCommandWithRetry(object acadDocument, string text)
+  // How long command-line input without waitForCompletion may keep a call
+  // that Civil 3D accepted running (a dialog) before the request completes.
+  private static readonly TimeSpan DialogGrace = TimeSpan.FromSeconds(3);
+
+  // Whether the current SendCommand attempt is in Civil 3D's hands (not
+  // rejected) and since when. Written by the sending thread.
+  private sealed class SendProgress
+  {
+    private long _attemptStartedTicks;
+
+    public void Attempting() => Interlocked.Exchange(ref _attemptStartedTicks, DateTime.UtcNow.Ticks);
+
+    public void Rejected() => Interlocked.Exchange(ref _attemptStartedTicks, 0);
+
+    public bool AcceptedFor(TimeSpan duration)
+    {
+      var started = Interlocked.Read(ref _attemptStartedTicks);
+      return started != 0 && DateTime.UtcNow.Ticks - started >= duration.Ticks;
+    }
+  }
+
+  private static void SendCommandWithRetry(object acadDocument, string text, SendProgress? progress = null)
   {
     var deadline = DateTime.UtcNow + CallRejectedRetry;
     while (true)
     {
       try
       {
+        progress?.Attempting();
         Civil3DCompatibility.InvokeComMethod(acadDocument, "SendCommand", text);
         return;
       }
       catch (COMException ex) when (IsCallRejected(ex))
       {
+        progress?.Rejected();
         if (DateTime.UtcNow >= deadline)
         {
           // Still busy after the retries: the designed HOST_BUSY, not a raw
@@ -564,10 +688,12 @@ public static class CivilExecution
   // that state (the request timed out after 120 s with no document created),
   // whereas Application.Idle keeps firing while only the Start tab is showing.
   // Idle runs on the main thread, which is the context DocumentManager.Add needs.
-  private static Task ExecuteInApplicationContextAsync(Func<object, Task> callback, CancellationToken cancellationToken)
+  // hostRequest settles when the callback has finished, so a request
+  // cancelled while the callback runs keeps HostExecutionGate closed until
+  // then.
+  private static Task ExecuteInApplicationContextAsync(Func<object, Task> callback, HostRequestState hostRequest, CancellationToken cancellationToken)
   {
     var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-    CancellationTokenRegistration cancellation = default;
 
     EventHandler? handler = null;
     handler = async (_, _) =>
@@ -575,15 +701,40 @@ public static class CivilExecution
       // One-shot: detach before running so a slow callback cannot be re-entered
       // by the next idle tick.
       CoreApp.Idle -= handler;
-      cancellation.Dispose();
-      try
+      if (!hostRequest.TryStart())
       {
-        await callback(null!);
-        completion.TrySetResult(true);
+        return;
       }
-      catch (Exception ex)
+
+      Exception? failure = null;
+      var ran = hostRequest.TryClaimOperation();
+      if (ran)
       {
-        completion.TrySetException(ex);
+        try
+        {
+          await callback(null!);
+        }
+        catch (Exception ex)
+        {
+          failure = ex;
+        }
+      }
+
+      // Settle before completing, so the request that resumes finds the gate
+      // free to release.
+      hostRequest.OperationFinished(failure);
+      hostRequest.HostFinished();
+      if (!ran)
+      {
+        completion.TrySetCanceled();
+      }
+      else if (failure != null)
+      {
+        completion.TrySetException(failure);
+      }
+      else
+      {
+        completion.TrySetResult(true);
       }
     };
     CoreApp.Idle += handler;
@@ -592,11 +743,16 @@ public static class CivilExecution
     // Civil 3D is busy) must not leave its handler subscribed; otherwise
     // abandoned handlers accumulate until Idle next fires. Unsubscribe and
     // complete as cancelled so the awaiting request observes it promptly.
-    cancellation = cancellationToken.Register(() =>
+    // Once the callback has started it runs to its end.
+    var cancellation = cancellationToken.Register(() =>
     {
-      CoreApp.Idle -= handler;
-      completion.TrySetCanceled(cancellationToken);
+      if (hostRequest.TryAbandonBeforeStart())
+      {
+        CoreApp.Idle -= handler;
+        completion.TrySetCanceled(cancellationToken);
+      }
     });
+    _ = completion.Task.ContinueWith(_ => cancellation.Dispose(), CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
 
     return completion.Task;
   }
@@ -604,9 +760,10 @@ public static class CivilExecution
   // Waits for a host-context hop without ignoring request cancellation. A
   // client disconnect cancels the request token (RpcTcpServer monitors the
   // socket); without this, a hop whose callback never fires would keep
-  // HostExecutionGate held after the client has already gone away. If the
-  // host callback does run later, it observes the cancelled token and does
-  // no work; its result is discarded.
+  // the client waiting after it has already gone away. Work that has not
+  // started by then never starts (HostRequestState.End); work already
+  // running finishes, and HostExecutionGate stays closed until it has. Its
+  // result is discarded.
   private static async Task AwaitHostContextAsync(Task hostTask, CancellationToken cancellationToken)
   {
     if (hostTask.IsCompleted || !cancellationToken.CanBeCanceled)
@@ -628,28 +785,34 @@ public static class CivilExecution
     await hostTask;
   }
 
-  private static async Task<T> ExecuteSerializedAsync<T>(Func<CancellationToken, Task<T>> action)
+  private static async Task<T> ExecuteSerializedAsync<T>(Func<HostRequestState, CancellationToken, Task<T>> action)
   {
     var cancellationToken = PluginRuntime.GetCurrentRequestCancellationToken();
+    var operationName = PluginRuntime.GetCurrentRequestOperation();
     PluginRuntime.QueueHostOperation();
     var started = false;
 
     try
     {
-      await HostExecutionGate.WaitAsync(cancellationToken);
-      started = true;
-      PluginRuntime.StartHostOperation();
-      cancellationToken.ThrowIfCancellationRequested();
-      return await action(cancellationToken);
+      // The gate opens for the next request when this request's host work
+      // has settled, which can be after this returns: a cancelled request
+      // returns its error at once while an action that already started on the
+      // main thread runs to its end. The operation then still counts as
+      // active in getCivil3DHealth.
+      return await HostExecutionGate.RunAsync(
+        hostRequest => action(hostRequest, cancellationToken),
+        cancellationToken,
+        onEntered: () =>
+        {
+          started = true;
+          PluginRuntime.StartHostOperation();
+        },
+        onReleased: PluginRuntime.CompleteHostOperation,
+        onDeferred: () => PluginLog.Warn("Host", $"'{operationName}' ended while its work was still running in Civil 3D; the next request waits until that work finishes."));
     }
     finally
     {
-      if (started)
-      {
-        PluginRuntime.CompleteHostOperation();
-        HostExecutionGate.Release();
-      }
-      else
+      if (!started)
       {
         PluginRuntime.CancelQueuedHostOperation();
       }
