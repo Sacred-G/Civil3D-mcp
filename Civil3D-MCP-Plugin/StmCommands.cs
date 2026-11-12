@@ -6,7 +6,7 @@ namespace Civil3DMcpPlugin;
 
 /// <summary>
 /// Backend commands for STM (Storm and Sanitary Analysis) import/export.
-/// Uses SendStringToExecute for the AutoCAD command-line SSA commands.
+/// Runs the AutoCAD command-line SSA commands through CivilExecution.QueueCommandLine.
 /// These commands invoke Civil 3D's built-in Storm and Sanitary Analysis
 /// dialog workflows via command line.
 /// </summary>
@@ -25,21 +25,18 @@ public static class StmCommands
         "ExportSSA is an interactive dialog and cannot bind a caller-supplied filePath. Omit filePath and choose the destination in Civil 3D.");
     }
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadThenCommandLineAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       // The ExportSSA command opens the Storm and Sanitary Analysis export dialog.
       // If a filePath is provided, we note it for the user; the dialog will still appear.
       var commandString = "ExportSSA\n";
 
-      try
-      {
-        doc.SendStringToExecute(commandString, true, false, false);
-      }
-      catch (System.Exception ex)
-      {
-        throw new JsonRpcDispatchException("CIVIL3D.COMMAND_FAILED",
-          $"Failed to execute ExportSSA command: {ex.Message}");
-      }
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
+      CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
       {
@@ -69,20 +66,17 @@ public static class StmCommands
         "ImportSSA is an interactive dialog and cannot bind a caller-supplied filePath. Omit filePath and choose the source in Civil 3D.");
     }
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadThenCommandLineAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       // The ImportSSA command opens the Storm and Sanitary Analysis import dialog.
       var commandString = "ImportSSA\n";
 
-      try
-      {
-        doc.SendStringToExecute(commandString, true, false, false);
-      }
-      catch (System.Exception ex)
-      {
-        throw new JsonRpcDispatchException("CIVIL3D.COMMAND_FAILED",
-          $"Failed to execute ImportSSA command: {ex.Message}");
-      }
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
+      CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
       {
@@ -104,19 +98,16 @@ public static class StmCommands
   // ──────────────────────────────────────────────
   public static Task<object?> OpenStormSanitaryAnalysisAsync(JsonObject? parameters)
   {
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadThenCommandLineAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var commandString = "AnalyzeGravityNetwork\n";
 
-      try
-      {
-        doc.SendStringToExecute(commandString, true, false, false);
-      }
-      catch (System.Exception ex)
-      {
-        throw new JsonRpcDispatchException("CIVIL3D.COMMAND_FAILED",
-          $"Failed to open Storm and Sanitary Analysis: {ex.Message}");
-      }
+      // Sent after the operation (CivilExecution.SendCommandLineAsync). A
+      // send that Civil 3D keeps rejecting, or that fails before Civil 3D
+      // accepts it, fails the request with HOST_BUSY or COMMAND_FAILED; once
+      // the dialog has been open for 3 s the request returns, and a later
+      // failure is only logged.
+      CivilExecution.QueueCommandLine(commandString);
 
       return new Dictionary<string, object?>
       {

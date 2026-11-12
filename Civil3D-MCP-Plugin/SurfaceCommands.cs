@@ -319,7 +319,7 @@ public static class SurfaceCommands
     var baseSurfaceName = PluginRuntime.GetRequiredString(parameters, "baseSurface");
     var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
       var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
@@ -349,7 +349,7 @@ public static class SurfaceCommands
     var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
     var method = PluginRuntime.GetOptionalString(parameters, "method") ?? "tin_volume";
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
       var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
@@ -381,7 +381,7 @@ public static class SurfaceCommands
     var comparisonSurfaceName = PluginRuntime.GetRequiredString(parameters, "comparisonSurface");
     var format = PluginRuntime.GetOptionalString(parameters, "format") ?? "summary";
 
-    return CivilExecution.ReadAsync<object?>((doc, civilDoc, database, transaction) =>
+    return CivilExecution.ReadInCommandAsync<object?>((doc, civilDoc, database, transaction) =>
     {
       var baseSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, baseSurfaceName, OpenMode.ForRead);
       var comparisonSurface = CivilObjectUtils.FindSurfaceByName(civilDoc, transaction, comparisonSurfaceName, OpenMode.ForRead);
