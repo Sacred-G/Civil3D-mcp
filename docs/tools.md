@@ -589,7 +589,7 @@ Give exactly one of `points` or `polylineHandle`.
   sourcePolylineErased: boolean,
   curveRadius: number | null,
   radii: (number | null)[] | null,
-  addCurves: boolean,           // whether Civil 3D fitted curves at its default radius
+  addCurves: boolean,           // whether default-radius fitting was on (false when curveRadius/radii was given); curvesAutoFitted says how many curves it fitted
   curvesAdded: number,          // every curve this call added: curvesAutoFitted plus those inserted at curveRadius/radii
   curvesAutoFitted: number,     // curves Civil 3D fitted itself (arcs already in a traced polyline are not counted)
   curveCount: number,           // arcs on the finished alignment, including arcs inside spiral-curve-spiral groups
