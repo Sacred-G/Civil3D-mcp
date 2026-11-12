@@ -30,7 +30,7 @@ internal static class RuntimeChecks
       var written = RunCodeLog.WriteScriptFile(runFolder, "out.txt", "data", null);
       expect(File.ReadAllText(written) == "data" && Path.GetDirectoryName(written) == runFolder, "WriteFile writes a plain name inside the run folder");
 
-      foreach (var name in new[] { "run.json", "RUN.JSON", "run.json.", "script.cs ", "run.json::$DATA", "script.cs::$DATA", "out.txt:hidden", "out.txt:hidden:$DATA", "..\\x.txt", "sub/x.txt" })
+      foreach (var name in new[] { "run.json", "RUN.JSON", "run.json.", "script.cs", "script.cs ", "result.json", "output.txt", "Output.TXT.", "run.json::$DATA", "script.cs::$DATA", "out.txt:hidden", "out.txt:hidden:$DATA", "..\\x.txt", "sub/x.txt" })
       {
         var refused = false;
         try
