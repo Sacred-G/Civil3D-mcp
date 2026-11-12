@@ -719,10 +719,12 @@ per-layout status. `publish_sheet_set` without a sheet list skips (and
 reports) layouts that have never been initialized, because PUBLISH refuses
 them.
 
-Plotting was developed and live-tested on Civil 3D 2027 only; it is not yet
-verified live on the Civil 3D 2026 baseline this README otherwise targets.
-Why commands rather than the PlotEngine API: live testing on Civil 3D 2027
-found `PlotFactory`/`PlotEngine` crash-prone when driven from a command
+Plotting was developed and live-tested on Civil 3D 2027 (net10.0) only.
+**It is unverified on Civil 3D 2026 (net8.0), the supported, live-validated
+baseline this README otherwise targets**: treat plotting there as untested,
+and check a first plot by hand. The 2027 findings below explain the design;
+they are not a 2026 test result. Why commands rather than the PlotEngine API:
+live testing on Civil 3D 2027 found `PlotFactory`/`PlotEngine` crash-prone when driven from a command
 context (the context this plugin runs in), while `-PLOT` with
 `BACKGROUNDPLOT=0` fails with a message instead of taking the host down. The
 plugin validates every answer before starting the command, never saves page
